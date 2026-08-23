@@ -1,0 +1,75 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { App } from "./App";
+import { apiConfig } from "./services/api";
+
+describe("Remember app", () => {
+  afterEach(cleanup);
+  beforeEach(() => {
+    localStorage.clear();
+    window.location.hash = "";
+  });
+
+  it("uses dark mode by default", async () => {
+    render(<App />);
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
+    expect(localStorage.getItem("remember-theme")).toBe("dark");
+  });
+
+  it("navigates between the core product areas", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(screen.getByRole("heading", { name: "Your memory." })).toBeTruthy();
+    await user.click(screen.getAllByRole("button", { name: "Library" })[0]);
+    expect(screen.getByRole("heading", { name: "Your library" })).toBeTruthy();
+    await user.click(screen.getAllByRole("button", { name: "Evolution" })[0]);
+    expect(screen.getByRole("heading", { name: "Your evolution" })).toBeTruthy();
+  });
+
+  it("validates capture links and saves a valid source immediately", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /Save something/i }));
+    const input = screen.getByLabelText("Link");
+    await user.type(input, "not a link");
+    await user.click(screen.getByRole("button", { name: /Save now/i }));
+    expect(screen.getByRole("alert").textContent).toContain("complete public link");
+    await user.clear(input);
+    await user.type(input, "https://youtube.com/watch?v=new-memory");
+    await user.click(screen.getByRole("button", { name: /Save now/i }));
+    expect(screen.getByRole("heading", { name: "Saved to your memory" })).toBeTruthy();
+    await waitFor(() => expect(localStorage.getItem(apiConfig.storageKey)).toContain("new-memory"));
+    expect(screen.getByText("New YouTube Imprint")).toBeTruthy();
+  });
+
+  it("traps dialog focus, closes on Escape, and restores the invoking control", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const trigger = screen.getByRole("button", { name: /Save something/i });
+    trigger.focus();
+    await user.click(trigger);
+    await waitFor(() => expect(screen.getByLabelText("Link")).toBe(document.activeElement));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(trigger).toBe(document.activeElement));
+  });
+
+  it("shows grounded citations after asking a suggested question", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getAllByRole("button", { name: "Ask" })[0]);
+    await user.click(screen.getByRole("button", { name: /Where do my saved ideas disagree/i }));
+    expect(screen.getByText(/Where do my saved ideas disagree/i)).toBeTruthy();
+    expect(await screen.findByText(/Two instincts sit in tension/i, {}, { timeout: 1800 })).toBeTruthy();
+    expect(screen.getByText("Sources")).toBeTruthy();
+  });
+
+  it("does not expose notification controls that are not implemented", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getAllByRole("button", { name: "Settings" })[0]);
+    expect(screen.queryByRole("switch", { name: "Weekly memory" })).toBeNull();
+    expect(screen.queryByText("One relevant idea each Sunday")).toBeNull();
+  });
+});

@@ -1,0 +1,29 @@
+{
+  "name": "@remember/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --env= --outdir dist",
+    "dev": "wrangler dev --local",
+    "db:migrate": "wrangler d1 migrations apply remember-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply remember-db --remote",
+    "test": "vitest run",
+    "typecheck": "wrangler types && tsc --noEmit",
+    "types": "wrangler types",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remember/domain": "workspace:*",
+    "hono": "^4.13.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.0.0",
+    "@cloudflare/workers-types": "^5.20260822.1",
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.125.0"
+  }
+}

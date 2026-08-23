@@ -1,0 +1,4 @@
+# Copy to .dev.vars. Never commit real secrets.
+AUTH_TOKEN=replace-with-a-long-random-token
+# Required only when ANALYSIS_PROVIDER=openrouter.
+OPENROUTER_API_KEY=replace-with-a-private-openrouter-key
