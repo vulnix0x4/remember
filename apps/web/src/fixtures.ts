@@ -1,0 +1,121 @@
+import type { Imprint } from "./types";
+
+export const imprints: Imprint[] = [
+  {
+    id: "worst-years",
+    title: "Your worst years can shape your best life",
+    creator: "The School of Life",
+    sourceType: "YouTube",
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    savedAt: "August 18, 2026",
+    lifePeriod: "A season of rebuilding",
+    duration: "14 min",
+    essence: "Pain can become useful without needing to be called good.",
+    summary: "A reflection on how difficult periods can clarify values, deepen self-knowledge, and redirect a life without romanticizing what happened.",
+    themes: ["Rebuilding", "Purpose", "Identity"],
+    keyIdeas: [
+      "Meaning often arrives after an experience, not while it is happening.",
+      "Growth does not justify pain, but it can change what the pain becomes.",
+      "A difficult chapter can reveal which ambitions were never truly yours."
+    ],
+    moments: [
+      { time: "03:18", seconds: 198, title: "Pain is not a lesson by default", note: "Meaning comes from what you make of it later." },
+      { time: "08:42", seconds: 522, title: "The identity after", note: "A changed self can choose more deliberately." }
+    ],
+    principle: "During a hard period, notice what it is changing instead of treating the whole period as wasted.",
+    hypothesis: "This may have mattered because you were trying to see rebuilding as movement, not failure.",
+    uncertainty: "No personal reaction was recorded, so the reason this mattered is an inference.",
+    status: "ready",
+    color: "sage",
+    connectionIds: ["letting-go", "creative-life"]
+  },
+  {
+    id: "letting-go",
+    title: "Letting go without losing what mattered",
+    creator: "On Being",
+    sourceType: "Podcast",
+    url: "https://onbeing.org/",
+    savedAt: "July 29, 2026",
+    lifePeriod: "Learning to release",
+    duration: "38 min",
+    essence: "Acceptance is not agreement. It is the end of arguing with what already happened.",
+    summary: "A conversation about grief, attachment, and preserving love without organizing your life around an absence.",
+    themes: ["Relationships", "Acceptance", "Identity"],
+    keyIdeas: ["Release can coexist with care.", "Closure is often a practice rather than a final conversation."],
+    moments: [{ time: "21:05", seconds: 1265, title: "What acceptance changes", note: "Acceptance returns attention to the present." }],
+    principle: "Keep what was true without requiring the past to continue.",
+    hypothesis: "You may have been looking for a way to move forward without making the relationship meaningless.",
+    status: "ready",
+    color: "blue",
+    connectionIds: ["worst-years", "uncertainty"]
+  },
+  {
+    id: "creative-life",
+    title: "The shape of a creative life",
+    creator: "Rick Rubin",
+    sourceType: "Article",
+    url: "https://example.com/creative-life",
+    savedAt: "August 7, 2026",
+    lifePeriod: "Building something of my own",
+    duration: "8 min read",
+    essence: "The work becomes clearer when identity is not attached to the outcome.",
+    summary: "A practical philosophy for making work from attention and curiosity rather than approval.",
+    themes: ["Building", "Purpose", "Independence"],
+    keyIdeas: ["Taste is a practice of noticing.", "Consistency gives inspiration somewhere to land."],
+    moments: [{ time: "Section 4", seconds: 0, title: "Detach the maker", note: "The work is information, not a verdict on you." }],
+    principle: "Protect a small daily window for making before consuming.",
+    status: "ready",
+    color: "graphite",
+    connectionIds: ["worst-years", "discipline"]
+  },
+  {
+    id: "discipline",
+    title: "Discipline is remembering what you want",
+    creator: "HealthyGamerGG",
+    sourceType: "YouTube",
+    url: "https://www.youtube.com/watch?v=2tGZA-F1_n0",
+    savedAt: "August 20, 2026",
+    lifePeriod: "Building something of my own",
+    duration: "22 min",
+    essence: "Follow-through gets easier when the future remains emotionally visible.",
+    summary: "Processing this video now. The source and first-pass essence are available.",
+    themes: ["Discipline", "Building"],
+    keyIdeas: ["Motivation fails when the future feels abstract."],
+    moments: [],
+    status: "processing",
+    color: "amber",
+    connectionIds: ["creative-life"]
+  },
+  {
+    id: "uncertainty",
+    title: "How to live with uncertainty",
+    creator: "The Marginalian",
+    sourceType: "Article",
+    url: "https://www.themarginalian.org/",
+    savedAt: "June 12, 2026",
+    lifePeriod: "Between decisions",
+    duration: "11 min read",
+    essence: "Uncertainty is not empty time. It is where a self becomes negotiable.",
+    summary: "An essay on staying awake to possibility while resisting the urge to force premature certainty.",
+    themes: ["Uncertainty", "Identity", "Acceptance"],
+    keyIdeas: ["Not knowing can be an active position.", "Certainty can protect an identity that needs to change."],
+    moments: [],
+    status: "partial",
+    color: "violet",
+    connectionIds: ["letting-go"]
+  }
+];
+
+export const suggestedQuestions = [
+  "What keeps appearing in what I save?",
+  "What have I saved about letting go?",
+  "Where do my saved ideas disagree?",
+  "What do I seem to believe about success?"
+];
+
+export const themeData = [
+  { name: "Identity", count: 8, change: "+3 since June", color: "var(--accent)" },
+  { name: "Purpose", count: 6, change: "steady", color: "var(--ink-3)" },
+  { name: "Relationships", count: 5, change: "+2 since July", color: "var(--ink-4)" },
+  { name: "Building", count: 4, change: "new in August", color: "var(--accent-soft)" }
+];

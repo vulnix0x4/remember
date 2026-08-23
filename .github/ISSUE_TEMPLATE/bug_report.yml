@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible problem in Remember
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve Remember. Remove private archive content and credentials from screenshots and logs.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Web / PWA
+        - API / Worker
+        - Browser extension
+        - iPhone app
+        - Share Extension
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the actual and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest reliable sequence of steps.
+      placeholder: |
+        1. Open …
+        2. Save …
+        3. See …
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser/device, commit, and self-hosted configuration details that are safe to share.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials and private archive content from this report.
+          required: true

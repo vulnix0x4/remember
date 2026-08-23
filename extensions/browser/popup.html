@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Remember</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="mark" aria-hidden="true"></span>
+        <span class="brand">Remember</span>
+        <button id="settings-toggle" class="icon-button" type="button" aria-label="Extension settings">•••</button>
+      </header>
+
+      <section id="capture-view">
+        <p class="eyebrow">CURRENT PAGE</p>
+        <h1 id="page-title">Ready to remember</h1>
+        <p id="page-host" class="host">Open a page to save it.</p>
+
+        <button id="save-button" class="primary" type="button">
+          <span id="save-label">Save this</span>
+          <span aria-hidden="true">↗</span>
+        </button>
+
+        <details>
+          <summary>Add why it mattered</summary>
+          <label for="reaction">Personal reaction</label>
+          <textarea id="reaction" rows="3" maxlength="600" placeholder="Optional. A sentence is enough."></textarea>
+        </details>
+
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="settings-view" hidden>
+        <p class="eyebrow">CONNECTION</p>
+        <h1>Where Remember lives</h1>
+        <label for="api-base">API address</label>
+        <input id="api-base" type="url" inputmode="url" autocomplete="url" />
+        <label for="access-token">Access token</label>
+        <input id="access-token" type="password" autocomplete="off" placeholder="Required for a deployed API" />
+        <p class="field-note">Stored only on this device. Local development uses its isolated test identity.</p>
+        <button id="settings-save" class="primary" type="button">Save connection</button>
+        <p id="settings-status" class="status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
