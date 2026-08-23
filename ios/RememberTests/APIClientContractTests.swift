@@ -50,6 +50,18 @@ struct APIClientContractTests {
         #expect(json["url"] == sourceURL.absoluteString)
     }
 
+    @Test func tikTokItemIsPresentedAsAPlayableTikTokSource() async throws {
+        URLProtocolStub.store.configure(data: Data(Self.tikTokListJSON.utf8))
+        let client = try makeClient(baseURL: "https://memory.whattheflip.lol")
+
+        let item = try #require(try await client.fetchImprints().first)
+
+        #expect(item.sourceLabel == "TikTok")
+        #expect(item.isVideoSource)
+        #expect(item.creator == "Scout, Suki & Stella")
+        #expect(item.sourcePreviewURL?.host() == "p19-common-sign.tiktokcdn-us.com")
+    }
+
     @Test func retryUsesTheItemRecoveryEndpoint() async throws {
         URLProtocolStub.store.configure(data: Data(Self.retryJSON.utf8), statusCode: 202)
         let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token")
@@ -133,6 +145,10 @@ struct APIClientContractTests {
 
     private static let captureJSON = #"""
     {"item":{"id":"20000000-0000-4000-8000-000000000002","sourceType":"youtube","originalUrl":"https://youtube.com/watch?v=abc","canonicalUrl":"https://youtube.com/watch?v=abc","title":null,"author":null,"status":"pending","savedAt":"2026-08-21T12:00:00Z","personalReaction":null,"processingError":null,"analysis":null},"deduplicated":false,"duplicate":false}
+    """#
+
+    private static let tikTokListJSON = #"""
+    {"items":[{"id":"20000000-0000-4000-8000-000000000004","sourceType":"web","originalUrl":"https://www.tiktok.com/@scout2015/video/6718335390845095173","canonicalUrl":"https://www.tiktok.com/@scout2015/video/6718335390845095173","title":"Scramble up your name","author":"Scout, Suki & Stella","thumbnailUrl":"https://p19-common-sign.tiktokcdn-us.com/example.jpeg","status":"ready","savedAt":"2026-08-23T09:00:00Z","personalReaction":null,"processingError":null,"analysis":null}],"nextCursor":null}
     """#
 
     private static let retryJSON = #"""

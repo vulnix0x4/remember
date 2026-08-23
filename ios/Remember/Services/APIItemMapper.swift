@@ -59,6 +59,9 @@ enum APIItemMapper {
         if normalized.contains("no readable captions") {
             return "This video has no readable captions, so Remember cannot analyze it faithfully yet."
         }
+        if normalized.contains("tiktok") && normalized.contains("caption") {
+            return "This TikTok post has no readable public caption, so Remember cannot analyze it faithfully yet."
+        }
         if normalized.contains("no readable public text") {
             return "This page has no readable public text, so Remember cannot analyze it faithfully yet."
         }

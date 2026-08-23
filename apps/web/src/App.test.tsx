@@ -43,6 +43,18 @@ describe("Remember app", () => {
     expect(screen.getByText("New YouTube Imprint")).toBeTruthy();
   });
 
+  it("recognizes TikTok captures as playable TikTok sources", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /Save something/i }));
+    await user.type(screen.getByLabelText("Link"), "https://www.tiktok.com/@scout2015/video/6718335390845095173");
+    await user.click(screen.getByRole("button", { name: /Save now/i }));
+
+    expect(screen.getByRole("heading", { name: "Saved to your memory" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("New TikTok Imprint")).toBeTruthy());
+    expect(screen.getByText("TikTok")).toBeTruthy();
+  });
+
   it("traps dialog focus, closes on Escape, and restores the invoking control", async () => {
     const user = userEvent.setup();
     render(<App />);

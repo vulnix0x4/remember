@@ -26,6 +26,15 @@ const xSyndicationSchema = z.object({
     durationMs: z.number().nonnegative().optional(),
   }).optional(),
 });
+const tikTokOEmbedSchema = z.object({
+  type: z.literal("video"),
+  title: z.string().trim().max(2_000),
+  author_name: z.string().trim().min(1).max(300),
+  author_url: z.url(),
+  html: z.string().min(1).max(150_000),
+  thumbnail_url: z.url(),
+  provider_name: z.literal("TikTok"),
+});
 const captionTracksSchema = z.array(z.object({
   baseUrl: z.url(),
   languageCode: z.string().min(1),
@@ -127,6 +136,11 @@ function htmlElement(html: string, element: "article" | "main" | "body" | "title
 function isXHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   return host === "x.com" || host === "www.x.com" || host === "twitter.com" || host === "www.twitter.com" || host === "mobile.twitter.com";
+}
+
+function isTikTokHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  return host === "tiktok.com" || host.endsWith(".tiktok.com");
 }
 
 function xPostID(url: URL): string | null {
@@ -322,6 +336,35 @@ export class WebSourceAdapter implements SourceAdapter {
 
   async fetchMetadata(source: CanonicalSourceUrl): Promise<SourceMetadata> {
     const sourceUrl = safeFetchUrl(source.canonicalUrl);
+    if (isTikTokHost(sourceUrl.hostname)) {
+      const endpoint = new URL("https://www.tiktok.com/oembed");
+      endpoint.searchParams.set("url", sourceUrl.toString());
+      const response = await this.fetcher(endpoint, {
+        headers: { Accept: "application/json", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!response.ok) throw new Error(`TikTok post request failed (${response.status}). The post may be private or unavailable.`);
+      const post = tikTokOEmbedSchema.parse(await readBoundedJson(response, 192 * 1_024));
+      const caption = post.title.trim() || plainTextFromHtml(post.html).slice(0, 2_000);
+      if (!caption) throw new Error("TikTok returned no public caption for this post.");
+      const sourceText = [
+        `TikTok creator: ${post.author_name}`,
+        `TikTok caption: ${caption}`,
+      ].join("\n");
+      return {
+        title: caption.slice(0, 500),
+        author: post.author_name,
+        thumbnailUrl: post.thumbnail_url,
+        durationSeconds: null,
+        transcript: sourceText,
+        providerMetadata: {
+          metadataSource: "tiktok_oembed",
+          contentSource: "tiktok_public_caption",
+          transcript: sourceText,
+        },
+      };
+    }
     if (isXHost(sourceUrl.hostname)) {
       const endpoint = new URL("https://publish.x.com/oembed");
       endpoint.searchParams.set("url", sourceUrl.toString());

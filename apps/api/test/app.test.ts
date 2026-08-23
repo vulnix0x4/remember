@@ -28,6 +28,11 @@ describe("HTTP API", () => {
       .toBe("Analysis took longer than expected. Your source is saved safely and can be retried.");
   });
 
+  it("explains when a TikTok post has no public caption", () => {
+    expect(publicProcessingError(new Error("This TikTok post has no readable public caption.")))
+      .toBe("This TikTok post has no readable public caption, so Remember cannot analyze it faithfully yet.");
+  });
+
   it("rejects unauthenticated API requests", async () => {
     const response = await request("/api/items");
     expect(response.status).toBe(401);

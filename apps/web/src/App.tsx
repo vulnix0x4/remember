@@ -80,11 +80,19 @@ function isXSource(imprint: Imprint) {
   try { return ["x.com", "twitter.com"].includes(new URL(imprint.url).hostname.replace(/^www\./, "")); } catch { return false; }
 }
 
+function isTikTokSource(imprint: Imprint) {
+  try {
+    const host = new URL(imprint.url).hostname.replace(/^www\./, "");
+    return host === "tiktok.com" || host.endsWith(".tiktok.com");
+  } catch { return false; }
+}
+
 function isVideoSource(imprint: Imprint) {
-  return imprint.sourceType === "YouTube" || (isXSource(imprint) && Boolean(imprint.thumbnailUrl));
+  return imprint.sourceType === "YouTube" || isTikTokSource(imprint) || (isXSource(imprint) && Boolean(imprint.thumbnailUrl));
 }
 
 function sourceLabel(imprint: Imprint) {
+  if (isTikTokSource(imprint)) return "TikTok";
   if (isXSource(imprint)) return isVideoSource(imprint) ? "X video" : "X post";
   return imprint.sourceType;
 }
@@ -500,8 +508,10 @@ function CaptureDialog({ open, imprints, onClose, onSaved }: { open: boolean; im
     try { parsed = new URL(url); if (!/^https?:$/.test(parsed.protocol)) throw new Error(); } catch { setError("Enter a complete public link, including https://"); return; }
     const duplicate = imprints.find((item) => item.url === parsed.toString() || item.url === url);
     if (duplicate) { setError("You already saved this. Open it from your library instead."); return; }
-    const isYoutube = parsed.hostname.includes("youtube.com") || parsed.hostname.includes("youtu.be");
-    onSaved({ id: crypto.randomUUID(), title: isYoutube ? "New YouTube Imprint" : parsed.hostname.replace("www.", ""), creator: parsed.hostname, sourceType: isYoutube ? "YouTube" : "Article", url: parsed.toString(), savedAt: "Just now", lifePeriod: "Current chapter", essence: note || "Understanding what made this worth keeping.", summary: "This source is queued for analysis.", themes: [], keyIdeas: [], moments: [], personalReaction: note || undefined, status: "processing", color: "sage", connectionIds: [] });
+    const normalizedHost = parsed.hostname.replace(/^www\./, "");
+    const isYoutube = normalizedHost.includes("youtube.com") || normalizedHost.includes("youtu.be");
+    const isTikTok = normalizedHost === "tiktok.com" || normalizedHost.endsWith(".tiktok.com");
+    onSaved({ id: crypto.randomUUID(), title: isYoutube ? "New YouTube Imprint" : isTikTok ? "New TikTok Imprint" : normalizedHost, creator: isTikTok ? "TikTok" : parsed.hostname, sourceType: isYoutube ? "YouTube" : "Article", url: parsed.toString(), savedAt: "Just now", lifePeriod: "Current chapter", essence: note || "Understanding what made this worth keeping.", summary: "This source is queued for analysis.", themes: [], keyIdeas: [], moments: [], personalReaction: note || undefined, status: "processing", color: "sage", connectionIds: [] });
     setSaved(true); window.setTimeout(() => { setUrl(""); setNote(""); setNoteOpen(false); onClose(); }, 1150);
   };
   return (
