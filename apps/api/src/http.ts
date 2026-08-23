@@ -67,6 +67,9 @@ export function publicProcessingError(error: unknown): string {
   if (normalized.includes("no readable captions")) {
     return "This video has no readable captions, so Remember cannot analyze it faithfully yet.";
   }
+  if (normalized.includes("tiktok") && normalized.includes("caption")) {
+    return "This TikTok post has no readable public caption, so Remember cannot analyze it faithfully yet.";
+  }
   if (normalized.includes("no readable public text")) {
     return "This page has no readable public text, so Remember cannot analyze it faithfully yet.";
   }

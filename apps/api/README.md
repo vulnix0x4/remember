@@ -1,6 +1,6 @@
 # Remember API
 
-Hono API and durable ingestion Workflow for Remember. The default configuration is local-first: D1 and R2 run locally, processing uses a deterministic mock, and AI/Vectorize calls are skipped. It never downloads or stores YouTube media.
+Hono API and durable ingestion Workflow for Remember. The default configuration is local-first: D1 and R2 run locally, processing uses a deterministic mock, and AI/Vectorize calls are skipped. It never downloads or stores source media. YouTube analysis uses public captions, TikTok analysis uses the official public oEmbed caption, and X analysis uses public oEmbed text.
 
 ## Local development
 

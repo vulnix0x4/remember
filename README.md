@@ -21,7 +21,7 @@ The product is dark-first, responsive, accessible, and available as a web app/PW
 
 ## What it does
 
-- Captures YouTube videos and ordinary web links without storing audiovisual content.
+- Captures YouTube videos, TikTok posts, X posts, and ordinary web links without storing audiovisual content.
 - Produces structured, schema-validated analysis with provider/model provenance.
 - Keeps personal-relevance statements explicitly labeled as hypotheses.
 - Answers questions only from your saved material and links every answer back to its sources.

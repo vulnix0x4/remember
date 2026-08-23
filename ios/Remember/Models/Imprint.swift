@@ -24,12 +24,19 @@ struct Imprint: Identifiable, Codable, Hashable, Sendable {
     let reaction: String?
 
     var isVideoSource: Bool {
-        sourceType == .youtube || (sourcePreviewURL != nil && ["x.com", "twitter.com"].contains(normalizedSourceHost))
+        sourceType == .youtube
+            || isTikTokSource
+            || (sourcePreviewURL != nil && ["x.com", "twitter.com"].contains(normalizedSourceHost))
     }
 
     var sourceLabel: String {
+        if isTikTokSource { return "TikTok" }
         guard ["x.com", "twitter.com"].contains(normalizedSourceHost) else { return sourceType.label }
         return isVideoSource ? "X video" : "X post"
+    }
+
+    private var isTikTokSource: Bool {
+        normalizedSourceHost == "tiktok.com" || normalizedSourceHost.hasSuffix(".tiktok.com")
     }
 
     private var normalizedSourceHost: String {

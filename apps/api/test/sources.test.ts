@@ -49,6 +49,36 @@ describe("YouTube source adapter", () => {
 });
 
 describe("web source adapter", () => {
+  it("reads a public TikTok post through TikTok's official oEmbed endpoint", async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = new URL(String(input));
+      expect(url.origin + url.pathname).toBe("https://www.tiktok.com/oembed");
+      expect(url.searchParams.get("url")).toBe("https://www.tiktok.com/@scout2015/video/6718335390845095173");
+      return Response.json({
+        type: "video",
+        title: "Scramble up your name and I will try to guess it #petsoftiktok",
+        author_url: "https://www.tiktok.com/@scout2015",
+        author_name: "Scout & Suki",
+        html: '<blockquote class="tiktok-embed"><section><p>Scramble up your name</p></section></blockquote>',
+        thumbnail_url: "https://p16.muscdn.com/example-cover.jpeg",
+        provider_name: "TikTok",
+      });
+    });
+
+    const metadata = await new WebSourceAdapter(fetcher).fetchMetadata(
+      canonicalizeSourceUrl("https://www.tiktok.com/@scout2015/video/6718335390845095173?utm_source=share"),
+    );
+
+    expect(metadata.title).toContain("Scramble up your name");
+    expect(metadata.author).toBe("Scout & Suki");
+    expect(metadata.thumbnailUrl).toBe("https://p16.muscdn.com/example-cover.jpeg");
+    expect(metadata.transcript).toContain("TikTok caption:");
+    expect(metadata.providerMetadata).toMatchObject({
+      metadataSource: "tiktok_oembed",
+      contentSource: "tiktok_public_caption",
+    });
+  });
+
   it("reads a public X post through the privacy-preserving oEmbed endpoint", async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const url = new URL(String(input));
