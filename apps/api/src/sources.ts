@@ -244,6 +244,40 @@ function timestamp(milliseconds: number): string {
   return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+export function normalizeYouTubeTranscript(transcript: string): string {
+  const cleanLine = (line: string): string => {
+    const match = /^(\[[^\]]+\]\s+)(.*)$/.exec(line);
+    if (!match) return line;
+    const prefix = match[1] ?? "";
+    const tokens = (match[2] ?? "").trim().split(/\s+/).filter(Boolean);
+    const output: string[] = [];
+    for (let index = 0; index < tokens.length;) {
+      let collapsed = false;
+      const maximumWindow = Math.min(80, Math.floor((tokens.length - index) / 2));
+      for (let window = maximumWindow; window >= 1; window -= 1) {
+        let repeats = 1;
+        while (
+          index + (repeats + 1) * window <= tokens.length
+          && tokens.slice(index, index + window).every((token, offset) => token === tokens[index + repeats * window + offset])
+        ) repeats += 1;
+        const requiredRepeats = window <= 2 ? 3 : 2;
+        if (repeats < requiredRepeats) continue;
+        output.push(...tokens.slice(index, index + window));
+        index += window * repeats;
+        collapsed = true;
+        break;
+      }
+      if (!collapsed) {
+        const token = tokens[index];
+        if (token) output.push(token);
+        index += 1;
+      }
+    }
+    return `${prefix}${output.join(" ")}`;
+  };
+  return transcript.split("\n").map(cleanLine).join("\n").trim().slice(0, 160_000);
+}
+
 async function fetchNativeYouTubeTranscript(source: CanonicalSourceUrl, fetcher: typeof fetch): Promise<string> {
   const watch = await fetcher(source.canonicalUrl, {
     headers: { Accept: "text/html", "Accept-Language": "en-US,en;q=0.9", "User-Agent": "Mozilla/5.0 (compatible; Remember/1.0)" },
@@ -293,7 +327,7 @@ async function fetchYouTubeTranscript(source: CanonicalSourceUrl, fetcher: typeo
     if (!/^\[\d{1,2}:\d{2}(?::\d{2})?\]/m.test(section)) {
       throw new Error("Transcript fallback returned no timestamped captions.");
     }
-    return { text: section.slice(0, 160_000), source: "youtube-transcript.ai" };
+    return { text: normalizeYouTubeTranscript(section), source: "youtube-transcript.ai" };
   };
 
   try {
