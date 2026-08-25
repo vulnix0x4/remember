@@ -27,7 +27,7 @@ export class IngestionWorkflow extends WorkflowEntrypoint<Env, ProcessingInput> 
 
       const metadata = await step.do<SourceMetadata>(
         "fetch source metadata",
-        { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" }, timeout: "1 minute" },
+        { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" }, timeout: "2 minutes" },
         async () => {
           const row = await new Repository(this.env.DB).itemForProcessing(item.userId, item.id);
           return fetchAndStoreMetadata(this.env, row, input.sourceText);

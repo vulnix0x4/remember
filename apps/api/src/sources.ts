@@ -276,15 +276,16 @@ async function fetchNativeYouTubeTranscript(source: CanonicalSourceUrl, fetcher:
 }
 
 async function fetchYouTubeTranscript(source: CanonicalSourceUrl, fetcher: typeof fetch): Promise<{ text: string; source: string }> {
-  try {
-    return { text: await fetchNativeYouTubeTranscript(source, fetcher), source: "youtube_captions" };
-  } catch (nativeError) {
-    if (!source.externalId || !/^[A-Za-z0-9_-]{11}$/.test(source.externalId)) throw nativeError;
+  const native = fetchNativeYouTubeTranscript(source, fetcher).then((text) => ({ text, source: "youtube_captions" }));
+  const fallback = async (): Promise<{ text: string; source: string }> => {
+    if (!source.externalId || !/^[A-Za-z0-9_-]{11}$/.test(source.externalId)) {
+      throw new Error("YouTube video ID was unavailable.");
+    }
     const endpoint = new URL(`https://youtube-transcript.ai/transcript/${source.externalId}.txt`);
     const response = await fetcher(endpoint, {
       headers: { Accept: "text/markdown", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
-      redirect: "manual",
-      signal: AbortSignal.timeout(15_000),
+      redirect: "follow",
+      signal: AbortSignal.timeout(50_000),
     });
     if (!response.ok) throw new Error(`Transcript fallback request failed (${response.status}).`);
     const document = await readBoundedText(response, 512 * 1_024);
@@ -293,6 +294,18 @@ async function fetchYouTubeTranscript(source: CanonicalSourceUrl, fetcher: typeo
       throw new Error("Transcript fallback returned no timestamped captions.");
     }
     return { text: section.slice(0, 160_000), source: "youtube-transcript.ai" };
+  };
+
+  try {
+    return await Promise.any([native, fallback()]);
+  } catch (error) {
+    const messages = error instanceof AggregateError
+      ? error.errors.map((reason) => reason instanceof Error ? reason.message : String(reason))
+      : [error instanceof Error ? error.message : String(error)];
+    if (messages.some((message) => /timeout|timed out|aborted/i.test(message))) {
+      throw new Error("YouTube transcript retrieval timed out.");
+    }
+    throw new Error("This YouTube video has no readable captions.");
   }
 }
 
@@ -308,23 +321,32 @@ export class YouTubeSourceAdapter implements SourceAdapter {
     const endpoint = new URL("https://www.youtube.com/oembed");
     endpoint.searchParams.set("url", source.canonicalUrl);
     endpoint.searchParams.set("format", "json");
-    const [response, transcript] = await Promise.all([
+    const [response, transcriptResult] = await Promise.all([
       this.fetcher(endpoint, {
       headers: { Accept: "application/json", "User-Agent": "Remember/0.1 (+https://example.invalid)" },
       redirect: "follow",
       signal: AbortSignal.timeout(8_000),
       }),
-      this.includeTranscript ? fetchYouTubeTranscript(source, this.fetcher) : Promise.resolve(null),
+      this.includeTranscript
+        ? fetchYouTubeTranscript(source, this.fetcher)
+          .then((transcript) => ({ transcript, error: null }))
+          .catch((error: unknown) => ({ transcript: null, error: error instanceof Error ? error.message : "YouTube transcript retrieval failed." }))
+        : Promise.resolve({ transcript: null, error: null }),
     ]);
     if (!response.ok) throw new Error(`YouTube metadata request failed (${response.status}).`);
     const metadata = youtubeOEmbedSchema.parse(await readBoundedJson(response, 64 * 1_024));
+    const transcript = transcriptResult.transcript;
     return {
       title: metadata.title,
       author: metadata.author_name,
       thumbnailUrl: metadata.thumbnail_url,
       durationSeconds: null,
       transcript: transcript?.text ?? null,
-      providerMetadata: { metadataSource: "youtube_oembed", ...(transcript ? { transcriptSource: transcript.source, transcript: transcript.text } : {}) },
+      providerMetadata: {
+        metadataSource: "youtube_oembed",
+        ...(transcript ? { transcriptSource: transcript.source, transcript: transcript.text } : {}),
+        ...(transcriptResult.error ? { transcriptError: transcriptResult.error } : {}),
+      },
     };
   }
 }

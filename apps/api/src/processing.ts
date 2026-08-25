@@ -20,6 +20,7 @@ function sourceFromRow(row: ItemRow) {
 
 export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSourceText?: string): Promise<SourceMetadata> {
   let metadata: SourceMetadata;
+  let metadataError: unknown;
   let persistedSourceText: string | undefined;
   try {
     const stored = JSON.parse(row.metadata_json) as { transcript?: unknown };
@@ -32,6 +33,7 @@ export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSour
     metadata = await sourceAdapterFor(sourceTypeSchema.parse(row.source_type), String(env.ANALYSIS_PROVIDER) === "openrouter" && !sourceText).fetchMetadata(sourceFromRow(row));
     if (sourceText) metadata = { ...metadata, transcript: sourceText, providerMetadata: { ...metadata.providerMetadata, transcriptSource: suppliedSourceText ? "client_caption_proxy" : "persisted", transcript: sourceText } };
   } catch (error) {
+    metadataError = error;
     metadata = {
       title: row.title,
       author: row.author,
@@ -42,6 +44,11 @@ export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSour
     };
   }
   await new Repository(env.DB).updateSourceMetadata(row.source_id, metadata);
+  if (metadataError && String(env.ANALYSIS_PROVIDER) === "openrouter") throw metadataError;
+  const transcriptError = metadata.providerMetadata.transcriptError;
+  if (!sourceText && row.source_type === "youtube" && !metadata.transcript && typeof transcriptError === "string") {
+    throw new Error(transcriptError);
+  }
   return metadata;
 }
 
