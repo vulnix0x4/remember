@@ -46,6 +46,30 @@ describe("YouTube source adapter", () => {
     expect(metadata.transcript).toBe("[0:01] A source-grounded opening.\n[0:08] A second idea.");
     expect(metadata.providerMetadata).toMatchObject({ transcriptSource: "youtube-transcript.ai" });
   });
+
+  it("keeps official metadata when transcript providers are temporarily unavailable", async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.includes("/oembed")) {
+        return Response.json({ title: "A real video title", author_name: "Real Creator", thumbnail_url: "https://i.ytimg.com/example.jpg" });
+      }
+      if (url.includes("/watch?")) return new Response("rate limited", { status: 429 });
+      if (url.includes("youtube-transcript.ai/transcript/")) return new Response("temporarily unavailable", { status: 503 });
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const metadata = await new YouTubeSourceAdapter(fetcher).fetchMetadata(canonicalizeSourceUrl("https://youtu.be/jNQXAC9IVRw"));
+
+    expect(metadata).toMatchObject({
+      title: "A real video title",
+      author: "Real Creator",
+      transcript: null,
+      providerMetadata: {
+        metadataSource: "youtube_oembed",
+        transcriptError: "This YouTube video has no readable captions.",
+      },
+    });
+  });
 });
 
 describe("web source adapter", () => {
