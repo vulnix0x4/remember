@@ -3,7 +3,7 @@ import { z } from "zod";
 import { publicProcessingError, safeErrorMessage } from "./http";
 import { analysisProvider } from "./providers";
 import { Repository } from "./repository";
-import { sourceAdapterFor } from "./sources";
+import { normalizeYouTubeTranscript, sourceAdapterFor } from "./sources";
 import type { ItemRow, ProcessingInput, SourceMetadata } from "./types";
 
 const embeddingsSchema = z.object({ data: z.array(z.array(z.number())) });
@@ -28,7 +28,10 @@ export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSour
   } catch {
     persistedSourceText = undefined;
   }
-  const sourceText = suppliedSourceText?.trim() || persistedSourceText;
+  const rawSourceText = suppliedSourceText?.trim() || persistedSourceText;
+  const sourceText = rawSourceText && row.source_type === "youtube"
+    ? normalizeYouTubeTranscript(rawSourceText)
+    : rawSourceText;
   try {
     metadata = await sourceAdapterFor(sourceTypeSchema.parse(row.source_type), String(env.ANALYSIS_PROVIDER) === "openrouter" && !sourceText).fetchMetadata(sourceFromRow(row));
     if (sourceText) metadata = { ...metadata, transcript: sourceText, providerMetadata: { ...metadata.providerMetadata, transcriptSource: suppliedSourceText ? "client_caption_proxy" : "persisted", transcript: sourceText } };

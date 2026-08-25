@@ -1,8 +1,22 @@
 import { canonicalizeSourceUrl } from "@remember/domain";
 import { describe, expect, it, vi } from "vitest";
-import { WebSourceAdapter, YouTubeSourceAdapter } from "../src/sources";
+import { normalizeYouTubeTranscript, WebSourceAdapter, YouTubeSourceAdapter } from "../src/sources";
 
 describe("YouTube source adapter", () => {
+  it("removes exact auto-caption repetition without dropping unique speech", () => {
+    const transcript = [
+      "[0:02] What's up, guys? What's up, guys? What's up, guys? This only appears once.",
+      "[0:10] build useful skills today build useful skills today",
+      "[0:20] very very important",
+    ].join("\n");
+
+    expect(normalizeYouTubeTranscript(transcript)).toBe([
+      "[0:02] What's up, guys? This only appears once.",
+      "[0:10] build useful skills today",
+      "[0:20] very very important",
+    ].join("\n"));
+  });
+
   it("extracts a bounded timestamped English transcript for text-only analysis", async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
