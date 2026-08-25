@@ -20,7 +20,16 @@ describe("canonicalizeSourceUrl", () => {
     );
   });
 
-  it.each(["file:///etc/passwd", "http://localhost:8787/x", "http://192.168.1.2", "https://user:pass@example.com"])(
+  it.each([
+    "file:///etc/passwd",
+    "http://localhost:8787/x",
+    "http://192.168.1.2",
+    "http://100.64.0.1",
+    "http://198.18.0.1",
+    "http://[::1]/private",
+    "https://router.lan/settings",
+    "https://user:pass@example.com",
+  ])(
     "rejects unsafe URL %s",
     (value) => expect(() => canonicalizeSourceUrl(value)).toThrow(UnsafeUrlError),
   );

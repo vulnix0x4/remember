@@ -1,12 +1,12 @@
 import { askRequestSchema, captureRequestSchema, connectionTypeSchema, itemStatusSchema } from "@remember/domain";
 import { Hono } from "hono";
 import { z } from "zod";
-import { authenticate, clearedSessionCookie, createPasswordSession, ensureUser, sessionCookie, timingSafeEqual, verifyPassword } from "./auth";
+import { authenticate, clearedSessionCookie, createPasswordSession, ensureUser, passwordSessionToken, revokePasswordSession, sessionCookie, timingSafeEqual, verifyPassword } from "./auth";
 import { EvolutionService } from "./evolution";
 import { ExportService, exportRequestSchema } from "./exports";
 import { ApiError, jsonError, readJson, safeErrorMessage } from "./http";
 import { runIngestion } from "./processing";
-import { publicItem, Repository } from "./repository";
+import { encodeItemCursor, publicItem, Repository } from "./repository";
 import { parseSearch, SearchService } from "./search";
 import type { AppVariables } from "./types";
 import { UnsafeUrlError, canonicalizeSourceUrl } from "@remember/domain";
@@ -24,10 +24,16 @@ const resurfacingResponseSchema = z.object({
   response: z.enum(["still_true", "changed_mind", "not_sure", "no_longer_relevant"]),
 });
 const retryRequestSchema = z.object({ sourceText: z.string().trim().min(1).max(160_000).optional() });
+const principleStatusSchema = z.object({ status: z.enum(["candidate", "active", "dismissed"]) });
 const loginRequestSchema = z.object({
   email: z.email().max(320),
   password: z.string().min(1).max(1_024),
 });
+
+async function markWorkflowStartFailure(repository: Repository, itemId: string, error: unknown): Promise<void> {
+  console.error(JSON.stringify({ message: "ingestion workflow could not start", itemId, error: safeErrorMessage(error) }));
+  await repository.markFailed(itemId, "Analysis could not start. Your source is saved safely and can be retried.");
+}
 
 app.use("*", async (context, next) => {
   const requestId = context.req.header("cf-ray") ?? crypto.randomUUID();
@@ -39,7 +45,7 @@ app.use("*", async (context, next) => {
         status: 204,
         headers: {
           "access-control-allow-origin": origin,
-          "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
+          "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
           "access-control-allow-headers": "authorization,content-type,idempotency-key,x-dev-user-id,x-confirm-delete",
           "access-control-max-age": "86400",
           vary: "Origin",
@@ -51,7 +57,10 @@ app.use("*", async (context, next) => {
   await next();
   context.header("x-request-id", requestId);
   context.header("x-content-type-options", "nosniff");
+  context.header("x-frame-options", "DENY");
   context.header("referrer-policy", "no-referrer");
+  context.header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  context.header("strict-transport-security", "max-age=63072000; includeSubDomains; preload");
   context.header("cache-control", "private, no-store");
   if (origin === context.env.CORS_ORIGIN) {
     context.header("access-control-allow-origin", origin);
@@ -84,7 +93,10 @@ app.post("/api/auth/login", async (context) => {
   return context.json({ user: { id: context.env.DEFAULT_USER_ID, mode: "password", email: context.env.LOGIN_EMAIL } });
 });
 
-app.post("/api/auth/logout", (context) => {
+app.post("/api/auth/logout", async (context) => {
+  const requestOrigin = context.req.header("origin");
+  if (requestOrigin && requestOrigin !== context.env.CORS_ORIGIN) throw new ApiError(403, "origin_mismatch", "The sign-out origin is not allowed.");
+  await revokePasswordSession(context.env, passwordSessionToken(context.req.header("cookie")));
   context.header("set-cookie", clearedSessionCookie(context.env.ENVIRONMENT === "production"));
   return context.body(null, 204);
 });
@@ -93,6 +105,7 @@ api.use("*", authenticate);
 
 api.get("/session", (context) => {
   const user = context.get("user");
+  if (!user) return context.json({ user: null });
   return context.json({ user: { id: user.id, mode: user.mode, email: user.email ?? null } });
 });
 
@@ -107,6 +120,9 @@ api.post("/items", async (context) => {
   } catch (error) {
     if (error instanceof UnsafeUrlError) throw new ApiError(422, error.code, error.message);
     throw error;
+  }
+  if (context.env.ENVIRONMENT === "production" && source.canonicalUrl.startsWith("http:")) {
+    throw new ApiError(422, "https_required", "Remember only saves secure HTTPS links in production.");
   }
   const idempotencyKey = context.req.header("idempotency-key") ?? null;
   if (idempotencyKey && (!/^[A-Za-z0-9._:-]{1,200}$/.test(idempotencyKey) || idempotencyKey.length > 200)) {
@@ -125,14 +141,18 @@ api.post("/items", async (context) => {
         });
         await repository.recordWorkflow(result.row.id, workflow.id);
       } catch (error) {
-        if (context.env.ENVIRONMENT !== "development") throw error;
-        console.error(JSON.stringify({ message: "workflow unavailable; using local request context fallback", error: safeErrorMessage(error) }));
-        context.executionCtx.waitUntil(runIngestion(context.env, { itemId: result.row.id, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) }));
+        if (context.env.ENVIRONMENT === "development") {
+          console.error(JSON.stringify({ message: "workflow unavailable; using local request context fallback", error: safeErrorMessage(error) }));
+          context.executionCtx.waitUntil(runIngestion(context.env, { itemId: result.row.id, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) }));
+        } else {
+          await markWorkflowStartFailure(repository, result.row.id, error);
+        }
       }
     }
   }
+  const currentRow = result.created ? await repository.requireItem(userId, result.row.id) : result.row;
   return context.json(
-    { item: publicItem(result.row), deduplicated: !result.created, duplicate: !result.created },
+    { item: publicItem(currentRow), deduplicated: !result.created, duplicate: !result.created },
     result.created ? 202 : 200,
   );
 });
@@ -145,15 +165,26 @@ api.get("/items", async (context) => {
   const rows = await new Repository(context.env.DB).listItems(context.get("user").id, limit + 1, cursor, status);
   const hasMore = rows.length > limit;
   const page = rows.slice(0, limit);
-  return context.json({ items: page.map(publicItem), nextCursor: hasMore ? page.at(-1)?.saved_at ?? null : null });
+  return context.json({ items: page.map(publicItem), nextCursor: hasMore && page.length ? encodeItemCursor(page[page.length - 1]!) : null });
 });
 
 api.get("/items/:id", async (context) => {
   const itemId = uuidParamSchema.parse(context.req.param("id"));
   const repository = new Repository(context.env.DB);
   const userId = context.get("user").id;
-  const [item, connections] = await Promise.all([repository.requireItem(userId, itemId), repository.listConnections(userId, itemId)]);
-  return context.json({ item: publicItem(item), connections });
+  const [item, connections, principles] = await Promise.all([
+    repository.requireItem(userId, itemId),
+    repository.listConnections(userId, itemId),
+    repository.listPrinciplesForItem(userId, itemId),
+  ]);
+  return context.json({ item: publicItem(item), connections, principles });
+});
+
+api.patch("/principles/:id", async (context) => {
+  const principleId = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, principleStatusSchema);
+  await new Repository(context.env.DB).updatePrincipleStatus(context.get("user").id, principleId, body.status);
+  return context.json({ updated: true, status: body.status });
 });
 
 api.post("/items/:id/retry", async (context) => {
@@ -162,9 +193,15 @@ api.post("/items/:id/retry", async (context) => {
   const repository = new Repository(context.env.DB);
   const body = context.req.header("content-type")?.startsWith("application/json") ? await readJson(context.req.raw, retryRequestSchema, 180_000) : {};
   const item = await repository.queueRetry(userId, itemId);
-  const workflow = await context.env.INGESTION_WORKFLOW.create({ id: `retry-${item.id}-${Date.now()}`, params: { itemId, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) } });
-  await repository.recordWorkflow(itemId, workflow.id);
-  return context.json({ item: publicItem(item) }, 202);
+  try {
+    const workflow = await context.env.INGESTION_WORKFLOW.create({ id: `retry-${item.id}-${Date.now()}`, params: { itemId, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) } });
+    await repository.recordWorkflow(itemId, workflow.id);
+    return context.json({ item: publicItem(item) }, 202);
+  } catch (error) {
+    await markWorkflowStartFailure(repository, itemId, error);
+    const failed = await repository.requireItem(userId, itemId);
+    return context.json({ item: publicItem(failed) }, 202);
+  }
 });
 
 api.get("/search", async (context) => {

@@ -33,7 +33,62 @@ function parseAnalysis(value: string | null): ImprintAnalysis | null {
   return parsed.success ? parsed.data : null;
 }
 
+interface ItemCursor {
+  savedAt: string;
+  id: string | null;
+}
+
+export function encodeItemCursor(row: Pick<ItemRow, "saved_at" | "id">): string {
+  return btoa(JSON.stringify({ savedAt: row.saved_at, id: row.id }))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
+
+function decodeItemCursor(value: string): ItemCursor {
+  // Keep accepting the original timestamp-only cursor so deployed clients can
+  // finish any pagination sequence started before composite cursors shipped.
+  if (!Number.isNaN(Date.parse(value))) return { savedAt: value, id: null };
+  try {
+    const base64 = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+    const parsed = JSON.parse(atob(base64)) as unknown;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("savedAt" in parsed) ||
+      !("id" in parsed) ||
+      typeof parsed.savedAt !== "string" ||
+      typeof parsed.id !== "string" ||
+      Number.isNaN(Date.parse(parsed.savedAt)) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(parsed.id)
+    ) {
+      throw new Error("invalid cursor shape");
+    }
+    return { savedAt: parsed.savedAt, id: parsed.id };
+  } catch {
+    throw new ApiError(422, "invalid_cursor", "The pagination cursor is invalid or expired.");
+  }
+}
+
 export function publicItem(row: ItemRow) {
+  const metadata = (() => {
+    try { return JSON.parse(row.metadata_json ?? "{}") as Record<string, unknown>; }
+    catch { return {}; }
+  })();
+  const contentSource = typeof metadata.contentSource === "string" ? metadata.contentSource : "";
+  const host = (() => {
+    try { return new URL(row.canonical_url).hostname.replace(/^www\./, ""); }
+    catch { return ""; }
+  })();
+  const analysisScope = row.status === "pending" || row.status === "processing"
+    ? "pending"
+    : row.source_type === "youtube"
+      ? "transcript"
+      : host === "tiktok.com" || host.endsWith(".tiktok.com") || contentSource === "tiktok_public_caption"
+        ? "caption"
+        : host === "x.com" || host === "twitter.com" || contentSource === "x_oembed"
+          ? "post"
+          : "article";
   return {
     id: row.id,
     sourceType: sourceTypeSchema.parse(row.source_type),
@@ -49,6 +104,7 @@ export function publicItem(row: ItemRow) {
     personalReaction: row.personal_reaction,
     capturedTimestampSeconds: row.captured_timestamp_seconds,
     processingError: row.processing_error,
+    analysisScope,
     analysis: parseAnalysis(row.analysis_json),
     provenance: row.provider
       ? { provider: row.provider, model: row.provider_model, contractVersion: 1, generated: true }
@@ -178,8 +234,15 @@ export class Repository {
     const clauses = ["i.user_id = ?1"];
     const values: Array<string | number> = [userId];
     if (cursor) {
-      values.push(cursor);
-      clauses.push(`i.saved_at < ?${values.length}`);
+      const decoded = decodeItemCursor(cursor);
+      values.push(decoded.savedAt);
+      const savedAtIndex = values.length;
+      if (decoded.id) {
+        values.push(decoded.id);
+        clauses.push(`(i.saved_at < ?${savedAtIndex} OR (i.saved_at = ?${savedAtIndex} AND i.id < ?${values.length}))`);
+      } else {
+        clauses.push(`i.saved_at < ?${savedAtIndex}`);
+      }
     }
     if (status) {
       values.push(status);
@@ -438,12 +501,46 @@ export class Repository {
     const condition = itemId ? "AND (c.from_item_id = ?2 OR c.to_item_id = ?2)" : "";
     const statement = this.db.prepare(
       `SELECT c.id, c.from_item_id AS fromItemId, c.to_item_id AS toItemId, c.type,
-              c.explanation, c.confidence, c.provenance, c.created_at AS createdAt
-       FROM connections c WHERE c.user_id = ?1 ${condition}
+              c.explanation, c.confidence, c.provenance, c.created_at AS createdAt,
+              related_source.title AS relatedTitle
+       FROM connections c
+       JOIN items related_item ON related_item.id = CASE WHEN c.from_item_id = ?2 THEN c.to_item_id ELSE c.from_item_id END
+       JOIN sources related_source ON related_source.id = related_item.source_id
+       WHERE c.user_id = ?1 ${condition}
        ORDER BY c.confidence DESC, c.created_at DESC LIMIT 200`,
     );
-    const result = itemId ? await statement.bind(userId, itemId).all() : await statement.bind(userId).all();
+    const result = itemId
+      ? await statement.bind(userId, itemId).all()
+      : await this.db.prepare(
+          `SELECT c.id, c.from_item_id AS fromItemId, c.to_item_id AS toItemId, c.type,
+                  c.explanation, c.confidence, c.provenance, c.created_at AS createdAt
+           FROM connections c WHERE c.user_id = ?1
+           ORDER BY c.confidence DESC, c.created_at DESC LIMIT 200`,
+        ).bind(userId).all();
     return result.results;
+  }
+
+  async listPrinciplesForItem(userId: string, itemId: string): Promise<Record<string, unknown>[]> {
+    const result = await this.db
+      .prepare(
+        `SELECT id, item_id AS itemId, text, rationale, status, created_at AS createdAt
+         FROM candidate_principles WHERE user_id = ?1 AND item_id = ?2
+         ORDER BY created_at DESC LIMIT 20`,
+      )
+      .bind(userId, itemId)
+      .all();
+    return result.results;
+  }
+
+  async updatePrincipleStatus(userId: string, principleId: string, status: "candidate" | "active" | "dismissed"): Promise<void> {
+    const result = await this.db
+      .prepare(
+        `UPDATE candidate_principles SET status = ?3, updated_at = ?4
+         WHERE id = ?1 AND user_id = ?2 RETURNING id`,
+      )
+      .bind(principleId, userId, status, nowIso())
+      .first<{ id: string }>();
+    if (!result) throw new ApiError(404, "principle_not_found", "Candidate principle not found.");
   }
 
   async addConnection(

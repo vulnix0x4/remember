@@ -35,7 +35,7 @@ export function exportImprintsMarkdown(imprints: Imprint[]): string {
     section("Ideas", item.keyIdeas.map((idea) => `- ${idea}`)),
     section("Moments", item.moments.map((moment) => `- [${moment.time}: ${moment.title}](${momentUrl(item, moment.seconds)})${moment.note ? `: ${moment.note}` : ""}`)),
     section("Candidate principle", item.principle ? [`> ${item.principle}`] : []),
-    section("Personal relevance hypothesis", item.hypothesis ? [`AI hypothesis: ${item.hypothesis}`] : []),
+    section("Possible personal relevance", item.hypothesis ? [item.hypothesis] : []),
     section("Uncertainty", item.uncertainty ? [item.uncertainty] : []),
     section("Connections", item.connectionIds.map((id) => `- ${id}`)),
   ].filter(Boolean).join("\n\n")).join("\n\n---\n\n");

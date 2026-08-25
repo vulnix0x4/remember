@@ -4,7 +4,7 @@ struct YouTubeTranscriptClient: Sendable {
     private let session: URLSession
     private let retryDelays: [Duration]
 
-    init(session: URLSession = .shared, retryDelays: [Duration] = [.seconds(2), .seconds(5), .seconds(10)]) {
+    init(session: URLSession = .shared, retryDelays: [Duration] = []) {
         self.session = session
         self.retryDelays = retryDelays
     }
@@ -23,7 +23,7 @@ struct YouTubeTranscriptClient: Sendable {
             }
 
             var request = URLRequest(url: endpoint)
-            request.timeoutInterval = 20
+            request.timeoutInterval = 8
             request.setValue("text/markdown", forHTTPHeaderField: "Accept")
 
             do {

@@ -26,7 +26,7 @@ struct LibraryExporterTests {
         #expect(markdown.contains("## Claims"))
         #expect(markdown.contains("## Candidate principles"))
         #expect(markdown.contains("## Actionable experiments"))
-        #expect(markdown.contains("Hypothesis:"))
+        #expect(markdown.contains("## Possible personal relevance"))
         #expect(markdown.contains("## Uncertainties"))
         #expect(markdown.contains("`supports`"))
         #expect(markdown.contains("I want to remember the difference"))

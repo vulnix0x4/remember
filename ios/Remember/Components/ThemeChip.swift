@@ -10,7 +10,7 @@ struct ThemeChip: View {
             .padding(.horizontal, emphasized ? 18 : 14)
             .padding(.vertical, emphasized ? 12 : 9)
             .background(emphasized ? RememberDesign.accent : Color.secondary.opacity(0.12), in: .capsule)
-            .foregroundStyle(emphasized ? .white : .primary)
+            .foregroundStyle(emphasized ? RememberDesign.accentInk : .primary)
             .accessibilityLabel("Theme: \(name)")
     }
 }

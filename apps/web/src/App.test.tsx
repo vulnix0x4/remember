@@ -27,7 +27,7 @@ describe("Remember app", () => {
     expect(screen.getByRole("heading", { name: "Your evolution" })).toBeTruthy();
   });
 
-  it("validates capture links and saves a valid source immediately", async () => {
+  it("validates capture links and labels an offline-only save honestly", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Save something/i }));
@@ -38,7 +38,8 @@ describe("Remember app", () => {
     await user.clear(input);
     await user.type(input, "https://youtube.com/watch?v=new-memory");
     await user.click(screen.getByRole("button", { name: /Save now/i }));
-    expect(screen.getByRole("heading", { name: "Saved to your memory" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Saved on this device" })).toBeTruthy();
+    expect(screen.getByText("Reconnect to upload it and begin analysis.")).toBeTruthy();
     await waitFor(() => expect(localStorage.getItem(apiConfig.storageKey)).toContain("new-memory"));
     expect(screen.getByText("New YouTube Imprint")).toBeTruthy();
   });
@@ -50,7 +51,7 @@ describe("Remember app", () => {
     await user.type(screen.getByLabelText("Link"), "https://www.tiktok.com/@scout2015/video/6718335390845095173");
     await user.click(screen.getByRole("button", { name: /Save now/i }));
 
-    expect(screen.getByRole("heading", { name: "Saved to your memory" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Saved on this device" })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("New TikTok Imprint")).toBeTruthy());
     expect(screen.getByText("TikTok")).toBeTruthy();
   });

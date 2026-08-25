@@ -9,13 +9,13 @@ describe("portable exports", () => {
     expect(parsed.imprints[0]).toEqual(imprints[0]);
   });
 
-  it("includes source-backed fields and clearly labels AI interpretation in Markdown", () => {
+  it("includes source-backed fields and clearly labels tentative interpretation in Markdown", () => {
     const output = exportImprintsMarkdown(imprints);
     expect(output).toContain("## Ideas");
     expect(output).toContain("03:18: Pain is not a lesson by default");
     expect(output).toContain("t=198s");
     expect(output).toContain("## Candidate principle");
-    expect(output).toContain("AI hypothesis:");
+    expect(output).toContain("## Possible personal relevance");
     expect(output).toContain("## Uncertainty");
     expect(output).toContain("## Connections");
     expect(output).toContain("- Status: ready");

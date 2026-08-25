@@ -22,7 +22,7 @@ struct EvolutionView: View {
                             Text("Patterns in what you’ve saved")
                                 .font(.largeTitle)
                                 .bold()
-                            Text("\(CountLabelFormatter.text(analyzedSourceCount, singular: "analyzed source")). Counts describe your current library—not a psychological profile or a trend.")
+                            Text("\(CountLabelFormatter.text(analyzedSourceCount, singular: "analyzed source")). Counts describe your current library, not a psychological profile or a trend.")
                                 .foregroundStyle(RememberDesign.secondaryText)
                         }
                         if store.isLoadingEvolution {

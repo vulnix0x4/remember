@@ -90,7 +90,7 @@ struct APIClientContractTests {
         let item = try #require(try await client.fetchImprints().first)
 
         #expect(item.summary.isEmpty)
-        #expect(item.uncertainties == ["Analysis took longer than expected. Your source is saved safely—try again."])
+        #expect(item.uncertainties == ["Analysis took longer than expected. Your source is saved safely. Try again."])
     }
 
     @Test func malformedEnvelopeThrowsWithoutRepositoryFallback() async throws {
@@ -172,7 +172,7 @@ struct APIClientContractTests {
     """#
 
     private static let askJSON = #"""
-    {"answer":"Attention keeps returning.","citations":[{"itemId":"20000000-0000-4000-8000-000000000001","title":"A mapped source","url":"https://youtube.com/watch?v=abc","timestampSeconds":75,"excerpt":"Source context"}],"grounded":true,"limitations":[]}
+    {"threadId":"20000000-0000-4000-8000-000000000099","answer":"Attention keeps returning.","citations":[{"itemId":"20000000-0000-4000-8000-000000000001","title":"A mapped source","url":"https://youtube.com/watch?v=abc","timestampSeconds":75,"excerpt":"Source context"}],"grounded":true,"limitations":[]}
     """#
 
     private static let sessionJSON = #"""

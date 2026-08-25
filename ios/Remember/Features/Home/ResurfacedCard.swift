@@ -30,7 +30,7 @@ struct ResurfacedCard: View {
                         Text(imprint.personalHypotheses.first ?? "You saved this during \(imprint.lifePeriod.lowercased()).")
                             .font(.body)
                             .foregroundStyle(RememberDesign.secondaryText)
-                        Text("AI interpretation · based only on your saved material")
+                        Text("A possibility based only on your saved material")
                             .font(.footnote)
                             .foregroundStyle(RememberDesign.tertiaryText)
                     }

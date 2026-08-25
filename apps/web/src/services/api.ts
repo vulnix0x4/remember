@@ -97,7 +97,18 @@ export interface ApiItem {
   savedAt: string;
   personalReaction?: string | null;
   processingError?: string | null;
+  analysisScope?: "transcript" | "caption" | "post" | "article" | "pending";
   analysis: ApiAnalysis | null;
+}
+
+interface ApiConnection {
+  fromItemId: string;
+  toItemId: string;
+}
+
+interface ApiPrinciple {
+  id: string;
+  status: "candidate" | "active" | "dismissed" | "retired";
 }
 
 function hostname(value: string): string {
@@ -132,7 +143,19 @@ function failedAnalysisSummary(): string {
 export function mapApiItem(item: ApiItem): Imprint {
   const analysis = item.analysis;
   const url = item.canonicalUrl || item.originalUrl;
+  const host = hostname(url);
+  const isTikTok = host === "tiktok.com" || host.endsWith(".tiktok.com");
+  const isX = host === "x.com" || host === "twitter.com";
   const sourceType: Imprint["sourceType"] = item.sourceType === "youtube" ? "YouTube" : "Article";
+  const analysisScope: Imprint["analysisScope"] = item.analysisScope ?? (item.status === "pending" || item.status === "processing"
+    ? "pending"
+    : item.sourceType === "youtube"
+      ? "transcript"
+      : isTikTok
+        ? "caption"
+        : isX
+          ? "post"
+          : "article");
   const savedDate = new Date(item.savedAt);
   const hasValidSavedDate = !Number.isNaN(savedDate.getTime());
   return {
@@ -157,6 +180,9 @@ export function mapApiItem(item: ApiItem): Imprint {
     status: statusForUi(item.status),
     color: item.sourceType === "youtube" ? "sage" : "graphite",
     connectionIds: [],
+    analysisScope,
+    processingError: item.processingError ?? undefined,
+    syncState: "synced",
   };
 }
 
@@ -216,10 +242,23 @@ export async function loadImprints(signal?: AbortSignal, baseUrl = apiBase, fetc
   if (!baseUrl) return { items: readLocal(baseUrl), source: "local" };
   const recoverable = uniqueByUrl([...readStored(LEGACY_STORAGE_KEY), ...readStored(STORAGE_KEY)]);
   try {
-    const response = await fetcher(`${baseUrl}/api/items`, { headers: authHeaders(baseUrl), credentials: "include", signal });
-    if (!response.ok) throw new Error(`Library request failed with ${response.status}`);
-    const remoteItems = normalizeItems(await response.json());
-    if (!remoteItems) throw new Error("Library response did not contain items");
+    const remoteItems: Imprint[] = [];
+    let cursor: string | null = null;
+    const seenCursors = new Set<string>();
+    do {
+      const endpoint = new URL(`${baseUrl}/api/items`);
+      endpoint.searchParams.set("limit", "100");
+      if (cursor) endpoint.searchParams.set("cursor", cursor);
+      const response = await fetcher(endpoint, { headers: authHeaders(baseUrl), credentials: "include", signal });
+      if (!response.ok) throw new Error(`Library request failed with ${response.status}`);
+      const payload = await response.json() as { items?: ApiItem[]; nextCursor?: string | null };
+      if (!Array.isArray(payload.items)) throw new Error("Library response did not contain items");
+      remoteItems.push(...payload.items.map(mapApiItem));
+      const nextCursor = payload.nextCursor ?? null;
+      if (nextCursor && seenCursors.has(nextCursor)) throw new Error("Library pagination repeated a cursor");
+      if (nextCursor) seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    } while (cursor);
     const recovered: Imprint[] = [];
     const remaining: Imprint[] = [];
     for (const legacyItem of recoverable) {
@@ -241,13 +280,21 @@ export async function loadImprints(signal?: AbortSignal, baseUrl = apiBase, fetc
   }
 }
 
-export async function loadImprint(id: string, signal?: AbortSignal): Promise<{ item: Imprint | null; source: "api" | "local" }> {
-  if (!apiBase) return { item: readLocal().find((item) => item.id === id) ?? null, source: "local" };
+export async function loadImprint(id: string, signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<{ item: Imprint | null; source: "api" | "local" }> {
+  if (!baseUrl) return { item: readLocal().find((item) => item.id === id) ?? null, source: "local" };
   try {
-    const response = await fetch(`${apiBase}/api/items/${encodeURIComponent(id)}`, { headers: authHeaders(apiBase), signal });
+    const response = await fetcher(`${baseUrl}/api/items/${encodeURIComponent(id)}`, { headers: authHeaders(baseUrl), credentials: "include", signal });
     if (!response.ok) throw new Error(`Imprint request failed with ${response.status}`);
-    const payload = await response.json() as { item?: ApiItem };
-    return { item: payload.item ? mapApiItem(payload.item) : null, source: "api" };
+    const payload = await response.json() as { item?: ApiItem; connections?: ApiConnection[]; principles?: ApiPrinciple[] };
+    if (!payload.item) return { item: null, source: "api" };
+    const mapped = mapApiItem(payload.item);
+    mapped.connectionIds = (payload.connections ?? []).map((connection) => connection.fromItemId === id ? connection.toItemId : connection.fromItemId);
+    const principle = payload.principles?.[0];
+    if (principle && principle.status !== "retired") {
+      mapped.principleId = principle.id;
+      mapped.principleStatus = principle.status;
+    }
+    return { item: mapped, source: "api" };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     return { item: readLocal().find((item) => item.id === id) ?? null, source: "local" };
@@ -261,7 +308,7 @@ export async function searchImprints(query: string, localItems: Imprint[], signa
     const endpoint = new URL(`${baseUrl}/api/search`);
     endpoint.searchParams.set("q", query.trim());
     endpoint.searchParams.set("limit", "30");
-    const response = await fetcher(endpoint, { headers: authHeaders(baseUrl), signal });
+    const response = await fetcher(endpoint, { headers: authHeaders(baseUrl), credentials: "include", signal });
     if (!response.ok) throw new Error(`Search request failed with ${response.status}`);
     const items = normalizeItems(await response.json());
     if (!items) throw new Error("Search response did not contain items");
@@ -272,17 +319,18 @@ export async function searchImprints(query: string, localItems: Imprint[], signa
   }
 }
 
-export async function askLibrary(question: string, signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<AskMessage | null> {
+export async function askLibrary(question: string, signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch, threadId?: string): Promise<AskMessage | null> {
   if (!baseUrl) return null;
   try {
     const response = await fetcher(`${baseUrl}/api/ask`, {
       method: "POST",
       headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
-      body: JSON.stringify({ question }),
+      credentials: "include",
+      body: JSON.stringify({ question, ...(threadId ? { threadId } : {}) }),
       signal,
     });
     if (!response.ok) throw new Error(`Ask request failed with ${response.status}`);
-    const payload = await response.json() as { answer: string; grounded: boolean; limitations?: string[]; citations?: Array<{ itemId: string; title: string; timestampSeconds?: number; url?: string }> };
+    const payload = await response.json() as { threadId?: string; answer: string; grounded: boolean; limitations?: string[]; citations?: Array<{ itemId: string; title: string; timestampSeconds?: number; url?: string }> };
     return {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -290,6 +338,7 @@ export async function askLibrary(question: string, signal?: AbortSignal, baseUrl
       grounded: payload.grounded,
       limitations: payload.limitations ?? [],
       citations: payload.citations?.map((citation) => ({ imprintId: citation.itemId, label: citation.title, seconds: citation.timestampSeconds, url: citation.url })),
+      threadId: payload.threadId,
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -317,7 +366,7 @@ export interface EvolutionOverview {
 export async function loadEvolution(signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<EvolutionOverview | null> {
   if (!baseUrl) return null;
   try {
-    const response = await fetcher(`${baseUrl}/api/evolution`, { headers: authHeaders(baseUrl), signal });
+    const response = await fetcher(`${baseUrl}/api/evolution`, { headers: authHeaders(baseUrl), credentials: "include", signal });
     if (!response.ok) throw new Error(`Evolution request failed with ${response.status}`);
     return await response.json() as EvolutionOverview;
   } catch (error) {
@@ -329,7 +378,7 @@ export async function loadEvolution(signal?: AbortSignal, baseUrl = apiBase, fet
 export async function loadResurfacedMemory(signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<ResurfacedMemory | null> {
   if (!baseUrl) return null;
   try {
-    const response = await fetcher(`${baseUrl}/api/resurfacing/today`, { headers: authHeaders(baseUrl), signal });
+    const response = await fetcher(`${baseUrl}/api/resurfacing/today`, { headers: authHeaders(baseUrl), credentials: "include", signal });
     if (!response.ok) throw new Error(`Resurfacing request failed with ${response.status}`);
     const payload = await response.json() as { memory?: ResurfacedMemory | null };
     return payload.memory ?? null;
@@ -345,6 +394,7 @@ export async function respondToResurfacing(eventId: string, responseValue: "stil
     const response = await fetcher(`${baseUrl}/api/resurfacing/${encodeURIComponent(eventId)}/respond`, {
       method: "POST",
       headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ response: responseValue }),
     });
     return response.ok;
@@ -354,10 +404,10 @@ export async function respondToResurfacing(eventId: string, responseValue: "stil
 export async function saveImprint(imprint: Imprint): Promise<{ item: Imprint; synced: boolean; deduplicated: boolean }> {
   const local = readLocal();
   if (!local.some((item) => item.url === imprint.url)) writeLocal([imprint, ...local]);
-  if (!apiBase) return { item: imprint, synced: false, deduplicated: false };
+  if (!apiBase) return { item: { ...imprint, syncState: "local" }, synced: false, deduplicated: false };
   try { return await saveImprintToApi(imprint, apiBase);
   } catch {
-    return { item: imprint, synced: false, deduplicated: false };
+    return { item: { ...imprint, syncState: "local" }, synced: false, deduplicated: false };
   }
 }
 
@@ -391,6 +441,51 @@ export async function saveImprintToApi(imprint: Imprint, baseUrl: string, fetche
     if (!response.ok) throw new Error(`Capture request failed with ${response.status}`);
     const payload = await response.json() as { item?: ApiItem; deduplicated?: boolean; duplicate?: boolean };
     return { item: payload.item ? mapApiItem(payload.item) : imprint, synced: true, deduplicated: payload.deduplicated ?? payload.duplicate ?? false };
+}
+
+export async function retryImprint(item: Imprint, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<Imprint> {
+  if (!baseUrl) throw new Error("Reconnect before retrying analysis.");
+  const sourceText = item.sourceType === "YouTube" ? await clientYouTubeTranscript(item.url, fetcher) : undefined;
+  const response = await fetcher(`${baseUrl}/api/items/${encodeURIComponent(item.id)}/retry`, {
+    method: "POST",
+    headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(sourceText ? { sourceText } : {}),
+  });
+  if (!response.ok) throw new Error("Analysis could not be restarted. Please try again.");
+  const payload = await response.json() as { item?: ApiItem };
+  if (!payload.item) throw new Error("The retry response was incomplete.");
+  return mapApiItem(payload.item);
+}
+
+export async function updatePrinciple(principleId: string, status: "candidate" | "active" | "dismissed", baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<void> {
+  if (!baseUrl) throw new Error("Reconnect before updating this principle.");
+  const response = await fetcher(`${baseUrl}/api/principles/${encodeURIComponent(principleId)}`, {
+    method: "PATCH",
+    headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) throw new Error("This principle could not be updated.");
+}
+
+export async function downloadLibraryExport(format: "json" | "markdown", baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<Blob> {
+  if (!baseUrl) throw new Error("The export service is unavailable.");
+  const created = await fetcher(`${baseUrl}/api/exports`, {
+    method: "POST",
+    headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ format }),
+  });
+  if (!created.ok) throw new Error("Your export could not be prepared.");
+  const payload = await created.json() as { downloadUrl?: string };
+  if (!payload.downloadUrl) throw new Error("The export response was incomplete.");
+  const downloaded = await fetcher(new URL(payload.downloadUrl, baseUrl), {
+    headers: authHeaders(baseUrl),
+    credentials: "include",
+  });
+  if (!downloaded.ok) throw new Error("Your export could not be downloaded.");
+  return downloaded.blob();
 }
 
 export const apiConfig = { baseUrl: apiBase ?? null, authMode, storageKey: STORAGE_KEY, legacyStorageKey: LEGACY_STORAGE_KEY, tokenStorageKey: TOKEN_KEY };

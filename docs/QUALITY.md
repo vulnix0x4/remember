@@ -24,8 +24,8 @@
 ## Engineering evidence
 
 - TypeScript/type generation: pass for web, domain, API, and extension.
-- Automated JavaScript/TypeScript tests: 63/63 pass (web 25, API 22, domain 12, extension 4).
-- Swift tests: 18/18 unit/contract and 6/6 UI pass.
+- Automated JavaScript/TypeScript tests: 77/77 pass (web 28, API 29, domain 16, extension 4).
+- Swift tests: 23/23 unit/contract and 6/6 UI pass.
 - Production web build and Cloudflare static-assets dry-run: pass.
 - Production Lighthouse (mobile): 97 Performance, 100 Accessibility, 100 Best Practices, 100 SEO; 2.4 s LCP, 0 ms total blocking time, and 0 cumulative layout shift.
 - Worker default and production dry-runs, startup check, and fresh local D1 migration: pass.

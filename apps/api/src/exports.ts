@@ -38,7 +38,7 @@ function markdownFor(dataset: ExportDataset): string {
     const moments =
       analysis?.keyMoments.map(
         (moment) =>
-          `- ${Math.floor(moment.seconds / 60)}:${String(moment.seconds % 60).padStart(2, "0")} — ${markdownText(moment.label)}\n  ${markdownText(moment.context)}\n  Source timestamp verified: ${moment.sourceVerified ? "yes" : "no"}`,
+          `- ${Math.floor(moment.seconds / 60)}:${String(moment.seconds % 60).padStart(2, "0")}: ${markdownText(moment.label)}\n  ${markdownText(moment.context)}\n  Source timestamp verified: ${moment.sourceVerified ? "yes" : "no"}`,
       ) ?? [];
     const ideas =
       analysis?.keyIdeas.map((idea) => `- ${markdownText(idea.text)}${idea.explanation ? `\n  ${markdownText(idea.explanation)}` : ""}`) ?? [];

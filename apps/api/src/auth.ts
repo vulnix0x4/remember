@@ -7,12 +7,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export const SESSION_COOKIE = "remember_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
-interface PasswordSession {
+interface PasswordSessionV1 {
   v: 1;
   sub: string;
   email: string;
   exp: number;
 }
+
+interface PasswordSessionV2 {
+  v: 2;
+  sub: string;
+  email: string;
+  jti: string;
+  iat: number;
+  exp: number;
+}
+
+type PasswordSession = PasswordSessionV1 | PasswordSessionV2;
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -43,12 +54,20 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
 
 export async function createPasswordSession(env: Env, email: string): Promise<string> {
   if (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32) throw new Error("SESSION_SECRET must contain at least 32 characters.");
-  const payload: PasswordSession = {
-    v: 1,
+  const issuedAt = Math.floor(Date.now() / 1_000);
+  const payload: PasswordSessionV2 = {
+    v: 2,
     sub: env.DEFAULT_USER_ID,
     email,
-    exp: Math.floor(Date.now() / 1_000) + SESSION_TTL_SECONDS,
+    jti: crypto.randomUUID(),
+    iat: issuedAt,
+    exp: issuedAt + SESSION_TTL_SECONDS,
   };
+  await env.DB.prepare(
+    "INSERT INTO login_sessions (id, user_id, email, expires_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+  )
+    .bind(payload.jti, payload.sub, payload.email, payload.exp, new Date(issuedAt * 1_000).toISOString())
+    .run();
   const encoded = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
   const signature = await crypto.subtle.sign("HMAC", await hmacKey(env.SESSION_SECRET), new TextEncoder().encode(encoded));
   return `${encoded}.${bytesToBase64Url(new Uint8Array(signature))}`;
@@ -67,8 +86,17 @@ async function readPasswordSession(env: Env, token: string): Promise<PasswordSes
     );
     if (!valid) return null;
     const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(encoded))) as Partial<PasswordSession>;
-    if (payload.v !== 1 || payload.sub !== env.DEFAULT_USER_ID || typeof payload.email !== "string" || typeof payload.exp !== "number") return null;
+    if ((payload.v !== 1 && payload.v !== 2) || payload.sub !== env.DEFAULT_USER_ID || typeof payload.email !== "string" || typeof payload.exp !== "number") return null;
     if (payload.exp <= Math.floor(Date.now() / 1_000)) return null;
+    if (payload.v === 2) {
+      if (typeof payload.jti !== "string" || typeof payload.iat !== "number") return null;
+      const active = await env.DB.prepare(
+        "SELECT id FROM login_sessions WHERE id = ?1 AND user_id = ?2 AND revoked_at IS NULL AND expires_at > ?3",
+      )
+        .bind(payload.jti, payload.sub, Math.floor(Date.now() / 1_000))
+        .first<{ id: string }>();
+      if (!active) return null;
+    }
     return payload as PasswordSession;
   } catch {
     return null;
@@ -79,7 +107,7 @@ export async function verifyPassword(password: string, encodedHash: string | und
   if (!encodedHash) return false;
   const [scheme, iterationsValue, saltValue, hashValue, extra] = encodedHash.split("$");
   const iterations = Number(iterationsValue);
-  if (scheme !== "pbkdf2_sha256" || !Number.isInteger(iterations) || iterations < 100_000 || iterations > 100_000 || !saltValue || !hashValue || extra) return false;
+  if (scheme !== "pbkdf2_sha256" || !Number.isInteger(iterations) || iterations < 100_000 || iterations > 1_000_000 || !saltValue || !hashValue || extra) return false;
   try {
     const passwordKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
     const derived = await crypto.subtle.deriveBits(
@@ -104,6 +132,19 @@ export function sessionCookie(token: string, secure: boolean): string {
 
 export function clearedSessionCookie(secure: boolean): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure ? "; Secure" : ""}`;
+}
+
+export async function revokePasswordSession(env: Env, token: string | undefined): Promise<void> {
+  if (!token) return;
+  const session = await readPasswordSession(env, token);
+  if (!session || session.v !== 2) return;
+  await env.DB.prepare("UPDATE login_sessions SET revoked_at = ?2 WHERE id = ?1 AND user_id = ?3")
+    .bind(session.jti, new Date().toISOString(), session.sub)
+    .run();
+}
+
+export function passwordSessionToken(cookieHeader: string | undefined): string | undefined {
+  return cookieValue(cookieHeader, SESSION_COOKIE);
 }
 
 export async function timingSafeEqual(left: string, right: string): Promise<boolean> {
@@ -169,6 +210,8 @@ export const authenticate: MiddlewareHandler<{ Bindings: Env; Variables: AppVari
   if (String(context.env.AUTH_MODE) === "password") {
     const token = cookieValue(context.req.header("cookie"), SESSION_COOKIE);
     const session = token ? await readPasswordSession(context.env, token) : null;
+    const isSessionProbe = context.req.path === "/api/session" || context.req.path === "/api/v1/session";
+    if (!session && isSessionProbe) return next();
     if (!session) throw new ApiError(401, "unauthorized", "Sign in to continue.");
     context.set("user", { id: session.sub, mode: "password", email: session.email });
     await ensureUser(context.env.DB, session.sub);

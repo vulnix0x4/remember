@@ -10,6 +10,7 @@ export default {
       const service = new EvolutionService(env.DB);
       for (const user of users.results) await service.createResurfacing(user.id);
       await env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?1").bind(Math.floor(Date.now() / 1_000)).run();
+      await env.DB.prepare("DELETE FROM login_sessions WHERE expires_at < ?1").bind(Math.floor(Date.now() / 1_000)).run();
     })();
     ctx.waitUntil(work);
   },

@@ -24,7 +24,7 @@ struct CaptureView: View {
                         Text(didSave ? "Saved to your memory" : "Save something that stayed with you")
                             .font(.title)
                             .bold()
-                        Text(didSave ? "Understanding continues quietly in the background." : "Paste a YouTube or web link. Nothing else is required.")
+                        Text(didSave ? "Analysis continues in the background." : "Paste a YouTube, TikTok, X, or web link. Nothing else is required.")
                             .font(.body)
                             .foregroundStyle(RememberDesign.secondaryText)
                     }
@@ -79,15 +79,19 @@ struct CaptureView: View {
 
     private func save() {
         guard let url = URLValidator.validatedWebURL(from: input) else {
-            validationMessage = "Enter a complete http or https link."
+            validationMessage = "Enter a complete https link."
             return
         }
         validationMessage = nil
         isSaving = true
         Task {
-            await store.capture(url)
+            do {
+                try await store.capture(url)
+                didSave = true
+            } catch {
+                validationMessage = "This link was not saved. (error.localizedDescription)"
+            }
             isSaving = false
-            didSave = true
         }
     }
 }

@@ -14,7 +14,7 @@ enum FixtureLibrary {
             savedAt: now.addingTimeInterval(-60 * 60 * 24 * 122),
             lifePeriod: "A season of rebuilding",
             essence: "A painful chapter can become material for a more deliberate life without needing to be called good.",
-            summary: "The speaker separates finding meaning in hardship from romanticizing it. Growth is framed as attention, reflection, and choosing what to carry forward—not as proof that suffering was necessary.",
+            summary: "The speaker separates finding meaning in hardship from romanticizing it. Growth is framed as attention, reflection, and choosing what to carry forward, not as proof that suffering was necessary.",
             keyIdeas: [
                 "Meaning can be made after pain without justifying what happened.",
                 "Reflection turns an experience into something usable.",

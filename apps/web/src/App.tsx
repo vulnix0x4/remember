@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -39,7 +39,7 @@ import {
   YoutubeLogo,
 } from "@phosphor-icons/react";
 import { imprints as fixtureImprints, suggestedQuestions, themeData } from "./fixtures";
-import { apiConfig, askLibrary, getApiToken, loadEvolution, loadImprints, loadResurfacedMemory, loadSession, login, logout, respondToResurfacing, saveImprint, searchImprints, setApiToken, type AppSession, type EvolutionOverview, type ResurfacedMemory } from "./services/api";
+import { apiConfig, askLibrary, downloadLibraryExport, getApiToken, loadEvolution, loadImprint, loadImprints, loadResurfacedMemory, loadSession, login, logout, respondToResurfacing, retryImprint, saveImprint, searchImprints, setApiToken, updatePrinciple, type AppSession, type EvolutionOverview, type ResurfacedMemory } from "./services/api";
 import { exportImprintsJson, exportImprintsMarkdown } from "./services/export";
 import type { AskMessage, Imprint, Page } from "./types";
 
@@ -48,6 +48,11 @@ const navItems: { page: Page; label: string; icon: typeof House }[] = [
   { page: "library", label: "Library", icon: Books },
   { page: "ask", label: "Ask", icon: ChatCircleDots },
   { page: "evolution", label: "Evolution", icon: TreeStructure },
+];
+
+const mobileNavItems: { page: Page; label: string; icon: typeof House }[] = [
+  ...navItems,
+  { page: "settings", label: "Settings", icon: GearSix },
 ];
 
 const pageTitles: Record<Page, string> = {
@@ -95,6 +100,14 @@ function sourceLabel(imprint: Imprint) {
   if (isTikTokSource(imprint)) return "TikTok";
   if (isXSource(imprint)) return isVideoSource(imprint) ? "X video" : "X post";
   return imprint.sourceType;
+}
+
+function analysisScopeLabel(imprint: Imprint) {
+  if (imprint.analysisScope === "caption") return "Caption analyzed";
+  if (imprint.analysisScope === "post") return "Post text analyzed";
+  if (imprint.analysisScope === "article") return "Article analyzed";
+  if (imprint.analysisScope === "transcript") return "Transcript analyzed";
+  return null;
 }
 
 function secondsUrl(imprint: Imprint, seconds?: number) {
@@ -186,6 +199,11 @@ function StatusBadge({ status }: { status: Imprint["status"] }) {
   return <span className={cx("status-badge", status)}>{status === "failed" ? <Warning size={13} /> : <span className="status-dot" />}{labels[status]}</span>;
 }
 
+function AnalysisScopeBadge({ imprint }: { imprint: Imprint }) {
+  const label = imprint.status === "ready" ? analysisScopeLabel(imprint) : null;
+  return label ? <span className="scope-badge"><ShieldCheck size={12} /> {label}</span> : null;
+}
+
 function ImprintArtwork({ imprint, large = false, showSourceAction = false }: { imprint: Imprint; large?: boolean; showSourceAction?: boolean }) {
   const SourceIcon = isVideoSource(imprint) ? Play : sourceIcon(imprint.sourceType);
   return (
@@ -205,7 +223,7 @@ function ImprintRow({ imprint, onOpen }: { imprint: Imprint; onOpen: (id: string
     <button className="imprint-row" type="button" onClick={() => onOpen(imprint.id)}>
       <ImprintArtwork imprint={imprint} />
       <span className="imprint-copy">
-        <span className="imprint-meta"><span>{sourceLabel(imprint)}</span><span>{imprint.savedAt}</span><StatusBadge status={imprint.status} /></span>
+        <span className="imprint-meta"><span>{sourceLabel(imprint)}</span><span>{imprint.savedAt}</span><StatusBadge status={imprint.status} /><AnalysisScopeBadge imprint={imprint} />{imprint.syncState === "local" && <span className="scope-badge local"><Cloud size={12} /> Waiting to sync</span>}</span>
         <strong>{imprint.title}</strong>
         <span className="imprint-essence">{imprint.essence}</span>
         <span className="theme-list">{imprint.themes.slice(0, 3).map((theme) => <span key={theme}>{theme}</span>)}</span>
@@ -278,7 +296,7 @@ function LibraryPage({ imprints, onOpen, onCapture }: { imprints: Imprint[]; onO
   const [sort, setSort] = useState<"Newest" | "Oldest">("Newest");
   const [searchResults, setSearchResults] = useState<Imprint[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const filters = ["All", "Videos", "Articles", "Podcasts", "Processing"];
+  const filters = ["All", "Videos", "Articles", "Processing", "Needs attention"];
   useEffect(() => {
     if (!query.trim()) { setSearchResults(null); setSearching(false); return; }
     const controller = new AbortController();
@@ -290,10 +308,10 @@ function LibraryPage({ imprints, onOpen, onCapture }: { imprints: Imprint[]; onO
   }, [imprints, query]);
   const visible = useMemo(() => {
     let items = searchResults ?? (query.trim() ? [] : imprints);
-    if (filter === "Videos") items = items.filter((item) => item.sourceType === "YouTube");
-    if (filter === "Articles") items = items.filter((item) => item.sourceType === "Article");
-    if (filter === "Podcasts") items = items.filter((item) => item.sourceType === "Podcast");
-    if (filter === "Processing") items = items.filter((item) => item.status !== "ready");
+    if (filter === "Videos") items = items.filter(isVideoSource);
+    if (filter === "Articles") items = items.filter((item) => !isVideoSource(item) && item.sourceType !== "Podcast");
+    if (filter === "Processing") items = items.filter((item) => item.status === "processing");
+    if (filter === "Needs attention") items = items.filter((item) => item.status === "partial" || item.status === "failed");
     return sort === "Newest" ? items : [...items].reverse();
   }, [filter, imprints, query, searchResults, sort]);
   return (
@@ -317,10 +335,35 @@ function LibraryPage({ imprints, onOpen, onCapture }: { imprints: Imprint[]; onO
   );
 }
 
-function DetailPage({ imprint, imprints, onBack, onOpen }: { imprint: Imprint; imprints: Imprint[]; onBack: () => void; onOpen: (id: string) => void }) {
-  const [carried, setCarried] = useState(false);
+function DetailPage({ imprint, imprints, onBack, onOpen, onUpdate }: { imprint: Imprint; imprints: Imprint[]; onBack: () => void; onOpen: (id: string) => void; onUpdate: (item: Imprint) => void }) {
+  const [principleStatus, setPrincipleStatus] = useState(imprint.principleStatus);
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [retrying, setRetrying] = useState(false);
   const related = imprints.filter((item) => imprint.connectionIds.includes(item.id));
+  useEffect(() => setPrincipleStatus(imprint.principleStatus), [imprint.principleStatus]);
+  const retry = async () => {
+    setRetrying(true);
+    setActionError("");
+    try { onUpdate(await retryImprint(imprint)); }
+    catch (error) { setActionError(error instanceof Error ? error.message : "Analysis could not be restarted."); }
+    finally { setRetrying(false); }
+  };
+  const togglePrinciple = async () => {
+    if (!imprint.principleId) return;
+    const next = principleStatus === "active" ? "candidate" : "active";
+    setActionError("");
+    try {
+      await updatePrinciple(imprint.principleId, next);
+      setPrincipleStatus(next);
+      onUpdate({ ...imprint, principleStatus: next });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "This principle could not be updated.");
+    }
+  };
+  const momentsEmpty = imprint.status === "processing"
+    ? <div className="partial-state"><Clock size={20} /><span><strong>Finding key moments</strong><small>This section updates automatically when analysis finishes.</small></span></div>
+    : <div className="partial-state"><Clock size={20} /><span><strong>No timestamped moments</strong><small>{isVideoSource(imprint) ? "No verified timestamps were available for this source." : "Timestamped moments apply to videos with a verified transcript."}</small></span></div>;
   return (
     <div className="page detail-page page-enter">
       <button className="back-button" type="button" onClick={onBack}><ArrowLeft size={18} /> Library</button>
@@ -329,26 +372,28 @@ function DetailPage({ imprint, imprints, onBack, onOpen }: { imprint: Imprint; i
           <ImprintArtwork imprint={imprint} large showSourceAction />
         </a>
         <div className="detail-title">
-          <div className="source-inline"><span>{sourceLabel(imprint)}</span><span>{imprint.savedAt}</span><StatusBadge status={imprint.status} /></div>
+          <div className="source-inline"><span>{sourceLabel(imprint)}</span><span>{imprint.savedAt}</span><StatusBadge status={imprint.status} /><AnalysisScopeBadge imprint={imprint} /></div>
           <h1>{imprint.title}</h1>
           <p className="creator">{imprint.creator}</p>
           <a className="button secondary" href={imprint.url} target="_blank" rel="noreferrer">Open source <ArrowUpRight size={16} /></a>
         </div>
       </header>
       {imprint.status === "processing" && <ProcessingLine label="Finding moments, themes, and connections" />}
+      {imprint.status === "failed" && <div className="partial-state" role="alert"><Warning size={20} /><span><strong>Analysis needs another try</strong><small>{imprint.summary}</small></span><button className="button primary" type="button" disabled={retrying} onClick={() => void retry()}>{retrying ? "Retrying..." : "Try again"}</button></div>}
+      {actionError && <p className="login-error" role="alert"><Warning size={15} /> {actionError}</p>}
       <div className="detail-layout">
         <div className="detail-main">
           <section className="essence-section"><Quotes size={23} weight="fill" /><p>{imprint.essence}</p></section>
           <section className="content-section"><h2>What it says</h2><p>{imprint.summary}</p>{imprint.summary.length > 120 && <button className="text-button" type="button" aria-expanded={summaryOpen} onClick={() => setSummaryOpen(!summaryOpen)}>{summaryOpen ? "Show less" : "See analysis notes"} <CaretDown className={cx(summaryOpen && "rotate")} size={15} /></button>}{summaryOpen && <div className="analysis-note"><ShieldCheck size={18} /> This analysis is generated from the source. It does not include claims about why you personally saved it.</div>}</section>
           <section className="content-section"><h2>Ideas worth keeping</h2><ol className="idea-list">{imprint.keyIdeas.map((idea, index) => <li key={idea}><span>{String(index + 1).padStart(2, "0")}</span><p>{idea}</p></li>)}</ol></section>
-          <section className="content-section"><h2>Key moments</h2>{imprint.moments.length ? <div className="moment-list">{imprint.moments.map((moment) => <a key={moment.time} href={secondsUrl(imprint, moment.seconds)} target="_blank" rel="noreferrer"><span className="moment-time"><Play size={12} weight="fill" /> {moment.time}</span><span><strong>{moment.title}</strong><small>{moment.note}</small></span><ArrowUpRight size={16} /></a>)}</div> : <div className="partial-state"><Clock size={20} /><span><strong>Moments are still being found</strong><small>This section will update when processing finishes.</small></span></div>}</section>
-          {imprint.principle && <section className="carry-section"><div><span className="section-kicker"><Path size={15} /> A possible principle</span><h2>{imprint.principle}</h2><p>Suggested from this source. Keep it only if it feels true to you.</p></div><button className={cx("button", carried ? "secondary success" : "primary")} type="button" onClick={() => setCarried(!carried)}>{carried ? <><Check size={17} weight="bold" /> Carried forward</> : "Carry this forward"}</button></section>}
+          <section className="content-section"><h2>Key moments</h2>{imprint.moments.length ? <div className="moment-list">{imprint.moments.map((moment) => <a key={moment.time} href={secondsUrl(imprint, moment.seconds)} target="_blank" rel="noreferrer"><span className="moment-time"><Play size={12} weight="fill" /> {moment.time}</span><span><strong>{moment.title}</strong><small>{moment.note}</small></span><ArrowUpRight size={16} /></a>)}</div> : momentsEmpty}</section>
+          {imprint.principle && <section className="carry-section"><div><span className="section-kicker"><Path size={15} /> A possible principle</span><h2>{imprint.principle}</h2><p>Suggested from this source. Keep it only if it feels true to you.</p></div>{imprint.principleId && <button className={cx("button", principleStatus === "active" ? "secondary success" : "primary")} type="button" onClick={() => void togglePrinciple()}>{principleStatus === "active" ? <><Check size={17} weight="bold" /> Kept</> : "Keep this principle"}</button>}</section>}
           {related.length > 0 && <section className="content-section"><h2>This connects to</h2><div className="connection-list">{related.map((item, index) => <button type="button" key={item.id} onClick={() => onOpen(item.id)}><span className="connection-type">{index === 0 ? "Extends" : "Same theme"}</span><strong>{item.essence}</strong><small>{item.title}</small><CaretRight size={17} /></button>)}</div></section>}
         </div>
         <aside className="detail-aside">
           <section><h2>When you saved this</h2><strong>{imprint.lifePeriod}</strong><span>{imprint.savedAt}</span></section>
           <section><h2>Themes</h2><div className="theme-list large">{imprint.themes.map((theme) => <span key={theme}>{theme}</span>)}</div></section>
-          {imprint.hypothesis && <section className="hypothesis"><h2>Why this may have mattered</h2><p>{imprint.hypothesis}</p><span><Sparkle size={13} /> AI hypothesis</span></section>}
+          {imprint.hypothesis && <section className="hypothesis"><h2>Why this may have mattered</h2><p>{imprint.hypothesis}</p><span><Sparkle size={13} /> A possibility, not a fact</span></section>}
           {imprint.uncertainty && <section className="uncertainty"><h2>What is uncertain</h2><p>{imprint.uncertainty}</p></section>}
         </aside>
       </div>
@@ -359,7 +404,7 @@ function DetailPage({ imprint, imprints, onBack, onOpen }: { imprint: Imprint; i
 function answerFor(question: string): AskMessage {
   if (apiConfig.baseUrl) return {
     id: crypto.randomUUID(), role: "assistant",
-    text: "I couldn’t reach your library just now. Nothing was inferred or filled in with demo content—please try again in a moment.",
+    text: "I couldn’t reach your library just now. Nothing was inferred or filled in with demo content. Please try again in a moment.",
     grounded: false,
     limitations: ["Your saved sources could not be reached."],
   };
@@ -392,14 +437,16 @@ function AskPage({ imprints, onOpen }: { imprints: Imprint[]; onOpen: (id: strin
   const [messages, setMessages] = useState<AskMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const threadIdRef = useRef<string | null>(null);
   const send = async (question: string) => {
     const clean = question.trim();
     if (!clean || thinking) return;
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "user", text: clean }]);
     setInput("");
     setThinking(true);
-    const apiAnswer = await askLibrary(clean);
+    const apiAnswer = await askLibrary(clean, undefined, undefined, undefined, threadIdRef.current ?? undefined);
     if (!apiAnswer) await new Promise((resolve) => window.setTimeout(resolve, 450));
+    if (apiAnswer?.threadId) threadIdRef.current = apiAnswer.threadId;
     setMessages((current) => [...current, apiAnswer ?? answerFor(clean)]);
     setThinking(false);
   };
@@ -447,12 +494,12 @@ function EvolutionPage({ onOpen }: { onOpen: (id: string) => void }) {
   const leadingTheme = overview?.themes[0];
   return (
     <div className="page evolution-page page-enter">
-      <header className="page-heading"><div><h1>Your evolution</h1><p>Exact counts and source-backed interpretations from analyzed saves—not a profile or a prediction.</p></div></header>
+      <header className="page-heading"><div><h1>Your evolution</h1><p>Exact counts and source-backed interpretations from analyzed saves. This is not a profile or a prediction.</p></div></header>
       <div className="tab-strip" role="tablist" aria-label="Evolution views">{tabs.map((item) => <button role="tab" aria-selected={tab === item} type="button" key={item} onClick={() => setTab(item)}>{item}</button>)}</div>
       {loadFailed && <div className="partial-state" role="alert"><Warning size={20} /><span><strong>Evolution could not be loaded</strong><small>Your library is safe. Refresh to try this view again.</small></span></div>}
       {(tab === "Overview" || tab === "Themes") && <section className="theme-overview"><div className="theme-intro"><span className="section-kicker"><Sparkle size={15} /> Across analyzed sources</span><h2>{leadingTheme ? `${leadingTheme.name} is the most frequent theme so far.` : usesPreviewData ? "Themes from preview material." : "No supported themes yet."}</h2><p>{leadingTheme ? `${leadingTheme.name} appears in ${leadingTheme.count} analyzed source${leadingTheme.count === 1 ? "" : "s"}. This is a count, not a claim about how you are changing.` : usesPreviewData ? "Preview data demonstrates the layout only." : "Themes appear here only after an analyzed source supports them."}</p><button className="text-button" type="button" onClick={() => setTab("Themes")}>Explore themes <ArrowRight size={16} /></button></div><div className="theme-cloud">{themes.map((theme, index) => <button type="button" key={theme.name} onClick={() => setTab("Themes")} style={{ "--theme-color": theme.color, "--theme-index": index } as React.CSSProperties}><strong>{theme.name}</strong><span>{theme.count} source{theme.count === 1 ? "" : "s"}</span><small>{theme.change}</small></button>)}</div></section>}
       {(tab === "Overview" || tab === "Principles") && <section className="principles-section"><div className="section-heading-row"><div><h2>Ideas from analyzed sources</h2><p>Each statement belongs to the source beneath it. It is not treated as a repeated belief unless multiple sources support it.</p></div><button className="text-button" type="button" onClick={() => setTab("Principles")}>View all <ArrowRight size={16} /></button></div>{principles.length ? <div className="principle-grid">{principles.map((principle) => <article key={`${principle.itemId}-${principle.text}`}><span>From one analyzed source</span><h3>{principle.text}</h3><button type="button" onClick={() => onOpen(principle.itemId)}>Review source <CaretRight size={15} /></button></article>)}</div> : <div className="partial-state"><Path size={20} /><span><strong>No source-backed ideas yet</strong><small>Candidate principles appear only when an analyzed source contains one.</small></span></div>}</section>}
-      {(tab === "Overview" || tab === "Tensions") && <section className="tension-section"><div className="tension-mark"><Path size={25} weight="light" /></div><div><span className="section-kicker">Across two sources</span><h2>{tension ? "A supported contradiction" : usesPreviewData ? "Preview tension" : "No supported contradiction yet"}</h2><p>{tension || (usesPreviewData ? "Preview data demonstrates where a source-backed contradiction would appear." : "Remember will show a tension only when two analyzed sources contain meaningfully opposing claims.")}</p>{tension && <div className="tension-sources"><button type="button" onClick={() => onOpen(overview!.tensions[0].fromItemId)}>First source</button><span>and</span><button type="button" onClick={() => onOpen(overview!.tensions[0].toItemId)}>Second source</button></div>}</div></section>}
+      {(tab === "Overview" || tab === "Tensions") && <section className="tension-section"><div className="tension-mark"><Path size={25} weight="light" /></div><div><span className="section-kicker">Across two sources</span><h2>{tension ? "A possible tension" : usesPreviewData ? "Preview tension" : "No possible tensions yet"}</h2><p>{tension || (usesPreviewData ? "Preview data demonstrates where a source-backed tension would appear." : "Remember will suggest a tension when two analyzed sources appear to pull in different directions. You decide whether the comparison is useful.")}</p>{tension && <div className="tension-sources"><button type="button" onClick={() => onOpen(overview!.tensions[0].fromItemId)}>First source</button><span>and</span><button type="button" onClick={() => onOpen(overview!.tensions[0].toItemId)}>Second source</button></div>}</div></section>}
       {(tab === "Overview" || tab === "Timeline") && <section className="timeline-section"><div className="section-heading-row"><div><h2>Themes by save month</h2><p>Exact theme counts grouped by when each source was saved.</p></div><button className="text-button" type="button" onClick={() => setTab("Timeline")}>Full timeline <ArrowRight size={16} /></button></div>{timeline.length ? <div className="timeline">{timeline.map((entry, index) => <article className={index === timeline.length - 1 ? "current" : ""} key={`${entry.month}-${entry.title}`}><time>{entry.month}</time><div><strong>{entry.title}</strong><p>{entry.themes}</p></div></article>)}</div> : <div className="partial-state"><Clock size={20} /><span><strong>No timeline data yet</strong><small>Analyzed themes will be grouped by save month here.</small></span></div>}</section>}
     </div>
   );
@@ -460,17 +507,33 @@ function EvolutionPage({ onOpen }: { onOpen: (id: string) => void }) {
 
 function SettingsPage({ imprints, theme, onTheme, session, onSignOut }: { imprints: Imprint[]; theme: "light" | "dark"; onTheme: (theme: "light" | "dark") => void; session: AppSession | null; onSignOut: () => void }) {
   const [apiToken, setApiTokenValue] = useState(() => getApiToken());
-  const download = (format: "json" | "md") => {
-    const content = format === "json" ? exportImprintsJson(imprints) : exportImprintsMarkdown(imprints);
-    const url = URL.createObjectURL(new Blob([content], { type: format === "json" ? "application/json" : "text/markdown" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `remember-export.${format}`; anchor.click(); URL.revokeObjectURL(url);
+  const [exporting, setExporting] = useState<"json" | "md" | null>(null);
+  const [exportError, setExportError] = useState("");
+  const download = async (format: "json" | "md") => {
+    setExporting(format);
+    setExportError("");
+    try {
+      const content = apiConfig.baseUrl
+        ? await downloadLibraryExport(format === "json" ? "json" : "markdown")
+        : new Blob([format === "json" ? exportImprintsJson(imprints) : exportImprintsMarkdown(imprints)], { type: format === "json" ? "application/json" : "text/markdown" });
+      const url = URL.createObjectURL(content);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `remember-export.${format}`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Your export could not be downloaded.");
+    } finally {
+      setExporting(null);
+    }
   };
   return (
     <div className="page settings-page page-enter">
       <header className="page-heading"><div><h1>Settings</h1><p>Control your appearance, account, and exported data.</p></div></header>
       <div className="settings-layout">
-        <section className="settings-group"><div className="settings-title"><span><Moon size={19} /></span><div><h2>Appearance</h2><p>Remember follows your choice on every device.</p></div></div><div className="segmented" aria-label="Color theme"><button type="button" className={theme === "light" ? "active" : ""} onClick={() => onTheme("light")}><Sun size={16} /> Light</button><button type="button" className={theme === "dark" ? "active" : ""} onClick={() => onTheme("dark")}><Moon size={16} /> Dark</button></div></section>
-        <section className="settings-group"><div className="settings-title"><span><DownloadSimple size={19} /></span><div><h2>Your data</h2><p>Your library should outlive any app.</p></div></div><div className="export-actions"><button className="button secondary" type="button" onClick={() => download("md")}><BookOpen size={17} /> Export Markdown</button><button className="button secondary" type="button" onClick={() => download("json")}><Database size={17} /> Export JSON</button></div><div className="privacy-note"><ShieldCheck size={17} /><span><strong>Original sources are always preserved.</strong><small>Exports include your analyses, moments, connections, and source URLs.</small></span></div></section>
+        <section className="settings-group"><div className="settings-title"><span><Moon size={19} /></span><div><h2>Appearance</h2><p>Your choice is saved in this browser.</p></div></div><div className="segmented" aria-label="Color theme"><button type="button" className={theme === "light" ? "active" : ""} onClick={() => onTheme("light")}><Sun size={16} /> Light</button><button type="button" className={theme === "dark" ? "active" : ""} onClick={() => onTheme("dark")}><Moon size={16} /> Dark</button></div></section>
+        <section className="settings-group"><div className="settings-title"><span><DownloadSimple size={19} /></span><div><h2>Your data</h2><p>Your library should outlive any app.</p></div></div><div className="export-actions"><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("md")}><BookOpen size={17} /> {exporting === "md" ? "Preparing..." : "Export Markdown"}</button><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("json")}><Database size={17} /> {exporting === "json" ? "Preparing..." : "Export JSON"}</button></div>{exportError && <p className="field-error" role="alert"><Warning size={15} /> {exportError}</p>}<div className="privacy-note"><ShieldCheck size={17} /><span><strong>Your complete library is included.</strong><small>Exports contain analyses, moments, connections, and original source URLs.</small></span></div></section>
         {apiConfig.authMode === "token" && apiConfig.baseUrl && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/.test(apiConfig.baseUrl) && <section className="settings-group api-connection"><div className="settings-title"><span><Cloud size={19} /></span><div><h2>Private API connection</h2><p>Use a personal preview token for this browser only.</p></div></div><label className="token-field" htmlFor="api-token"><span>Bearer token</span><input id="api-token" type="password" value={apiToken} autoComplete="off" onChange={(event) => { setApiTokenValue(event.target.value); setApiToken(event.target.value); }} placeholder="Paste a private preview token" /></label><div className="privacy-note warning"><Warning size={17} /><span><strong>Private preview only.</strong><small>Browser tokens are not suitable for a public app. Add identity-provider authentication before launch.</small></span></div></section>}
         <section className="settings-group account"><div className="avatar">L</div><div><h2>Luke</h2><p>{session?.email || (apiConfig.authMode === "access" ? "Protected by Cloudflare Access" : "Local preview profile")}</p></div>{apiConfig.authMode === "access" ? <a className="button secondary" href="/cdn-cgi/access/logout">Sign out</a> : apiConfig.authMode === "password" ? <button className="button secondary" type="button" onClick={onSignOut}>Sign out</button> : <button className="button secondary" type="button" disabled aria-describedby="account-preview-note">Account sync coming soon</button>}{apiConfig.authMode === "token" && <span className="sr-only" id="account-preview-note">Account management is unavailable in this local preview.</span>}</section>
       </div>
@@ -478,15 +541,16 @@ function SettingsPage({ imprints, theme, onTheme, session, onSignOut }: { imprin
   );
 }
 
-function CaptureDialog({ open, imprints, onClose, onSaved }: { open: boolean; imprints: Imprint[]; onClose: () => void; onSaved: (imprint: Imprint) => void }) {
+function CaptureDialog({ open, imprints, onClose, onSaved }: { open: boolean; imprints: Imprint[]; onClose: () => void; onSaved: (imprint: Imprint) => Promise<"synced" | "local"> }) {
   const [url, setUrl] = useState("");
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [savedMode, setSavedMode] = useState<"synced" | "local" | null>(null);
+  const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
-  useEffect(() => { if (open) { setSaved(false); setError(""); window.setTimeout(() => inputRef.current?.focus(), 80); } }, [open]);
+  useEffect(() => { if (open) { setSavedMode(null); setSaving(false); setError(""); window.setTimeout(() => inputRef.current?.focus(), 80); } }, [open]);
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -502,23 +566,33 @@ function CaptureDialog({ open, imprints, onClose, onSaved }: { open: boolean; im
     document.addEventListener("keydown", onKey); return () => document.removeEventListener("keydown", onKey);
   }, [onClose, open]);
   if (!open) return null;
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     let parsed: URL;
-    try { parsed = new URL(url); if (!/^https?:$/.test(parsed.protocol)) throw new Error(); } catch { setError("Enter a complete public link, including https://"); return; }
+    try { parsed = new URL(url); if (parsed.protocol !== "https:") throw new Error(); } catch { setError("Enter a complete public link that starts with https://"); return; }
     const duplicate = imprints.find((item) => item.url === parsed.toString() || item.url === url);
     if (duplicate) { setError("You already saved this. Open it from your library instead."); return; }
     const normalizedHost = parsed.hostname.replace(/^www\./, "");
     const isYoutube = normalizedHost.includes("youtube.com") || normalizedHost.includes("youtu.be");
     const isTikTok = normalizedHost === "tiktok.com" || normalizedHost.endsWith(".tiktok.com");
-    onSaved({ id: crypto.randomUUID(), title: isYoutube ? "New YouTube Imprint" : isTikTok ? "New TikTok Imprint" : normalizedHost, creator: isTikTok ? "TikTok" : parsed.hostname, sourceType: isYoutube ? "YouTube" : "Article", url: parsed.toString(), savedAt: "Just now", lifePeriod: "Current chapter", essence: note || "Understanding what made this worth keeping.", summary: "This source is queued for analysis.", themes: [], keyIdeas: [], moments: [], personalReaction: note || undefined, status: "processing", color: "sage", connectionIds: [] });
-    setSaved(true); window.setTimeout(() => { setUrl(""); setNote(""); setNoteOpen(false); onClose(); }, 1150);
+    setSaving(true);
+    setError("");
+    const draft: Imprint = { id: crypto.randomUUID(), title: isYoutube ? "New YouTube Imprint" : isTikTok ? "New TikTok Imprint" : normalizedHost, creator: isTikTok ? "TikTok" : parsed.hostname, sourceType: isYoutube ? "YouTube" : "Article", url: parsed.toString(), savedAt: "Just now", lifePeriod: "Current chapter", essence: note || "Understanding what made this worth keeping.", summary: "This source is queued for analysis.", themes: [], keyIdeas: [], moments: [], personalReaction: note || undefined, status: "processing", color: "sage", connectionIds: [], analysisScope: "pending" };
+    try {
+      const mode = await onSaved(draft);
+      setSavedMode(mode);
+      window.setTimeout(() => { setUrl(""); setNote(""); setNoteOpen(false); onClose(); }, 1500);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "This link could not be saved. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={dialogRef} className="capture-dialog" role="dialog" aria-modal="true" aria-labelledby="capture-title">
         <IconButton label="Close" className="dialog-close" onClick={onClose}><X size={19} /></IconButton>
-        {saved ? <div className="capture-success" role="status"><span><Check size={26} weight="bold" /></span><h2>Saved to your memory</h2><p>You can leave now. Analysis will continue in the background.</p><ProcessingLine label="Creating your Imprint" /></div> : <><div className="capture-heading"><span className="capture-mark"><LinkSimple size={22} /></span><h2 id="capture-title">Save something</h2><p>Paste a link. No folders, tags, or setup.</p></div><form onSubmit={submit}><label htmlFor="capture-url">Link</label><div className={cx("url-input", error && "has-error")}><LinkSimple size={19} /><input ref={inputRef} id="capture-url" value={url} onChange={(event) => { setUrl(event.target.value); setError(""); }} placeholder="https://youtube.com/watch?v=..." inputMode="url" autoComplete="url" /></div>{error && <p className="field-error" role="alert"><Warning size={15} /> {error}</p>}{noteOpen ? <div className="note-field"><label htmlFor="capture-note">Why did this matter? <span>Optional</span></label><textarea id="capture-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="A sentence or a quick thought is enough." rows={3} /></div> : <button className="reaction-prompt" type="button" onClick={() => setNoteOpen(true)}><NotePencil size={18} /><span><strong>Add a personal reaction</strong><small>Optional. This makes future resurfacing more personal.</small></span><Plus size={16} /></button>}<button className="button primary full" type="submit" disabled={!url.trim()}>Save now <ArrowRight size={17} /></button><p className="save-note"><Cloud size={14} /> Saving is immediate. Processing happens afterward.</p></form></>}
+        {savedMode ? <div className="capture-success" role="status"><span><Check size={26} weight="bold" /></span><h2>{savedMode === "synced" ? "Saved to your memory" : "Saved on this device"}</h2><p>{savedMode === "synced" ? "Analysis is running in the background." : "Reconnect to upload it and begin analysis."}</p>{savedMode === "synced" && <ProcessingLine label="Creating your Imprint" />}</div> : <><div className="capture-heading"><span className="capture-mark"><LinkSimple size={22} /></span><h2 id="capture-title">Save something</h2><p>Paste a link. No folders, tags, or setup.</p></div><form onSubmit={(event) => void submit(event)}><label htmlFor="capture-url">Link</label><div className={cx("url-input", error && "has-error")}><LinkSimple size={19} /><input ref={inputRef} id="capture-url" value={url} disabled={saving} onChange={(event) => { setUrl(event.target.value); setError(""); }} placeholder="https://youtube.com/watch?v=..." inputMode="url" autoComplete="url" /></div>{error && <p className="field-error" role="alert"><Warning size={15} /> {error}</p>}{noteOpen ? <div className="note-field"><label htmlFor="capture-note">Why did this matter? <span>Optional</span></label><textarea id="capture-note" value={note} disabled={saving} onChange={(event) => setNote(event.target.value)} placeholder="A sentence or a quick thought is enough." rows={3} /></div> : <button className="reaction-prompt" type="button" disabled={saving} onClick={() => setNoteOpen(true)}><NotePencil size={18} /><span><strong>Add a personal reaction</strong><small>Optional. This makes future resurfacing more personal.</small></span><Plus size={16} /></button>}<button className="button primary full" type="submit" disabled={!url.trim() || saving}>{saving ? "Saving..." : <>Save now <ArrowRight size={17} /></>}</button><p className="save-note"><Cloud size={14} /> We confirm whether the link reached your private library.</p></form></>}
       </section>
     </div>
   );
@@ -527,7 +601,7 @@ function CaptureDialog({ open, imprints, onClose, onSaved }: { open: boolean; im
 function ConnectivityBanner() {
   const [offline, setOffline] = useState(() => !navigator.onLine);
   useEffect(() => { const update = () => setOffline(!navigator.onLine); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
-  return offline ? <div className="offline-banner" role="status"><WifiSlash size={16} /> You are offline. Saved changes will sync when you reconnect.</div> : null;
+  return offline ? <div className="offline-banner" role="status"><WifiSlash size={16} /> You are offline. New saves stay on this device until you reconnect.</div> : null;
 }
 
 export function App() {
@@ -541,6 +615,13 @@ export function App() {
   const [imprints, setImprints] = useState<Imprint[]>(apiConfig.baseUrl ? [] : fixtureImprints);
   const [resurfaced, setResurfaced] = useState<ResurfacedMemory | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => localStorage.getItem("remember-theme") === "light" ? "light" : "dark");
+  const replaceImprint = useCallback((item: Imprint) => {
+    setImprints((current) => [item, ...current.filter((entry) => entry.id !== item.id && entry.url !== item.url)]);
+  }, []);
+  const refreshLibrary = useCallback(async (signal?: AbortSignal) => {
+    const { items } = await loadImprints(signal);
+    setImprints(items);
+  }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("remember-theme", theme); }, [theme]);
   useEffect(() => {
     if (apiConfig.authMode !== "password") return;
@@ -555,9 +636,21 @@ export function App() {
   useEffect(() => {
     if (authStatus !== "authenticated") return;
     const controller = new AbortController();
-    loadImprints(controller.signal).then(({ items }) => setImprints(items)).catch(() => undefined);
+    refreshLibrary(controller.signal).catch(() => undefined);
     return () => controller.abort();
-  }, [authStatus]);
+  }, [authStatus, refreshLibrary]);
+  useEffect(() => {
+    if (authStatus !== "authenticated" || !apiConfig.baseUrl || !imprints.some((item) => item.status === "processing")) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible" && navigator.onLine) void refreshLibrary(); }, 4_000);
+    return () => window.clearInterval(timer);
+  }, [authStatus, imprints, refreshLibrary]);
+  useEffect(() => {
+    if (authStatus !== "authenticated") return;
+    const refresh = () => { if (navigator.onLine && document.visibilityState === "visible") void refreshLibrary(); };
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.removeEventListener("online", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [authStatus, refreshLibrary]);
   useEffect(() => {
     if (authStatus !== "authenticated") return;
     const controller = new AbortController();
@@ -567,7 +660,11 @@ export function App() {
   if (authStatus === "loading") return <AuthLoading />;
   if (authStatus === "anonymous") return <LoginPage onAuthenticated={(value) => { setSession(value); setAuthStatus("authenticated"); }} />;
   const navigate = (next: Page) => { setPage(next); setDetailId(null); window.location.hash = `/${next}`; window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const openDetail = (id: string) => { setDetailId(id); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const openDetail = (id: string) => {
+    setDetailId(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    void loadImprint(id).then(({ item }) => { if (item) replaceImprint(item); });
+  };
   const openCapture = () => { captureReturnRef.current = document.activeElement as HTMLElement | null; setCaptureOpen(true); };
   const closeCapture = () => { setCaptureOpen(false); window.setTimeout(() => captureReturnRef.current?.focus(), 0); };
   const activeImprint = detailId ? imprints.find((item) => item.id === detailId) : null;
@@ -582,14 +679,14 @@ export function App() {
       </aside>
       <header className="mobile-header" aria-hidden={captureOpen || undefined} inert={captureOpen}><button className="brand" type="button" onClick={() => navigate("home")}><AppMark /><span>Remember</span></button><IconButton label={theme === "light" ? "Use dark mode" : "Use light mode"} onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={19} /> : <Sun size={19} />}</IconButton></header>
       <main id="main-content" aria-hidden={captureOpen || undefined} inert={captureOpen}>
-        {activeImprint ? <DetailPage imprint={activeImprint} imprints={imprints} onBack={() => setDetailId(null)} onOpen={openDetail} /> : page === "home" ? <HomePage imprints={imprints} resurfaced={resurfaced} onOpen={openDetail} onCapture={openCapture} onNavigate={navigate} /> : page === "library" ? <LibraryPage imprints={imprints} onOpen={openDetail} onCapture={openCapture} /> : page === "ask" ? <AskPage imprints={imprints} onOpen={openDetail} /> : page === "evolution" ? <EvolutionPage onOpen={openDetail} /> : <SettingsPage imprints={imprints} theme={theme} onTheme={setTheme} session={session} onSignOut={() => { void logout().finally(() => { setSession(null); setImprints([]); setAuthStatus("anonymous"); }); }} />}
+        {activeImprint ? <DetailPage imprint={activeImprint} imprints={imprints} onBack={() => setDetailId(null)} onOpen={openDetail} onUpdate={replaceImprint} /> : page === "home" ? <HomePage imprints={imprints} resurfaced={resurfaced} onOpen={openDetail} onCapture={openCapture} onNavigate={navigate} /> : page === "library" ? <LibraryPage imprints={imprints} onOpen={openDetail} onCapture={openCapture} /> : page === "ask" ? <AskPage imprints={imprints} onOpen={openDetail} /> : page === "evolution" ? <EvolutionPage onOpen={openDetail} /> : <SettingsPage imprints={imprints} theme={theme} onTheme={setTheme} session={session} onSignOut={() => { void logout().finally(() => { setSession(null); setImprints([]); setAuthStatus("anonymous"); }); }} />}
       </main>
-      <nav className="bottom-nav" aria-label="Mobile navigation" aria-hidden={captureOpen || undefined} inert={captureOpen}>{navItems.map(({ page: itemPage, label, icon: Icon }) => <button className={cx(page === itemPage && !detailId && "active")} type="button" key={itemPage} onClick={() => navigate(itemPage)} aria-current={page === itemPage && !detailId ? "page" : undefined}><Icon size={21} weight={page === itemPage && !detailId ? "fill" : "regular"} /><span>{label}</span></button>)}</nav>
-      <CaptureDialog open={captureOpen} imprints={imprints} onClose={closeCapture} onSaved={(imprint) => {
-        setImprints((current) => [imprint, ...current]);
-        void saveImprint(imprint).then(({ item, synced }) => {
-          if (synced) setImprints((current) => [item, ...current.filter((entry) => entry.id !== imprint.id && entry.id !== item.id && entry.url !== item.url)]);
-        });
+      <nav className="bottom-nav" aria-label="Mobile navigation" aria-hidden={captureOpen || undefined} inert={captureOpen}>{mobileNavItems.map(({ page: itemPage, label, icon: Icon }) => <button className={cx(page === itemPage && !detailId && "active")} type="button" key={itemPage} onClick={() => navigate(itemPage)} aria-current={page === itemPage && !detailId ? "page" : undefined}><Icon size={21} weight={page === itemPage && !detailId ? "fill" : "regular"} /><span>{label}</span></button>)}</nav>
+      <CaptureDialog open={captureOpen} imprints={imprints} onClose={closeCapture} onSaved={async (imprint) => {
+        replaceImprint(imprint);
+        const { item, synced } = await saveImprint(imprint);
+        replaceImprint(item);
+        return synced ? "synced" : "local";
       }} />
     </div>
   );

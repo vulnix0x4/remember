@@ -32,6 +32,29 @@ function normalizedHost(hostname: string): string {
   return hostname.toLowerCase().replace(/\.$/, "");
 }
 
+function isNonPublicIpv4(host: string): boolean {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return false;
+  const octets = match.slice(1).map(Number);
+  if (octets.some((value) => value > 255)) return true;
+  const [first = 0, second = 0, third = 0] = octets;
+  return (
+    first === 0 ||
+    first === 10 ||
+    first === 127 ||
+    (first === 100 && second >= 64 && second <= 127) ||
+    (first === 169 && second === 254) ||
+    (first === 172 && second >= 16 && second <= 31) ||
+    (first === 192 && second === 0 && third === 0) ||
+    (first === 192 && second === 0 && third === 2) ||
+    (first === 192 && second === 168) ||
+    (first === 198 && (second === 18 || second === 19)) ||
+    (first === 198 && second === 51 && third === 100) ||
+    (first === 203 && second === 0 && third === 113) ||
+    first >= 224
+  );
+}
+
 function assertPublicWebUrl(url: URL): void {
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new UnsafeUrlError("Only HTTP and HTTPS URLs can be saved.");
@@ -43,17 +66,18 @@ function assertPublicWebUrl(url: URL): void {
 
   const host = normalizedHost(url.hostname);
   if (
+    !host ||
     host === "localhost" ||
     host.endsWith(".localhost") ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host.startsWith("127.") ||
-    host.startsWith("10.") ||
-    host.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    /^169\.254\./.test(host) ||
+    host.startsWith("[") ||
+    isNonPublicIpv4(host) ||
     host.endsWith(".local") ||
-    host.endsWith(".internal")
+    host.endsWith(".internal") ||
+    host.endsWith(".home") ||
+    host.endsWith(".lan") ||
+    host.endsWith(".test") ||
+    host.endsWith(".invalid") ||
+    host.endsWith(".onion")
   ) {
     throw new UnsafeUrlError("Private and local network URLs are not allowed.");
   }

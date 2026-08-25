@@ -30,6 +30,11 @@ export interface Imprint {
   status: ImprintStatus;
   color: string;
   connectionIds: string[];
+  analysisScope?: "transcript" | "caption" | "post" | "article" | "pending";
+  processingError?: string;
+  principleId?: string;
+  principleStatus?: "candidate" | "active" | "dismissed";
+  syncState?: "synced" | "local";
 }
 
 export interface AskMessage {
@@ -39,4 +44,5 @@ export interface AskMessage {
   citations?: { imprintId: string; label: string; seconds?: number; url?: string }[];
   grounded?: boolean;
   limitations?: string[];
+  threadId?: string;
 }
