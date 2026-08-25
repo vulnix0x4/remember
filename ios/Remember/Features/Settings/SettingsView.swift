@@ -41,7 +41,7 @@ struct SettingsView: View {
                     }
                     Section("About") {
                         LabeledContent("Version", value: versionLabel)
-                        Text("Remember what shaped you—and notice what it may be turning you into.")
+                        Text("Remember what shaped you and notice what it may be turning you into.")
                             .foregroundStyle(RememberDesign.secondaryText)
                     }
                 }
@@ -65,8 +65,8 @@ struct SettingsView: View {
     }
 
     private var versionLabel: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "Unknown"
         return "\(version) (\(build))"
     }
 

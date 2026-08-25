@@ -6,7 +6,7 @@ export const imprints: Imprint[] = [
     title: "Your worst years can shape your best life",
     creator: "The School of Life",
     sourceType: "YouTube",
-    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
     savedAt: "August 18, 2026",
     lifePeriod: "A season of rebuilding",
     duration: "14 min",

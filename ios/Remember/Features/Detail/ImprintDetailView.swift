@@ -22,7 +22,7 @@ struct ImprintDetailView: View {
                     } else {
                         ImprintIdeasSection(ideas: currentImprint.keyIdeas)
                         KeyMomentsSection(imprint: currentImprint)
-                        PrincipleSection(principles: currentImprint.candidatePrinciples, experiments: currentImprint.experiments)
+                        PrincipleSection(imprint: currentImprint)
                         PersonalMeaningSection(hypotheses: currentImprint.personalHypotheses, uncertainties: currentImprint.uncertainties)
                         ConnectionsSection(connections: currentImprint.connections)
                     }
@@ -39,6 +39,7 @@ struct ImprintDetailView: View {
                 Button("Open original", systemImage: "arrow.up.right.square", action: openOriginal)
             }
         }
+        .task(id: currentImprint.id) { await store.loadDetail(currentImprint) }
     }
 
     private func openOriginal() {

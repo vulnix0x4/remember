@@ -7,6 +7,7 @@ actor APIClient {
     private let youtubeTranscript: @Sendable (URL) async -> String?
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private var askThreadID: String?
 
     init(
         baseURL: URL,
@@ -39,18 +40,46 @@ actor APIClient {
     }
 
     func logout() async {
+        askThreadID = nil
         var request = URLRequest(url: baseURL.appending(path: "api/auth/logout"))
         request.httpMethod = "POST"
         request.timeoutInterval = 15
         _ = try? await session.data(for: request)
-        if let host = baseURL.host() {
-            HTTPCookieStorage.shared.cookies?.filter { $0.domain.contains(host) }.forEach(HTTPCookieStorage.shared.deleteCookie)
-        }
+        HTTPCookieStorage.shared.cookies(for: baseURL)?
+            .filter { $0.name == "remember_session" }
+            .forEach(HTTPCookieStorage.shared.deleteCookie)
     }
 
     func fetchImprints() async throws -> [Imprint] {
-        let response: APIItemListResponse = try await request(path: "api/items", method: "GET", body: Optional<Data>.none)
-        return try response.items.map(APIItemMapper.imprint)
+        var cursor: String?
+        var seenCursors = Set<String>()
+        var items: [Imprint] = []
+        repeat {
+            var components = URLComponents(url: baseURL.appending(path: "api/items"), resolvingAgainstBaseURL: false)
+            components?.queryItems = [URLQueryItem(name: "limit", value: "100")]
+            if let cursor { components?.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
+            guard let url = components?.url else { throw APIError.invalidResponse }
+            let response: APIItemListResponse = try await request(url: url, method: "GET", body: Optional<Data>.none)
+            items.append(contentsOf: try response.items.map { try APIItemMapper.imprint(from: $0) })
+            if let next = response.nextCursor {
+                guard seenCursors.insert(next).inserted else { throw APIError.invalidResponse }
+            }
+            cursor = response.nextCursor
+        } while cursor != nil
+        return items
+    }
+
+    func fetchImprint(id: UUID) async throws -> Imprint {
+        let response: APIItemDetailResponse = try await request(
+            path: "api/items/\(id.uuidString.lowercased())",
+            method: "GET",
+            body: Optional<Data>.none
+        )
+        return try APIItemMapper.imprint(
+            from: response.item,
+            connections: response.connections,
+            principle: response.principles.first(where: { $0.status != "retired" })
+        )
     }
 
     func fetchEvolution() async throws -> EvolutionOverview {
@@ -88,10 +117,22 @@ actor APIClient {
         return try APIItemMapper.imprint(from: response.item)
     }
 
+    func updatePrinciple(id: UUID, status: String) async throws {
+        struct Body: Encodable { let status: String }
+        struct Response: Decodable { let updated: Bool }
+        let body = try encoder.encode(Body(status: status))
+        let _: Response = try await request(
+            path: "api/principles/\(id.uuidString.lowercased())",
+            method: "PATCH",
+            body: body
+        )
+    }
+
     func ask(_ question: String) async throws -> AskAnswer {
-        struct Body: Encodable { let question: String }
-        let body = try encoder.encode(Body(question: question))
+        struct Body: Encodable { let question: String; let threadId: String? }
+        let body = try encoder.encode(Body(question: question, threadId: askThreadID))
         let response: APIAskResponse = try await request(path: "api/ask", method: "POST", body: body)
+        askThreadID = response.threadId
         let citations = try response.citations.map { citation in
             guard let itemID = UUID(uuidString: citation.itemId), let url = URLValidator.validatedWebURL(from: citation.url) else {
                 throw APIError.invalidResponse
@@ -102,7 +143,10 @@ actor APIClient {
     }
 
     private func request<Response: Decodable>(path: String, method: String, body: Data?, idempotencyKey: String? = nil) async throws -> Response {
-        let url = baseURL.appending(path: path)
+        try await request(url: baseURL.appending(path: path), method: method, body: body, idempotencyKey: idempotencyKey)
+    }
+
+    private func request<Response: Decodable>(url: URL, method: String, body: Data?, idempotencyKey: String? = nil) async throws -> Response {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body

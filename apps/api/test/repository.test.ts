@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ensureUser } from "../src/auth";
-import { Repository } from "../src/repository";
+import { encodeItemCursor, Repository } from "../src/repository";
 import { canonicalizeSourceUrl } from "@remember/domain";
 
 const userId = "10000000-0000-4000-8000-000000000001";
@@ -31,6 +31,25 @@ describe("Repository capture", () => {
     expect(first.row.status).toBe("pending");
     expect(duplicate.created).toBe(false);
     expect(duplicate.row.id).toBe(first.row.id);
+  });
+
+  it("paginates every item when save timestamps are identical", async () => {
+    const paginationUserId = "10000000-0000-4000-8000-000000000009";
+    await ensureUser(env.DB, paginationUserId);
+    const repository = new Repository(env.DB);
+    const savedAt = "2026-08-21T12:00:00.000Z";
+    await Promise.all([
+      repository.capture(paginationUserId, canonicalizeSourceUrl("https://example.com/page-a"), null, savedAt, null),
+      repository.capture(paginationUserId, canonicalizeSourceUrl("https://example.com/page-b"), null, savedAt, null),
+      repository.capture(paginationUserId, canonicalizeSourceUrl("https://example.com/page-c"), null, savedAt, null),
+    ]);
+
+    const firstPage = await repository.listItems(paginationUserId, 2, null, null);
+    const secondPage = await repository.listItems(paginationUserId, 2, encodeItemCursor(firstPage[1]!), null);
+
+    expect(firstPage).toHaveLength(2);
+    expect(secondPage).toHaveLength(1);
+    expect(new Set([...firstPage, ...secondPage].map((item) => item.id)).size).toBe(3);
   });
 
   it("rejects reuse of an idempotency key for another request", async () => {

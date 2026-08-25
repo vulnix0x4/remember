@@ -31,11 +31,7 @@ struct LoginView: View {
         Label {
             Text("Remember").font(.headline).bold()
         } icon: {
-            Image("AppIcon")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 38, height: 38)
-                .clipShape(.rect(cornerRadius: 11))
+            RememberMark()
         }
     }
 
@@ -50,7 +46,7 @@ struct LoginView: View {
                 .font(.largeTitle)
                 .bold()
                 .tracking(-1.4)
-            Text("Return to the ideas that mattered—and notice what they are becoming.")
+            Text("Return to the ideas that mattered and notice what they are becoming.")
                 .font(.body)
                 .foregroundStyle(RememberDesign.secondaryText)
                 .lineSpacing(4)

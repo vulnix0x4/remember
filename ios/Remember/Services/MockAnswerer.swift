@@ -4,7 +4,7 @@ enum MockAnswerer {
     static func answer(_ question: String, imprints: [Imprint]) -> AskAnswer {
         let text: String
         if question.localizedStandardContains("contradict") || question.localizedStandardContains("disagree") {
-            text = "Your saves hold a useful tension: one thread treats focus as deliberate exclusion, while another argues that an over-planned life loses its capacity for surprise. The pattern is not indecision—it is an attempt to find structure that still leaves room to notice."
+            text = "Your saves hold a useful tension: one thread treats focus as deliberate exclusion, while another argues that an over-planned life loses its capacity for surprise. The pattern is not indecision. It is an attempt to find structure that still leaves room to notice."
         } else if question.localizedStandardContains("success") || question.localizedStandardContains("believe") {
             text = "Based only on what you have saved, success seems less connected to approval and more connected to authorship: protecting attention, choosing your response, and building a direction that still leaves space for uncertainty. This is an interpretation, not a fact about you."
         } else {

@@ -33,5 +33,6 @@ struct APIItemDTO: Decodable, Sendable {
     let savedAt: String
     let personalReaction: String?
     let processingError: String?
+    let analysisScope: String?
     let analysis: Analysis?
 }

@@ -5,10 +5,12 @@ protocol ImprintRepository: Sendable {
     func login(email: String, password: String) async throws
     func logout() async
     func load() async throws -> [Imprint]
+    func loadDetail(_ imprint: Imprint) async throws -> Imprint
     func loadEvolution() async throws -> EvolutionOverview
     func loadResurfacedItemID() async throws -> UUID?
     func capture(_ url: URL) async throws -> Imprint
     func retry(_ imprint: Imprint) async throws -> Imprint
+    func updatePrinciple(id: UUID, status: String) async throws
     func ask(_ question: String) async throws -> AskAnswer
 }
 
@@ -40,6 +42,14 @@ actor LiveImprintRepository: ImprintRepository {
             return try await client.fetchImprints()
         } catch where usesMockFallback {
             return FixtureLibrary.imprints
+        }
+    }
+
+    func loadDetail(_ imprint: Imprint) async throws -> Imprint {
+        do {
+            return try await client.fetchImprint(id: imprint.id)
+        } catch where usesMockFallback {
+            return imprint
         }
     }
 
@@ -101,6 +111,11 @@ actor LiveImprintRepository: ImprintRepository {
                 reaction: imprint.reaction
             )
         }
+    }
+
+    func updatePrinciple(id: UUID, status: String) async throws {
+        if usesMockFallback { return }
+        try await client.updatePrinciple(id: id, status: status)
     }
 
     func ask(_ question: String) async throws -> AskAnswer {

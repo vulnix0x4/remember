@@ -70,7 +70,18 @@ export class IngestionWorkflow extends WorkflowEntrypoint<Env, ProcessingInput> 
       return { itemId: item.id, status: "ready" };
     } catch (error) {
       console.error(JSON.stringify({ message: "ingestion workflow failed", itemId: input.itemId, error: safeErrorMessage(error) }));
-      await new Repository(this.env.DB).markFailed(input.itemId, publicProcessingError(error));
+      try {
+        await step.do("record processing failure", async () => {
+          await new Repository(this.env.DB).markFailed(input.itemId, publicProcessingError(error));
+          return { failed: true };
+        });
+      } catch (failureWriteError) {
+        console.error(JSON.stringify({
+          message: "ingestion failure state could not be recorded",
+          itemId: input.itemId,
+          error: safeErrorMessage(failureWriteError),
+        }));
+      }
       throw error;
     }
   }

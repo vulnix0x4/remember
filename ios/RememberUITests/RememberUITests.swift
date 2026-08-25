@@ -20,7 +20,7 @@ final class RememberUITests: XCTestCase {
         field.tap()
         field.typeText("not-a-link")
         app.buttons["Save now"].tap()
-        XCTAssertTrue(app.staticTexts["Enter a complete http or https link."].exists)
+        XCTAssertTrue(app.staticTexts["Enter a complete https link."].exists)
     }
 
     func testSignedOutOwnerSeesPrivateArchiveLogin() throws {

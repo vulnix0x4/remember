@@ -7,9 +7,9 @@ struct TensionsView: View {
     var body: some View {
         if tensions.isEmpty {
             ContentUnavailableView(
-                "No supported tension yet",
+                "No possible tension yet",
                 systemImage: "arrow.left.arrow.right",
-                description: Text("Remember will show a tension only after two analyzed sources contain meaningfully opposing claims.")
+                description: Text("Remember suggests a tension when two analyzed sources appear to pull in different directions. You decide whether the comparison is useful.")
             )
         } else {
             VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {

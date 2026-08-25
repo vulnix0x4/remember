@@ -103,6 +103,22 @@ describe("HTTP API", () => {
     const session = await app.request("https://remember.example.com/api/session", { headers: { cookie: cookie.split(";")[0] ?? "" } }, passwordEnv);
     expect(session.status).toBe(200);
     expect(await session.json()).toMatchObject({ user: { mode: "password", email: "owner@remember.test" } });
+
+    const logout = await app.request("https://remember.example.com/api/auth/logout", {
+      method: "POST",
+      headers: { cookie: cookie.split(";")[0] ?? "", origin: "https://remember.example.com" },
+    }, passwordEnv);
+    expect(logout.status).toBe(204);
+    const revoked = await app.request("https://remember.example.com/api/session", { headers: { cookie: cookie.split(";")[0] ?? "" } }, passwordEnv);
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toEqual({ user: null });
+  });
+
+  it("sets browser security headers on API responses", async () => {
+    const response = await request("/api/items", { headers: { "x-dev-user-id": userId } });
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(response.headers.get("permissions-policy")).toContain("camera=()");
+    expect(response.headers.get("strict-transport-security")).toContain("max-age=");
   });
 
   it("rejects invalid credentials with a generic response", async () => {

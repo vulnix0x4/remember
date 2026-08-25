@@ -12,7 +12,7 @@ enum LibraryExporter {
             let text = imprints.map { imprint in
                 let ideas = bullets(imprint.keyIdeas)
                 let moments = imprint.moments.map { moment in
-                    "- [\(moment.timestamp)](\(timestampURL(for: imprint.url, seconds: moment.seconds).absoluteString)) — **\(moment.title)**: \(moment.detail)"
+                    "- [\(moment.timestamp)](\(timestampURL(for: imprint.url, seconds: moment.seconds).absoluteString)): **\(moment.title)**: \(moment.detail)"
                 }.joined(separator: "\n")
                 let connections = imprint.connections.map { connection in
                     "- `\(connection.type.rawValue)` → \(connection.title) (`\(connection.itemID.uuidString)`): \(connection.explanation)"
@@ -53,9 +53,9 @@ enum LibraryExporter {
                 ## Actionable experiments
                 \(bullets(imprint.experiments))
 
-                ## Personal relevance hypotheses
-                AI interpretations are hypotheses, not facts about the user.
-                \(bullets(imprint.personalHypotheses.map { "Hypothesis: \($0)" }))
+                ## Possible personal relevance
+                These are possibilities, not facts about the user.
+                \(bullets(imprint.personalHypotheses))
 
                 ## Uncertainties
                 \(bullets(imprint.uncertainties))

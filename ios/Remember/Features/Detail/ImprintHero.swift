@@ -28,6 +28,12 @@ struct ImprintHero: View {
                 .bold()
                 .tracking(0.9)
                 .foregroundStyle(RememberDesign.accent)
+            if let scope = imprint.analysisScopeLabel {
+                Label(scope, systemImage: "checkmark.shield")
+                    .font(.caption)
+                    .bold()
+                    .foregroundStyle(RememberDesign.accent)
+            }
             Text(imprint.title)
                 .font(.largeTitle)
                 .bold()

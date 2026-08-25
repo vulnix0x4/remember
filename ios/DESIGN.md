@@ -1,6 +1,6 @@
 # iOS design rationale
 
-Remember is designed as a quiet personal archive rather than a productivity dashboard. The interface uses editorial type hierarchy, warm adaptive backgrounds, restrained terracotta accents, and native system depth. Content—not chrome—owns the screen.
+Remember is designed as a quiet personal archive rather than a productivity dashboard. The interface uses editorial type hierarchy, warm adaptive backgrounds, restrained terracotta accents, and native system depth. Content, not chrome, owns the screen.
 
 ## System
 

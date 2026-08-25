@@ -2,18 +2,15 @@ import Foundation
 import Testing
 
 struct ColorContrastTests {
-    @Test func semanticTextTokensMeetWCAGAAInBothAppearances() {
-        let lightBackground = luminance(red: 0.98, green: 0.96, blue: 0.92)
-        let darkBackground = luminance(red: 0.075, green: 0.07, blue: 0.065)
-        let lightSecondary = luminance(red: 0.373, green: 0.357, blue: 0.341)
-        let darkSecondary = luminance(red: 0.780, green: 0.769, blue: 0.761)
-        let lightAccent = luminance(red: 0.478, green: 0.247, blue: 0.196)
-        let darkAccent = luminance(red: 0.871, green: 0.651, blue: 0.604)
+    @Test func productionDarkThemeTextTokensMeetWCAGAA() {
+        let canvas = luminance(red: 0.027, green: 0.047, blue: 0.035)
+        let secondaryText = luminance(red: 0.62, green: 0.68, blue: 0.64)
+        let accent = luminance(red: 0.64, green: 0.82, blue: 0.70)
+        let accentInk = luminance(red: 0.035, green: 0.10, blue: 0.064)
 
-        #expect(contrast(lightBackground, lightSecondary) >= 4.5)
-        #expect(contrast(darkBackground, darkSecondary) >= 4.5)
-        #expect(contrast(lightBackground, lightAccent) >= 4.5)
-        #expect(contrast(darkBackground, darkAccent) >= 4.5)
+        #expect(contrast(canvas, secondaryText) >= 4.5)
+        #expect(contrast(canvas, accent) >= 4.5)
+        #expect(contrast(accent, accentInk) >= 4.5)
     }
 
     private func luminance(red: Double, green: Double, blue: Double) -> Double {

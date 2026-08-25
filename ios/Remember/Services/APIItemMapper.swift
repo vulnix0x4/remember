@@ -1,7 +1,11 @@
 import Foundation
 
 enum APIItemMapper {
-    static func imprint(from dto: APIItemDTO) throws -> Imprint {
+    static func imprint(
+        from dto: APIItemDTO,
+        connections: [APIItemDetailResponse.ConnectionDTO] = [],
+        principle: APIItemDetailResponse.PrincipleDTO? = nil
+    ) throws -> Imprint {
         guard let id = UUID(uuidString: dto.id) else { throw APIError.invalidResponse }
         guard let url = URL(string: dto.canonicalUrl.isEmpty ? dto.originalUrl : dto.canonicalUrl),
               URLValidator.validatedWebURL(from: url.absoluteString) != nil else { throw APIError.invalidResponse }
@@ -13,6 +17,22 @@ enum APIItemMapper {
         var uncertainties = analysis?.uncertainties.map(\.text) ?? []
         if state == .failed {
             uncertainties.append(failureMessage(for: dto.processingError))
+        }
+
+        let currentID = id
+        let mappedConnections = try connections.map { connection -> Connection in
+            guard let connectionID = UUID(uuidString: connection.id),
+                  let fromID = UUID(uuidString: connection.fromItemId),
+                  let toID = UUID(uuidString: connection.toItemId),
+                  let type = ConnectionType(rawValue: connection.type) else { throw APIError.invalidResponse }
+            let relatedID = fromID == currentID ? toID : fromID
+            return Connection(
+                id: connectionID,
+                itemID: relatedID,
+                type: type,
+                title: connection.relatedTitle ?? "Connected source",
+                explanation: connection.explanation
+            )
         }
 
         return Imprint(
@@ -36,9 +56,12 @@ enum APIItemMapper {
             experiments: analysis?.actionableExperiments.map(\.text) ?? [],
             personalHypotheses: analysis?.personalRelevanceHypotheses.map(\.text) ?? [],
             uncertainties: uncertainties,
-            connections: [],
+            connections: mappedConnections,
             state: state,
-            reaction: dto.personalReaction
+            reaction: dto.personalReaction,
+            principleID: principle.flatMap { UUID(uuidString: $0.id) },
+            principleStatus: principle?.status,
+            analysisScope: dto.analysisScope
         )
     }
 
@@ -54,7 +77,7 @@ enum APIItemMapper {
     private static func failureMessage(for processingError: String?) -> String {
         let normalized = processingError?.lowercased() ?? ""
         if normalized.contains("timeout") || normalized.contains("timed out") || normalized.contains("aborted") {
-            return "Analysis took longer than expected. Your source is saved safely—try again."
+            return "Analysis took longer than expected. Your source is saved safely. Try again."
         }
         if normalized.contains("no readable captions") {
             return "This video has no readable captions, so Remember cannot analyze it faithfully yet."
@@ -65,6 +88,6 @@ enum APIItemMapper {
         if normalized.contains("no readable public text") {
             return "This page has no readable public text, so Remember cannot analyze it faithfully yet."
         }
-        return "Remember couldn’t finish analyzing this source. Your link is saved safely—try again."
+        return "Remember couldn’t finish analyzing this source. Your link is saved safely. Try again."
     }
 }

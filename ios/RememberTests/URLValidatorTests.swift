@@ -8,6 +8,7 @@ struct URLValidatorTests {
 
     @Test func rejectsUnsafeAndIncompleteURLs() {
         #expect(URLValidator.validatedWebURL(from: "javascript:alert(1)") == nil)
+        #expect(URLValidator.validatedWebURL(from: "http://example.com/insecure") == nil)
         #expect(URLValidator.validatedWebURL(from: "youtube.com/video") == nil)
     }
 }

@@ -7,7 +7,7 @@ struct LibraryView: View {
 
     private var filteredImprints: [Imprint] {
         store.imprints.filter { imprint in
-            let matchesFilter = filter == .all || imprint.state.rawValue == filter.rawValue
+            let matchesFilter = filter.matches(imprint.state)
             let matchesSearch = searchText.isEmpty || [imprint.title, imprint.essence, imprint.themes.joined(separator: " ")]
                 .contains(where: { $0.localizedStandardContains(searchText) })
             return matchesFilter && matchesSearch
@@ -32,6 +32,12 @@ struct LibraryView: View {
                     Group {
                         if !searchText.isEmpty && filteredImprints.isEmpty {
                             ContentUnavailableView.search
+                        } else if !store.imprints.isEmpty && filteredImprints.isEmpty {
+                            ContentUnavailableView(
+                                "No \(filter.rawValue.lowercased()) items",
+                                systemImage: "line.3.horizontal.decrease.circle",
+                                description: Text("Choose another status to see more of your library.")
+                            )
                         } else if store.imprints.isEmpty && !store.isLoading {
                             ContentUnavailableView("Nothing saved yet", systemImage: "books.vertical", description: Text("Save a link to begin your personal archive."))
                         } else {

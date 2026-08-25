@@ -129,7 +129,7 @@ Coverage includes URL safety, authentication and ownership, capture/deduplicatio
 - Interpretations about the user are labeled as hypotheses, never facts.
 - Ask does not use the open web; it cites only user-owned saved material.
 - Generic links are saved as bookmarks unless a trustworthy source adapter can extract usable text.
-- Secrets belong in Worker secret storage, Keychain, or ignored local files—never source control.
+- Secrets belong in Worker secret storage, Keychain, or ignored local files, never source control.
 
 ## Contributing
 

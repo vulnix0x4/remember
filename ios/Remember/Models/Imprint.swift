@@ -22,6 +22,9 @@ struct Imprint: Identifiable, Codable, Hashable, Sendable {
     let connections: [Connection]
     let state: ProcessingState
     let reaction: String?
+    var principleID: UUID? = nil
+    var principleStatus: String? = nil
+    var analysisScope: String? = nil
 
     var isVideoSource: Bool {
         sourceType == .youtube
@@ -33,6 +36,17 @@ struct Imprint: Identifiable, Codable, Hashable, Sendable {
         if isTikTokSource { return "TikTok" }
         guard ["x.com", "twitter.com"].contains(normalizedSourceHost) else { return sourceType.label }
         return isVideoSource ? "X video" : "X post"
+    }
+
+    var analysisScopeLabel: String? {
+        guard state == .ready else { return nil }
+        return switch analysisScope {
+        case "transcript": "Transcript analyzed"
+        case "caption": "Caption analyzed"
+        case "post": "Post text analyzed"
+        case "article": "Article analyzed"
+        default: nil
+        }
     }
 
     private var isTikTokSource: Bool {
