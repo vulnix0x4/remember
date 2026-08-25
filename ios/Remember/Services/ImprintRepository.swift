@@ -75,7 +75,7 @@ actor LiveImprintRepository: ImprintRepository {
 
     func retry(_ imprint: Imprint) async throws -> Imprint {
         do {
-            return try await client.retry(itemID: imprint.id)
+            return try await client.retry(itemID: imprint.id, sourceURL: imprint.url)
         } catch where usesMockFallback {
             return Imprint(
                 id: imprint.id,

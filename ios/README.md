@@ -31,3 +31,5 @@ For a signed device build, copy `Local.xcconfig.example` to `Local.xcconfig`, pr
 Both targets use the `REMEMBER_APP_GROUP` build setting, which defaults to `group.com.example.remember.shared`. Before a signed device build, create your chosen App Group in the Apple Developer portal for both bundle identifiers. The extension immediately queues an `http` or `https` URL; the app imports queued links whenever it becomes active.
 
 No source audiovisual content is downloaded or stored. Timestamp actions open the original URL.
+
+For YouTube saves, the iPhone requests timestamped public captions using only the public video ID and sends the text through the authenticated Remember API. New caption jobs are retried briefly on the phone before the backend takes over. Personal account data and saved reactions are never sent to the caption service.
