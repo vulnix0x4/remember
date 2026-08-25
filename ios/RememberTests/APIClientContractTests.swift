@@ -37,7 +37,8 @@ struct APIClientContractTests {
 
     @Test func captureEnvelopeMapsAndUsesRemoteBearerAuth() async throws {
         URLProtocolStub.store.configure(data: Data(Self.captureJSON.utf8), statusCode: 202)
-        let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token")
+        let transcript = "[0:01] A grounded opening."
+        let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token", youtubeTranscript: transcript)
         let sourceURL = try #require(URL(string: "https://youtube.com/watch?v=abc"))
         let item = try await client.capture(url: sourceURL)
         #expect(item.state == .processing)
@@ -48,6 +49,7 @@ struct APIClientContractTests {
         let body = try #require(URLProtocolStub.store.lastBody())
         let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
         #expect(json["url"] == sourceURL.absoluteString)
+        #expect(json["sourceText"] == transcript)
     }
 
     @Test func tikTokItemIsPresentedAsAPlayableTikTokSource() async throws {
@@ -64,16 +66,21 @@ struct APIClientContractTests {
 
     @Test func retryUsesTheItemRecoveryEndpoint() async throws {
         URLProtocolStub.store.configure(data: Data(Self.retryJSON.utf8), statusCode: 202)
-        let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token")
+        let transcript = "[0:02] The retry is source grounded."
+        let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token", youtubeTranscript: transcript)
         let itemID = try #require(UUID(uuidString: "20000000-0000-4000-8000-000000000002"))
 
-        let item = try await client.retry(itemID: itemID)
+        let sourceURL = try #require(URL(string: "https://youtu.be/abcdefghijk"))
+        let item = try await client.retry(itemID: itemID, sourceURL: sourceURL)
 
         #expect(item.state == .processing)
         let request = try #require(URLProtocolStub.store.lastRequest())
         #expect(request.url?.path == "/api/items/20000000-0000-4000-8000-000000000002/retry")
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer test-token")
+        let body = try #require(URLProtocolStub.store.lastBody())
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
+        #expect(json["sourceText"] == transcript)
     }
 
     @Test func failedTimeoutIsMappedToOneHelpfulRecoveryMessage() async throws {
@@ -132,11 +139,16 @@ struct APIClientContractTests {
         #expect(request.url?.path == "/api/resurfacing/today")
     }
 
-    private func makeClient(baseURL: String, bearerToken: String? = nil) throws -> APIClient {
+    private func makeClient(baseURL: String, bearerToken: String? = nil, youtubeTranscript: String? = nil) throws -> APIClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [URLProtocolStub.self]
         let url = try #require(URL(string: baseURL))
-        return APIClient(baseURL: url, session: URLSession(configuration: configuration), credentials: APICredentials(bearerToken: bearerToken))
+        return APIClient(
+            baseURL: url,
+            session: URLSession(configuration: configuration),
+            credentials: APICredentials(bearerToken: bearerToken),
+            youtubeTranscript: { _ in youtubeTranscript }
+        )
     }
 
     private static let listJSON = #"""

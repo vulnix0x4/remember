@@ -4,13 +4,22 @@ actor APIClient {
     private let baseURL: URL
     private let session: URLSession
     private let credentials: APICredentials
+    private let youtubeTranscript: @Sendable (URL) async -> String?
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    init(baseURL: URL, session: URLSession = .shared, credentials: APICredentials = APICredentials(bearerToken: nil)) {
+    init(
+        baseURL: URL,
+        session: URLSession = .shared,
+        credentials: APICredentials = APICredentials(bearerToken: nil),
+        youtubeTranscript: (@Sendable (URL) async -> String?)? = nil
+    ) {
         self.baseURL = baseURL
         self.session = session
         self.credentials = credentials
+        self.youtubeTranscript = youtubeTranscript ?? { url in
+            await YouTubeTranscriptClient(session: session).transcript(for: url)
+        }
         decoder.dateDecodingStrategy = .iso8601
         encoder.dateEncodingStrategy = .iso8601
     }
@@ -60,17 +69,21 @@ actor APIClient {
     }
 
     func capture(url: URL) async throws -> Imprint {
-        struct Body: Encodable { let url: String }
-        let body = try encoder.encode(Body(url: url.absoluteString))
+        struct Body: Encodable { let url: String; let sourceText: String? }
+        let sourceText = await youtubeTranscript(url)
+        let body = try encoder.encode(Body(url: url.absoluteString, sourceText: sourceText))
         let response: APICaptureResponse = try await request(path: "api/items", method: "POST", body: body, idempotencyKey: UUID().uuidString)
         return try APIItemMapper.imprint(from: response.item)
     }
 
-    func retry(itemID: UUID) async throws -> Imprint {
+    func retry(itemID: UUID, sourceURL: URL) async throws -> Imprint {
+        struct Body: Encodable { let sourceText: String? }
+        let sourceText = await youtubeTranscript(sourceURL)
+        let body = try encoder.encode(Body(sourceText: sourceText))
         let response: APIRetryResponse = try await request(
             path: "api/items/\(itemID.uuidString.lowercased())/retry",
             method: "POST",
-            body: Optional<Data>.none
+            body: body
         )
         return try APIItemMapper.imprint(from: response.item)
     }
