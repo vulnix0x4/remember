@@ -24,6 +24,11 @@ struct AskView: View {
                                         .foregroundStyle(RememberDesign.secondaryText)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
+                                if let title = model.failureTitle, let message = model.failureMessage {
+                                    AskFailureView(title: title, message: message) {
+                                        Task { await model.retry(using: store) }
+                                    }
+                                }
                             }
                             .padding(RememberDesign.spacing)
                         }

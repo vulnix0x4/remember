@@ -114,6 +114,7 @@ struct APIClientContractTests {
         let request = try #require(URLProtocolStub.store.lastRequest())
         #expect(request.url?.path == "/api/ask")
         #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer test-token")
+        #expect(request.timeoutInterval == 45)
     }
 
     @Test func evolutionMapsOnlyServerSupportedFacts() async throws {

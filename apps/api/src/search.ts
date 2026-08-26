@@ -13,6 +13,7 @@ const groundedSynthesisSchema = z.object({
   citationIndices: z.array(z.number().int().min(1).max(8)).max(5),
   limitations: z.array(z.string().trim().min(1).max(500)).max(4).default([]),
 });
+export const ASK_SYNTHESIS_TIMEOUT_MS = 20_000;
 
 function ftsExpression(query: string): string {
   const tokens = query.toLocaleLowerCase("en-US").match(/[\p{L}\p{N}]{2,}/gu)?.slice(0, 12) ?? [];
@@ -205,7 +206,7 @@ export class SearchService {
         temperature: 0.2,
         max_tokens: 1_500,
       }),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(ASK_SYNTHESIS_TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`OpenRouter Ask failed (${response.status}).`);
     const content = openRouterResponseSchema.parse(await response.json()).choices[0]?.message.content;

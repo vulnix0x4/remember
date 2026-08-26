@@ -16,7 +16,7 @@ apps/api/worker-configuration.d.ts
 !.env.production.example
 *.xcuserstate
 xcuserdata/
-DerivedData/
+DerivedData*/
 .DS_Store
 *.log
 playwright-report/
