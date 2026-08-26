@@ -131,7 +131,12 @@ actor APIClient {
     func ask(_ question: String) async throws -> AskAnswer {
         struct Body: Encodable { let question: String; let threadId: String? }
         let body = try encoder.encode(Body(question: question, threadId: askThreadID))
-        let response: APIAskResponse = try await request(path: "api/ask", method: "POST", body: body)
+        let response: APIAskResponse = try await request(
+            path: "api/ask",
+            method: "POST",
+            body: body,
+            timeout: 45
+        )
         askThreadID = response.threadId
         let citations = try response.citations.map { citation in
             guard let itemID = UUID(uuidString: citation.itemId), let url = URLValidator.validatedWebURL(from: citation.url) else {
@@ -142,15 +147,33 @@ actor APIClient {
         return AskAnswer(text: response.answer, citations: citations, grounded: response.grounded, limitations: response.limitations)
     }
 
-    private func request<Response: Decodable>(path: String, method: String, body: Data?, idempotencyKey: String? = nil) async throws -> Response {
-        try await request(url: baseURL.appending(path: path), method: method, body: body, idempotencyKey: idempotencyKey)
+    private func request<Response: Decodable>(
+        path: String,
+        method: String,
+        body: Data?,
+        idempotencyKey: String? = nil,
+        timeout: TimeInterval = 15
+    ) async throws -> Response {
+        try await request(
+            url: baseURL.appending(path: path),
+            method: method,
+            body: body,
+            idempotencyKey: idempotencyKey,
+            timeout: timeout
+        )
     }
 
-    private func request<Response: Decodable>(url: URL, method: String, body: Data?, idempotencyKey: String? = nil) async throws -> Response {
+    private func request<Response: Decodable>(
+        url: URL,
+        method: String,
+        body: Data?,
+        idempotencyKey: String? = nil,
+        timeout: TimeInterval = 15
+    ) async throws -> Response {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.httpBody = body
-        request.timeoutInterval = 15
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         for (name, value) in credentials.headers(for: baseURL) { request.setValue(value, forHTTPHeaderField: name) }
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }

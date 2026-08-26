@@ -160,14 +160,8 @@ final class AppStore {
         }
     }
 
-    func answer(_ question: String) async -> AskAnswer? {
-        do {
-            return try await repository.ask(question)
-        } catch {
-            errorMessage = error.localizedDescription
-            errorIsPresented = true
-            return nil
-        }
+    func answer(_ question: String) async throws -> AskAnswer {
+        try await repository.ask(question)
     }
 
     func refreshAfterActivation() async {
