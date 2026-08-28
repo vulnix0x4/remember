@@ -160,7 +160,7 @@ async function fetchXMedia(url: URL, fetcher: typeof fetch): Promise<z.infer<typ
   endpoint.searchParams.set("token", xSyndicationToken(postID));
   try {
     const response = await fetcher(endpoint, {
-      headers: { Accept: "application/json", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
+      headers: { Accept: "application/json", "User-Agent": "Remember/1.0" },
       redirect: "manual",
       signal: AbortSignal.timeout(12_000),
     });
@@ -189,7 +189,7 @@ async function fetchPublicHtml(initialUrl: URL, fetcher: typeof fetch): Promise<
       headers: {
         Accept: "text/html,application/xhtml+xml,text/plain;q=0.8",
         "Accept-Language": "en-US,en;q=0.8",
-        "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)",
+        "User-Agent": "Remember/1.0",
       },
       redirect: "manual",
       signal: AbortSignal.timeout(15_000),
@@ -295,7 +295,7 @@ async function fetchNativeYouTubeTranscript(source: CanonicalSourceUrl, fetcher:
   }
   captionsUrl.searchParams.set("fmt", "json3");
   const captionsResponse = await fetcher(captionsUrl, {
-    headers: { Accept: "application/json", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
+    headers: { Accept: "application/json", "User-Agent": "Remember/1.0" },
     redirect: "manual",
     signal: AbortSignal.timeout(12_000),
   });
@@ -317,7 +317,7 @@ async function fetchYouTubeTranscript(source: CanonicalSourceUrl, fetcher: typeo
     }
     const endpoint = new URL(`https://youtube-transcript.ai/transcript/${source.externalId}.txt`);
     const response = await fetcher(endpoint, {
-      headers: { Accept: "text/markdown", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
+      headers: { Accept: "text/markdown", "User-Agent": "Remember/1.0" },
       redirect: "follow",
       signal: AbortSignal.timeout(50_000),
     });
@@ -396,7 +396,7 @@ export class WebSourceAdapter implements SourceAdapter {
       const endpoint = new URL("https://www.tiktok.com/oembed");
       endpoint.searchParams.set("url", sourceUrl.toString());
       const response = await this.fetcher(endpoint, {
-        headers: { Accept: "application/json", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
+        headers: { Accept: "application/json", "User-Agent": "Remember/1.0" },
         redirect: "manual",
         signal: AbortSignal.timeout(12_000),
       });
@@ -428,7 +428,7 @@ export class WebSourceAdapter implements SourceAdapter {
       endpoint.searchParams.set("dnt", "true");
       const [response, media] = await Promise.all([
         this.fetcher(endpoint, {
-          headers: { Accept: "application/json", "User-Agent": "Remember/1.0 (+https://memory.whattheflip.lol)" },
+          headers: { Accept: "application/json", "User-Agent": "Remember/1.0" },
           redirect: "manual",
           signal: AbortSignal.timeout(12_000),
         }),

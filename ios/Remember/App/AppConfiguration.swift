@@ -16,10 +16,11 @@ enum AppConfiguration {
            let configuredURL = URL(string: value) {
             return configuredURL
         }
-        guard let url = URL(string: "https://memory.whattheflip.lol") else {
-            fatalError("The production API URL is invalid.")
+        if let value = Bundle.main.object(forInfoDictionaryKey: "RememberAPIURL") as? String,
+           let configuredURL = URL(string: value) {
+            return configuredURL
         }
-        return url
+        fatalError("Set REMEMBER_API_URL in the environment or build configuration.")
     }
 
     static var apiCredentials: APICredentials {
