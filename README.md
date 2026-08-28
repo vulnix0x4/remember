@@ -17,7 +17,7 @@ Remember is a private, self-hostable memory for the sources that influence you. 
 
 The product is dark-first, responsive, accessible, and available as a web app/PWA, Chromium extension, and native SwiftUI iPhone app with a Share Extension.
 
-> The hosted instance at [memory.whattheflip.lol](https://memory.whattheflip.lol) is an owner-only deployment, not a public demo. Clone this repository to run your own archive.
+> There is no public hosted demo. Clone this repository to run your own archive.
 
 ## What it does
 

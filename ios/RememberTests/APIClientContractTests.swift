@@ -5,7 +5,7 @@ import Testing
 struct APIClientContractTests {
     @Test func passwordLoginUsesTheProductionSessionContract() async throws {
         URLProtocolStub.store.configure(data: Data(Self.sessionJSON.utf8))
-        let client = try makeClient(baseURL: "https://memory.whattheflip.lol")
+        let client = try makeClient(baseURL: "https://remember.example.test")
 
         try await client.login(email: "owner@example.com", password: "private-password")
 
@@ -54,7 +54,7 @@ struct APIClientContractTests {
 
     @Test func tikTokItemIsPresentedAsAPlayableTikTokSource() async throws {
         URLProtocolStub.store.configure(data: Data(Self.tikTokListJSON.utf8))
-        let client = try makeClient(baseURL: "https://memory.whattheflip.lol")
+        let client = try makeClient(baseURL: "https://remember.example.test")
 
         let item = try #require(try await client.fetchImprints().first)
 
