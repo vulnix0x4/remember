@@ -140,6 +140,39 @@ struct APIClientContractTests {
         #expect(request.url?.path == "/api/resurfacing/today")
     }
 
+    @Test func lifeSnapshotDecodesTheUnifiedPrivateDashboard() async throws {
+        URLProtocolStub.store.configure(data: Data(Self.lifeJSON.utf8))
+        let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token")
+
+        let snapshot = try await client.fetchLifeSnapshot()
+
+        #expect(snapshot.activeTask?.title == "Open the project")
+        #expect(snapshot.goals.first?.area == .direction)
+        #expect(snapshot.floor.first?.completionDates.count == 1)
+        #expect(snapshot.events.first?.title == "Flight")
+        #expect(snapshot.health.first?.type == "steps")
+        let request = try #require(URLProtocolStub.store.lastRequest())
+        #expect(request.url?.path == "/api/life")
+        #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer test-token")
+    }
+
+    @Test func vaultUploadUsesAuthenticatedMultipartData() async throws {
+        URLProtocolStub.store.configure(data: Data(Self.fileJSON.utf8), statusCode: 201)
+        let client = try makeClient(baseURL: "https://preview.remember.test", bearerToken: "test-token")
+
+        let file = try await client.uploadVaultFile(data: Data("private plan".utf8), name: "plan.txt", mimeType: "text/plain")
+
+        #expect(file.name == "plan.txt")
+        let request = try #require(URLProtocolStub.store.lastRequest())
+        #expect(request.url?.path == "/api/life/files")
+        #expect(request.value(forHTTPHeaderField: "authorization") == "Bearer test-token")
+        #expect(request.value(forHTTPHeaderField: "content-type")?.hasPrefix("multipart/form-data; boundary=") == true)
+        let bodyData = try #require(URLProtocolStub.store.lastBody())
+        let body = try #require(String(data: bodyData, encoding: .utf8))
+        #expect(body.contains("filename=\"plan.txt\""))
+        #expect(body.contains("private plan"))
+    }
+
     private func makeClient(baseURL: String, bearerToken: String? = nil, youtubeTranscript: String? = nil) throws -> APIClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [URLProtocolStub.self]
@@ -182,5 +215,13 @@ struct APIClientContractTests {
 
     private static let evolutionJSON = #"""
     {"themes":[{"name":"Discipline","count":2,"lastSeenAt":"2026-08-22T12:00:00Z"}],"principles":[{"id":"principle-1","itemId":"20000000-0000-4000-8000-000000000001","text":"Use what you already have.","rationale":"Supported by the source.","status":"candidate","createdAt":"2026-08-22T12:00:00Z"}],"tensions":[],"timeline":[{"month":"2026-08","theme":"Discipline","count":2}]}
+    """#
+
+    private static let lifeJSON = #"""
+    {"goals":[{"id":"10000000-0000-4000-8000-000000000001","title":"Ship Remember","area":"direction","vision":"","why":"Make life coherent","status":"active","progress":25,"targetDate":null,"createdAt":"2026-08-31T12:00:00.123Z","updatedAt":"2026-08-31T12:00:00.123Z"}],"tasks":[{"id":"10000000-0000-4000-8000-000000000002","goalId":"10000000-0000-4000-8000-000000000001","title":"Open the project","firstStep":"Open Xcode","notes":"","area":"work","status":"active","priority":"high","energy":"any","durationMinutes":15,"dueAt":null,"scheduledStart":null,"scheduledEnd":null,"source":"goal","completedAt":null,"createdAt":"2026-08-31T12:00:00.123Z","updatedAt":"2026-08-31T12:00:00.123Z"}],"blockers":[],"floor":[{"id":"10000000-0000-4000-8000-000000000003","title":"Take medication","area":"health","target":1,"unit":"time","completionDates":["2026-08-31T12:00:00.123Z"],"createdAt":"2026-08-31T12:00:00.123Z","updatedAt":"2026-08-31T12:00:00.123Z"}],"events":[{"id":"10000000-0000-4000-8000-000000000004","externalId":"flight-1","source":"apple","calendarName":"Personal","title":"Flight","notes":"","location":"LAS","url":null,"startAt":"2026-08-31T15:00:00.123Z","endAt":"2026-08-31T17:00:00.123Z","allDay":false,"status":"confirmed","createdAt":"2026-08-31T12:00:00.123Z","updatedAt":"2026-08-31T12:00:00.123Z"}],"health":[{"id":"10000000-0000-4000-8000-000000000005","externalId":"steps-1","type":"steps","value":7500,"unit":"count","startAt":"2026-08-31T00:00:00.123Z","endAt":"2026-08-31T12:00:00.123Z","source":"Apple Watch","metadata":{"bundleIdentifier":"com.apple.health"},"createdAt":"2026-08-31T12:00:00.123Z"}],"accounts":[],"transactions":[],"files":[]}
+    """#
+
+    private static let fileJSON = #"""
+    {"file":{"id":"10000000-0000-4000-8000-000000000006","name":"plan.txt","mimeType":"text/plain","sizeBytes":12,"folder":"","tags":[],"summary":"","createdAt":"2026-08-31T12:00:00Z","updatedAt":"2026-08-31T12:00:00Z"}}
     """#
 }

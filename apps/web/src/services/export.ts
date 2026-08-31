@@ -1,4 +1,5 @@
 import type { Imprint } from "../types";
+import type { LifeSnapshot } from "../life/types";
 
 function momentUrl(imprint: Imprint, seconds: number): string {
   if (imprint.sourceType !== "YouTube") return imprint.url;
@@ -12,12 +13,12 @@ function section(title: string, values: Array<string | undefined>): string {
   return content.length ? `## ${title}\n\n${content.join("\n")}` : "";
 }
 
-export function exportImprintsJson(imprints: Imprint[]): string {
-  return JSON.stringify({ formatVersion: 1, exportedAt: new Date().toISOString(), imprints }, null, 2);
+export function exportImprintsJson(imprints: Imprint[], life?: LifeSnapshot): string {
+  return JSON.stringify({ formatVersion: 2, exportedAt: new Date().toISOString(), imprints, life }, null, 2);
 }
 
-export function exportImprintsMarkdown(imprints: Imprint[]): string {
-  return imprints.map((item) => [
+export function exportImprintsMarkdown(imprints: Imprint[], life?: LifeSnapshot): string {
+  const memories = imprints.map((item) => [
     `# ${item.title}`,
     [
       `- Status: ${item.status}`,
@@ -39,4 +40,6 @@ export function exportImprintsMarkdown(imprints: Imprint[]): string {
     section("Uncertainty", item.uncertainty ? [item.uncertainty] : []),
     section("Connections", item.connectionIds.map((id) => `- ${id}`)),
   ].filter(Boolean).join("\n\n")).join("\n\n---\n\n");
+  if (!life) return memories;
+  return `${memories}\n\n---\n\n# Personal Life OS data\n\nVault file contents are downloaded separately; their private metadata is included below.\n\n\`\`\`json\n${JSON.stringify(life, null, 2)}\n\`\`\``;
 }

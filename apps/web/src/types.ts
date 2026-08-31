@@ -1,4 +1,4 @@
-export type Page = "home" | "library" | "ask" | "evolution" | "settings";
+export type Page = "home" | "tasks" | "goals" | "calendar" | "health" | "money" | "files" | "library" | "ask" | "evolution" | "settings";
 export type ImprintStatus = "ready" | "processing" | "partial" | "failed";
 
 export interface Moment {

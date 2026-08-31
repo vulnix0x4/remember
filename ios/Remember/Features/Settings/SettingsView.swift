@@ -20,8 +20,8 @@ struct SettingsView: View {
                 Form {
                     Section("Account") {
                         LabeledContent("Sync", value: "Private cloud")
-                        LabeledContent("Library", value: CountLabelFormatter.text(store.imprints.count, singular: "imprint"))
-                        Text("Your iPhone and web archive stay in sync.")
+                        LabeledContent("Knowledge", value: CountLabelFormatter.text(store.imprints.count, singular: "imprint"))
+                        Text("Your iPhone and web Personal Life OS stay in sync.")
                             .font(.footnote)
                             .foregroundStyle(RememberDesign.secondaryText)
                         Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
@@ -32,16 +32,17 @@ struct SettingsView: View {
                         Picker("Export format", selection: $exportFormat) {
                             ForEach(ExportFormat.allCases) { Text($0.rawValue.capitalized).tag($0) }
                         }
-                        Button("Export entire library", systemImage: "square.and.arrow.up", action: prepareExport)
+                        Button("Export my data", systemImage: "square.and.arrow.up", action: prepareExport)
                     }
                     Section("Privacy") {
                         Label("Personal-relevance guesses are labeled as hypotheses", systemImage: "checkmark.shield")
                         Label("Original links are preserved", systemImage: "link")
                         Label("Ask answers cite only your saved sources", systemImage: "lock")
+                        Label("Health and Calendar access is permission-controlled", systemImage: "heart.text.square")
                     }
                     Section("About") {
                         LabeledContent("Version", value: versionLabel)
-                        Text("Remember what shaped you and notice what it may be turning you into.")
+                        Text("Remember, decide, act, and reset—with your life back in view.")
                             .foregroundStyle(RememberDesign.secondaryText)
                     }
                 }
@@ -72,7 +73,7 @@ struct SettingsView: View {
 
     private func prepareExport() {
         do {
-            exportDocument = ExportDocument(data: try LibraryExporter.data(for: store.imprints, format: exportFormat))
+            exportDocument = ExportDocument(data: try LibraryExporter.data(for: store.imprints, life: store.lifeSnapshot, format: exportFormat))
             exportIsPresented = true
         } catch {
             exportError = error.localizedDescription

@@ -6,11 +6,13 @@ struct RememberApp: App {
     @State private var store: AppStore
 
     init() {
+        let client = APIClient(baseURL: AppConfiguration.apiURL, credentials: AppConfiguration.apiCredentials)
         let repository = LiveImprintRepository(
-            client: APIClient(baseURL: AppConfiguration.apiURL, credentials: AppConfiguration.apiCredentials),
+            client: client,
             usesMockFallback: AppConfiguration.usesMockFallback
         )
-        _store = State(initialValue: AppStore(repository: repository, selectedTab: AppConfiguration.initialTab))
+        let lifeRepository = LiveLifeOSRepository(client: client, usesMockFallback: AppConfiguration.usesMockFallback)
+        _store = State(initialValue: AppStore(repository: repository, lifeRepository: lifeRepository, selectedTab: AppConfiguration.initialTab))
     }
 
     var body: some Scene {

@@ -7,6 +7,7 @@ import {
   BookOpen,
   Books,
   Brain,
+  CalendarBlank,
   CaretDown,
   CaretRight,
   ChatCircleDots,
@@ -15,10 +16,13 @@ import {
   Cloud,
   Database,
   DownloadSimple,
+  FolderOpen,
   GearSix,
   Headphones,
+  Heartbeat,
   House,
   LinkSimple,
+  ListChecks,
   LockKey,
   MagnifyingGlass,
   NotePencil,
@@ -32,9 +36,11 @@ import {
   SlidersHorizontal,
   Sparkle,
   Sun,
+  Target,
   TreeStructure,
   Warning,
   WifiSlash,
+  Wallet,
   X,
   YoutubeLogo,
 } from "@phosphor-icons/react";
@@ -42,21 +48,38 @@ import { imprints as fixtureImprints, suggestedQuestions, themeData } from "./fi
 import { apiConfig, askLibrary, downloadLibraryExport, getApiToken, loadEvolution, loadImprint, loadImprints, loadResurfacedMemory, loadSession, login, logout, respondToResurfacing, retryImprint, saveImprint, searchImprints, setApiToken, updatePrinciple, type AppSession, type EvolutionOverview, type ResurfacedMemory } from "./services/api";
 import { exportImprintsJson, exportImprintsMarkdown } from "./services/export";
 import type { AskMessage, Imprint, Page } from "./types";
+import { CalendarPage, FilesPage, GoalsPage, HealthPage, LifeOverview, MoneyPage, TasksPage } from "./life/LifeOS";
+import { useLifeOS, type LifeOSController } from "./life/useLifeOS";
 
 const navItems: { page: Page; label: string; icon: typeof House }[] = [
   { page: "home", label: "Today", icon: House },
+  { page: "tasks", label: "Tasks", icon: ListChecks },
+  { page: "goals", label: "Goals", icon: Target },
+  { page: "calendar", label: "Calendar", icon: CalendarBlank },
+  { page: "health", label: "Health", icon: Heartbeat },
+  { page: "money", label: "Money", icon: Wallet },
+  { page: "files", label: "Files", icon: FolderOpen },
   { page: "library", label: "Library", icon: Books },
   { page: "ask", label: "Ask", icon: ChatCircleDots },
   { page: "evolution", label: "Evolution", icon: TreeStructure },
 ];
 
 const mobileNavItems: { page: Page; label: string; icon: typeof House }[] = [
-  ...navItems,
+  { page: "home", label: "Today", icon: House },
+  { page: "tasks", label: "Tasks", icon: ListChecks },
+  { page: "calendar", label: "Calendar", icon: CalendarBlank },
+  { page: "library", label: "Memory", icon: Books },
   { page: "settings", label: "Settings", icon: GearSix },
 ];
 
 const pageTitles: Record<Page, string> = {
   home: "Today",
+  tasks: "Tasks",
+  goals: "Goals",
+  calendar: "Calendar",
+  health: "Health",
+  money: "Money",
+  files: "Files",
   library: "Your library",
   ask: "Ask your memory",
   evolution: "Your evolution",
@@ -143,16 +166,16 @@ function LoginPage({ onAuthenticated }: { onAuthenticated: (session: AppSession)
       <section className="login-story" aria-label="About Remember">
         <button className="brand login-brand" type="button" aria-label="Remember"><AppMark /><span>Remember</span></button>
         <div className="login-story-copy">
-          <p className="login-eyebrow"><Sparkle size={15} weight="fill" /> A private place for what stays with you</p>
-          <h1>Your memory,<br /><em>made visible.</em></h1>
-          <p>Save the things that change how you think. Remember finds the ideas, connections, and questions worth returning to.</p>
+          <p className="login-eyebrow"><Sparkle size={15} weight="fill" /> Your private Personal Life OS</p>
+          <h1>Your life,<br /><em>back in view.</em></h1>
+          <p>Knowledge, goals, one next move, calendar, health, money, and files—connected without turning your life into a feed.</p>
         </div>
         <p className="login-trust"><ShieldCheck size={17} /> Private by design. Your sources remain yours.</p>
       </section>
       <section className="login-panel">
         <form className="login-card page-enter" onSubmit={submit}>
           <span className="login-lock"><LockKey size={22} weight="duotone" /></span>
-          <div><p className="login-kicker">Welcome back</p><h2>Enter your memory</h2><p className="login-intro">Sign in to continue to your personal space.</p></div>
+          <div><p className="login-kicker">Welcome back</p><h2>Enter Remember</h2><p className="login-intro">Sign in to continue to your private operating system.</p></div>
           <label htmlFor="login-email"><span>Email</span><input id="login-email" type="email" value={email} autoComplete="username" required onChange={(event) => { setEmail(event.target.value); setError(""); }} placeholder="you@example.com" /></label>
           <label htmlFor="login-password"><span>Password</span><input id="login-password" type="password" value={password} autoComplete="current-password" required onChange={(event) => { setPassword(event.target.value); setError(""); }} placeholder="Your password" /></label>
           {error && <p className="login-error" role="alert"><Warning size={16} /> {error}</p>}
@@ -270,7 +293,7 @@ function ResurfacedFeature({ imprint, onOpen, onReact }: { imprint: Imprint; onO
   );
 }
 
-function HomePage({ imprints, resurfaced, onOpen, onCapture, onNavigate }: { imprints: Imprint[]; resurfaced: ResurfacedMemory | null; onOpen: (id: string) => void; onCapture: () => void; onNavigate: (p: Page) => void }) {
+function HomePage({ imprints, resurfaced, onOpen, onCapture, onNavigate, life }: { imprints: Imprint[]; resurfaced: ResurfacedMemory | null; onOpen: (id: string) => void; onCapture: () => void; onNavigate: (p: Page) => void; life: LifeOSController }) {
   const surfaced = resurfaced ? imprints.find((item) => item.id === resurfaced.itemId) : undefined;
   const recent = imprints.filter((item) => item.id !== surfaced?.id).slice(0, 3);
   return (
@@ -279,6 +302,7 @@ function HomePage({ imprints, resurfaced, onOpen, onCapture, onNavigate }: { imp
         <div><p className="date-label">{todayLabel()}</p><h1>Your memory.</h1><p>{surfaced ? "Here is an older idea worth revisiting." : "Recent saves stay close until they are old enough to resurface."}</p></div>
         <button className="button primary desktop-action" type="button" onClick={onCapture}><Plus size={18} weight="bold" /> Save something</button>
       </header>
+      <LifeOverview life={life} onNavigate={onNavigate} />
       {surfaced && resurfaced ? <ResurfacedFeature imprint={surfaced} onOpen={onOpen} onReact={(reaction) => respondToResurfacing(resurfaced.eventId, reaction === "still" ? "still_true" : reaction === "changed" ? "changed_mind" : "not_sure")} /> : imprints.length === 0 ? <EmptyState onCapture={onCapture} /> : <div className="partial-state" role="status"><Clock size={20} /><span><strong>Nothing old enough to resurface yet</strong><small>A Ready item becomes eligible after it has been saved for at least seven days.</small></span></div>}
       {recent.length > 0 && <section className="recent-section" aria-labelledby="recent-title">
         <div className="section-heading-row"><div><h2 id="recent-title">Recently saved</h2><p>New ideas are still settling into place.</p></div><button className="text-button" type="button" onClick={() => onNavigate("library")}>View library <ArrowRight size={16} /></button></div>
@@ -505,7 +529,7 @@ function EvolutionPage({ onOpen }: { onOpen: (id: string) => void }) {
   );
 }
 
-function SettingsPage({ imprints, theme, onTheme, session, onSignOut }: { imprints: Imprint[]; theme: "light" | "dark"; onTheme: (theme: "light" | "dark") => void; session: AppSession | null; onSignOut: () => void }) {
+function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut }: { imprints: Imprint[]; life: LifeOSController; theme: "light" | "dark"; onTheme: (theme: "light" | "dark") => void; session: AppSession | null; onSignOut: () => void }) {
   const [apiToken, setApiTokenValue] = useState(() => getApiToken());
   const [exporting, setExporting] = useState<"json" | "md" | null>(null);
   const [exportError, setExportError] = useState("");
@@ -515,7 +539,7 @@ function SettingsPage({ imprints, theme, onTheme, session, onSignOut }: { imprin
     try {
       const content = apiConfig.baseUrl
         ? await downloadLibraryExport(format === "json" ? "json" : "markdown")
-        : new Blob([format === "json" ? exportImprintsJson(imprints) : exportImprintsMarkdown(imprints)], { type: format === "json" ? "application/json" : "text/markdown" });
+        : new Blob([format === "json" ? exportImprintsJson(imprints, life.snapshot) : exportImprintsMarkdown(imprints, life.snapshot)], { type: format === "json" ? "application/json" : "text/markdown" });
       const url = URL.createObjectURL(content);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -533,7 +557,7 @@ function SettingsPage({ imprints, theme, onTheme, session, onSignOut }: { imprin
       <header className="page-heading"><div><h1>Settings</h1><p>Control your appearance, account, and exported data.</p></div></header>
       <div className="settings-layout">
         <section className="settings-group"><div className="settings-title"><span><Moon size={19} /></span><div><h2>Appearance</h2><p>Your choice is saved in this browser.</p></div></div><div className="segmented" aria-label="Color theme"><button type="button" className={theme === "light" ? "active" : ""} onClick={() => onTheme("light")}><Sun size={16} /> Light</button><button type="button" className={theme === "dark" ? "active" : ""} onClick={() => onTheme("dark")}><Moon size={16} /> Dark</button></div></section>
-        <section className="settings-group"><div className="settings-title"><span><DownloadSimple size={19} /></span><div><h2>Your data</h2><p>Your library should outlive any app.</p></div></div><div className="export-actions"><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("md")}><BookOpen size={17} /> {exporting === "md" ? "Preparing..." : "Export Markdown"}</button><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("json")}><Database size={17} /> {exporting === "json" ? "Preparing..." : "Export JSON"}</button></div>{exportError && <p className="field-error" role="alert"><Warning size={15} /> {exportError}</p>}<div className="privacy-note"><ShieldCheck size={17} /><span><strong>Your complete library is included.</strong><small>Exports contain analyses, moments, connections, and original source URLs.</small></span></div></section>
+        <section className="settings-group"><div className="settings-title"><span><DownloadSimple size={19} /></span><div><h2>Your data</h2><p>Your life should outlive any app.</p></div></div><div className="export-actions"><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("md")}><BookOpen size={17} /> {exporting === "md" ? "Preparing..." : "Export Markdown"}</button><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("json")}><Database size={17} /> {exporting === "json" ? "Preparing..." : "Export JSON"}</button></div>{exportError && <p className="field-error" role="alert"><Warning size={15} /> {exportError}</p>}<div className="privacy-note"><ShieldCheck size={17} /><span><strong>Your knowledge and Life OS records are included.</strong><small>Exports contain analyses, goals, tasks, calendar, health, finance, and vault metadata. Download vault file contents separately.</small></span></div></section>
         {apiConfig.authMode === "token" && apiConfig.baseUrl && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/.test(apiConfig.baseUrl) && <section className="settings-group api-connection"><div className="settings-title"><span><Cloud size={19} /></span><div><h2>Private API connection</h2><p>Use a personal preview token for this browser only.</p></div></div><label className="token-field" htmlFor="api-token"><span>Bearer token</span><input id="api-token" type="password" value={apiToken} autoComplete="off" onChange={(event) => { setApiTokenValue(event.target.value); setApiToken(event.target.value); }} placeholder="Paste a private preview token" /></label><div className="privacy-note warning"><Warning size={17} /><span><strong>Private preview only.</strong><small>Browser tokens are not suitable for a public app. Add identity-provider authentication before launch.</small></span></div></section>}
         <section className="settings-group account"><div className="avatar">L</div><div><h2>Luke</h2><p>{session?.email || (apiConfig.authMode === "access" ? "Protected by Cloudflare Access" : "Local preview profile")}</p></div>{apiConfig.authMode === "access" ? <a className="button secondary" href="/cdn-cgi/access/logout">Sign out</a> : apiConfig.authMode === "password" ? <button className="button secondary" type="button" onClick={onSignOut}>Sign out</button> : <button className="button secondary" type="button" disabled aria-describedby="account-preview-note">Account sync coming soon</button>}{apiConfig.authMode === "token" && <span className="sr-only" id="account-preview-note">Account management is unavailable in this local preview.</span>}</section>
       </div>
@@ -615,6 +639,7 @@ export function App() {
   const [imprints, setImprints] = useState<Imprint[]>(apiConfig.baseUrl ? [] : fixtureImprints);
   const [resurfaced, setResurfaced] = useState<ResurfacedMemory | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">(() => localStorage.getItem("remember-theme") === "light" ? "light" : "dark");
+  const life = useLifeOS();
   const replaceImprint = useCallback((item: Imprint) => {
     setImprints((current) => [item, ...current.filter((entry) => entry.id !== item.id && entry.url !== item.url)]);
   }, []);
@@ -668,6 +693,19 @@ export function App() {
   const openCapture = () => { captureReturnRef.current = document.activeElement as HTMLElement | null; setCaptureOpen(true); };
   const closeCapture = () => { setCaptureOpen(false); window.setTimeout(() => captureReturnRef.current?.focus(), 0); };
   const activeImprint = detailId ? imprints.find((item) => item.id === detailId) : null;
+  const pageContent = activeImprint
+    ? <DetailPage imprint={activeImprint} imprints={imprints} onBack={() => setDetailId(null)} onOpen={openDetail} onUpdate={replaceImprint} />
+    : page === "home" ? <HomePage imprints={imprints} resurfaced={resurfaced} onOpen={openDetail} onCapture={openCapture} onNavigate={navigate} life={life} />
+    : page === "tasks" ? <TasksPage life={life} />
+    : page === "goals" ? <GoalsPage life={life} />
+    : page === "calendar" ? <CalendarPage life={life} />
+    : page === "health" ? <HealthPage life={life} />
+    : page === "money" ? <MoneyPage life={life} />
+    : page === "files" ? <FilesPage life={life} />
+    : page === "library" ? <LibraryPage imprints={imprints} onOpen={openDetail} onCapture={openCapture} />
+    : page === "ask" ? <AskPage imprints={imprints} onOpen={openDetail} />
+    : page === "evolution" ? <EvolutionPage onOpen={openDetail} />
+    : <SettingsPage imprints={imprints} life={life} theme={theme} onTheme={setTheme} session={session} onSignOut={() => { void logout().finally(() => { setSession(null); setImprints([]); setAuthStatus("anonymous"); }); }} />;
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to content</a>
@@ -679,7 +717,7 @@ export function App() {
       </aside>
       <header className="mobile-header" aria-hidden={captureOpen || undefined} inert={captureOpen}><button className="brand" type="button" onClick={() => navigate("home")}><AppMark /><span>Remember</span></button><IconButton label={theme === "light" ? "Use dark mode" : "Use light mode"} onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? <Moon size={19} /> : <Sun size={19} />}</IconButton></header>
       <main id="main-content" aria-hidden={captureOpen || undefined} inert={captureOpen}>
-        {activeImprint ? <DetailPage imprint={activeImprint} imprints={imprints} onBack={() => setDetailId(null)} onOpen={openDetail} onUpdate={replaceImprint} /> : page === "home" ? <HomePage imprints={imprints} resurfaced={resurfaced} onOpen={openDetail} onCapture={openCapture} onNavigate={navigate} /> : page === "library" ? <LibraryPage imprints={imprints} onOpen={openDetail} onCapture={openCapture} /> : page === "ask" ? <AskPage imprints={imprints} onOpen={openDetail} /> : page === "evolution" ? <EvolutionPage onOpen={openDetail} /> : <SettingsPage imprints={imprints} theme={theme} onTheme={setTheme} session={session} onSignOut={() => { void logout().finally(() => { setSession(null); setImprints([]); setAuthStatus("anonymous"); }); }} />}
+        {pageContent}
       </main>
       <nav className="bottom-nav" aria-label="Mobile navigation" aria-hidden={captureOpen || undefined} inert={captureOpen}>{mobileNavItems.map(({ page: itemPage, label, icon: Icon }) => <button className={cx(page === itemPage && !detailId && "active")} type="button" key={itemPage} onClick={() => navigate(itemPage)} aria-current={page === itemPage && !detailId ? "page" : undefined}><Icon size={21} weight={page === itemPage && !detailId ? "fill" : "regular"} /><span>{label}</span></button>)}</nav>
       <CaptureDialog open={captureOpen} imprints={imprints} onClose={closeCapture} onSaved={async (imprint) => {

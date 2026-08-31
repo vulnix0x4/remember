@@ -10,6 +10,7 @@ struct HomeView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
                         HomeWelcomeHeader(saveAction: showCapture)
+                        LifeDashboardSection()
                         if let resurfaced = store.resurfaced {
                             NavigationLink(value: resurfaced) {
                                 ResurfacedCard(imprint: resurfaced)

@@ -139,4 +139,87 @@ describe("HTTP API", () => {
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: { code: "invalid_credentials", message: "The email or password is incorrect." } });
   });
+
+  it("runs the Reset task loop with one active move and blocker recovery", async () => {
+    const lifeUser = "50000000-0000-4000-8000-000000000005";
+    const headers = { "content-type": "application/json", "x-dev-user-id": lifeUser };
+    const firstResponse = await request("/api/life/tasks", {
+      method: "POST", headers,
+      body: JSON.stringify({ title: "Build the first screen", firstStep: "Open the project", area: "work", status: "queued", priority: "high", durationMinutes: 30 }),
+    });
+    expect(firstResponse.status).toBe(201);
+    const first = await firstResponse.json() as { task: { id: string; status: string } };
+    expect(first.task.status).toBe("active");
+
+    const secondResponse = await request("/api/life/tasks", {
+      method: "POST", headers,
+      body: JSON.stringify({ title: "Send it to one person", firstStep: "Open Messages", area: "work", status: "queued", priority: "normal", durationMinutes: 10 }),
+    });
+    const second = await secondResponse.json() as { task: { id: string; status: string } };
+    expect(second.task.status).toBe("queued");
+
+    const blockedResponse = await request(`/api/life/tasks/${first.task.id}/block`, {
+      method: "POST", headers, body: JSON.stringify({ reason: "big" }),
+    });
+    expect(blockedResponse.status).toBe(200);
+    expect(await blockedResponse.json()).toMatchObject({ task: { durationMinutes: 5, status: "active" } });
+
+    const completedResponse = await request(`/api/life/tasks/${first.task.id}/complete`, {
+      method: "POST", headers, body: JSON.stringify({ minutesSpent: 4 }),
+    });
+    expect(completedResponse.status).toBe(200);
+    expect(await completedResponse.json()).toMatchObject({ task: { status: "done" }, next: { id: second.task.id, status: "active" } });
+
+    const floorResponse = await request("/api/life/floor", {
+      method: "POST", headers, body: JSON.stringify({ title: "Take medication", area: "health", target: 1, unit: "time" }),
+    });
+    expect(floorResponse.status).toBe(201);
+    const floor = await floorResponse.json() as { item: { id: string } };
+    const floorDate = "2026-08-31T12:00:00.000Z";
+    expect((await request(`/api/life/floor/${floor.item.id}/toggle`, { method: "POST", headers, body: JSON.stringify({ date: floorDate }) })).status).toBe(200);
+
+    const snapshot = await request("/api/life", { headers: { "x-dev-user-id": lifeUser } });
+    expect(snapshot.status).toBe(200);
+    const body = await snapshot.json() as { tasks: Array<{ id: string; status: string }>; blockers: Array<{ reason: string }> };
+    expect(body.tasks.find((task) => task.status === "active")).toMatchObject({ id: second.task.id });
+    expect(body.blockers).toContainEqual(expect.objectContaining({ reason: "big" }));
+    const floorItem = (body as typeof body & { floor: Array<{ completionDates: string[] }> }).floor[0];
+    if (!floorItem) throw new Error("Life Floor item missing from snapshot.");
+    expect(floorItem.completionDates).toEqual([floorDate]);
+  });
+
+  it("syncs calendar, health, and finance data into one private snapshot", async () => {
+    const lifeUser = "60000000-0000-4000-8000-000000000006";
+    const headers = { "content-type": "application/json", "x-dev-user-id": lifeUser };
+    const startAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    const endAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    expect((await request("/api/life/calendar/sync", { method: "POST", headers, body: JSON.stringify({ events: [{ externalId: "apple-event-1", source: "apple", calendarName: "Personal", title: "Flight", notes: "", location: "LAS", url: null, startAt, endAt, allDay: false, status: "confirmed" }] }) })).status).toBe(200);
+    expect((await request("/api/life/health/sync", { method: "POST", headers, body: JSON.stringify({ metrics: [{ externalId: "steps-1", type: "steps", value: 7_500, unit: "count", startAt, endAt, source: "Apple Health", metadata: {} }] }) })).status).toBe(200);
+    const accountResponse = await request("/api/life/finance/accounts/sync", { method: "POST", headers, body: JSON.stringify({ accounts: [{ externalId: "checking-1", name: "Checking", institution: "Bank", type: "checking", balance: 1250, currency: "USD", source: "provider", lastSyncedAt: startAt }] }) });
+    expect(accountResponse.status).toBe(200);
+    const accountBody = await accountResponse.json() as { accounts: Array<{ id: string }> };
+    const syncedAccount = accountBody.accounts[0];
+    if (!syncedAccount) throw new Error("Synced account missing from response.");
+    expect((await request("/api/life/finance/transactions/sync", { method: "POST", headers, body: JSON.stringify({ transactions: [{ accountId: syncedAccount.id, externalId: "transaction-1", name: "Groceries", merchant: "Market", amount: -42.5, currency: "USD", category: "Food", occurredAt: startAt, status: "posted", notes: "" }] }) })).status).toBe(200);
+    const snapshot = await request("/api/life", { headers: { "x-dev-user-id": lifeUser } });
+    expect(await snapshot.json()).toMatchObject({ events: [{ title: "Flight" }], health: [{ type: "steps", value: 7_500 }], accounts: [{ name: "Checking", balance: 1250 }], transactions: [{ accountId: syncedAccount.id, amount: -42.5 }] });
+  });
+
+  it("uploads and downloads a private vault file", async () => {
+    const lifeUser = "70000000-0000-4000-8000-000000000007";
+    const form = new FormData();
+    form.set("file", new File(["private plan"], "plan.txt", { type: "text/plain" }));
+    form.set("tags", "plan,private");
+    const upload = await request("/api/life/files", { method: "POST", headers: { "x-dev-user-id": lifeUser }, body: form });
+    expect(upload.status).toBe(201);
+    const payload = await upload.json() as { file: { id: string; name: string; tags: string[] } };
+    expect(payload.file).toMatchObject({ name: "plan.txt", tags: ["plan", "private"] });
+    const download = await request(`/api/life/files/${payload.file.id}/download`, { headers: { "x-dev-user-id": lifeUser } });
+    expect(download.status).toBe(200);
+    expect(await download.text()).toBe("private plan");
+    const otherUser = "71000000-0000-4000-8000-000000000007";
+    expect((await request(`/api/life/files/${payload.file.id}/download`, { headers: { "x-dev-user-id": otherUser } })).status).toBe(404);
+    expect((await request(`/api/life/files/${payload.file.id}`, { method: "DELETE", headers: { "x-dev-user-id": lifeUser } })).status).toBe(204);
+    expect((await request(`/api/life/files/${payload.file.id}/download`, { headers: { "x-dev-user-id": lifeUser } })).status).toBe(404);
+  });
 });

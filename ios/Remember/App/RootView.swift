@@ -13,6 +13,12 @@ struct RootView: View {
                     Tab("Today", systemImage: "house", value: .home) { HomeView() }
                     Tab("Library", systemImage: "books.vertical", value: .library) { LibraryView() }
                     Tab("Ask", systemImage: "bubble.left.and.text.bubble.right", value: .ask) { AskView() }
+                    Tab("Tasks", systemImage: "checklist", value: .tasks) { LifeTasksView() }
+                    Tab("Calendar", systemImage: "calendar", value: .calendar) { LifeCalendarView() }
+                    Tab("Health", systemImage: "heart.text.square", value: .health) { LifeHealthView() }
+                    Tab("Goals", systemImage: "scope", value: .goals) { LifeGoalsView() }
+                    Tab("Money", systemImage: "wallet.bifold", value: .money) { LifeMoneyView() }
+                    Tab("Files", systemImage: "folder", value: .files) { LifeFilesView() }
                     Tab("Evolution", systemImage: "point.3.connected.trianglepath.dotted", value: .evolution) { EvolutionView() }
                     Tab("Settings", systemImage: "gearshape", value: .settings) { SettingsView() }
                 }

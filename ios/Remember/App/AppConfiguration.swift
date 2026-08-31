@@ -3,6 +3,12 @@ import Foundation
 enum AppConfiguration {
     static var initialTab: AppTab {
         switch ProcessInfo.processInfo.environment["REMEMBER_INITIAL_TAB"] {
+        case "tasks": .tasks
+        case "calendar": .calendar
+        case "health": .health
+        case "goals": .goals
+        case "money": .money
+        case "files": .files
         case "library": .library
         case "ask": .ask
         case "evolution": .evolution

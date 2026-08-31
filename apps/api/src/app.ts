@@ -1,10 +1,26 @@
-import { askRequestSchema, captureRequestSchema, connectionTypeSchema, itemStatusSchema } from "@remember/domain";
+import {
+  askRequestSchema,
+  blockerReasonSchema,
+  captureRequestSchema,
+  connectionTypeSchema,
+  createGoalSchema,
+  createLifeFloorItemSchema,
+  createTaskSchema,
+  itemStatusSchema,
+  updateGoalSchema,
+  updateTaskSchema,
+  upsertCalendarEventSchema,
+  upsertFinanceAccountSchema,
+  upsertFinanceTransactionSchema,
+  upsertHealthMetricSchema,
+} from "@remember/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 import { authenticate, clearedSessionCookie, createPasswordSession, ensureUser, passwordSessionToken, revokePasswordSession, sessionCookie, timingSafeEqual, verifyPassword } from "./auth";
 import { EvolutionService } from "./evolution";
 import { ExportService, exportRequestSchema } from "./exports";
 import { ApiError, jsonError, readJson, safeErrorMessage } from "./http";
+import { LifeRepository } from "./life-repository";
 import { runIngestion } from "./processing";
 import { encodeItemCursor, publicItem, Repository } from "./repository";
 import { parseSearch, SearchService } from "./search";
@@ -29,6 +45,13 @@ const loginRequestSchema = z.object({
   email: z.email().max(320),
   password: z.string().min(1).max(1_024),
 });
+const completeTaskSchema = z.object({ minutesSpent: z.number().int().min(0).max(1_440).default(0) });
+const blockTaskSchema = z.object({ reason: blockerReasonSchema });
+const floorToggleSchema = z.object({ date: z.iso.datetime({ offset: true }) });
+const calendarSyncSchema = z.object({ events: z.array(upsertCalendarEventSchema).max(2_000) });
+const healthSyncSchema = z.object({ metrics: z.array(upsertHealthMetricSchema).max(5_000) });
+const accountSyncSchema = z.object({ accounts: z.array(upsertFinanceAccountSchema).max(500) });
+const transactionSyncSchema = z.object({ transactions: z.array(upsertFinanceTransactionSchema).max(5_000) });
 
 async function markWorkflowStartFailure(repository: Repository, itemId: string, error: unknown): Promise<void> {
   console.error(JSON.stringify({ message: "ingestion workflow could not start", itemId, error: safeErrorMessage(error) }));
@@ -247,6 +270,130 @@ api.post("/resurfacing/:id/respond", async (context) => {
   return context.json({ recorded: true });
 });
 
+api.get("/life", async (context) =>
+  context.json(await new LifeRepository(context.env.DB).snapshot(context.get("user").id)),
+);
+
+api.post("/life/goals", async (context) => {
+  const body = await readJson(context.req.raw, createGoalSchema);
+  return context.json({ goal: await new LifeRepository(context.env.DB).createGoal(context.get("user").id, body) }, 201);
+});
+
+api.patch("/life/goals/:id", async (context) => {
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, updateGoalSchema);
+  return context.json({ goal: await new LifeRepository(context.env.DB).updateGoal(context.get("user").id, id, body) });
+});
+
+api.post("/life/tasks", async (context) => {
+  const body = await readJson(context.req.raw, createTaskSchema);
+  return context.json({ task: await new LifeRepository(context.env.DB).createTask(context.get("user").id, body) }, 201);
+});
+
+api.patch("/life/tasks/:id", async (context) => {
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, updateTaskSchema);
+  return context.json({ task: await new LifeRepository(context.env.DB).updateTask(context.get("user").id, id, body) });
+});
+
+api.post("/life/tasks/:id/complete", async (context) => {
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, completeTaskSchema);
+  return context.json(await new LifeRepository(context.env.DB).completeTask(context.get("user").id, id, body.minutesSpent));
+});
+
+api.post("/life/tasks/:id/block", async (context) => {
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, blockTaskSchema);
+  return context.json(await new LifeRepository(context.env.DB).blockTask(context.get("user").id, id, body.reason));
+});
+
+api.post("/life/floor", async (context) => {
+  const body = await readJson(context.req.raw, createLifeFloorItemSchema);
+  return context.json({ item: await new LifeRepository(context.env.DB).createFloorItem(context.get("user").id, body) }, 201);
+});
+
+api.post("/life/floor/:id/toggle", async (context) => {
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, floorToggleSchema);
+  return context.json({ item: await new LifeRepository(context.env.DB).toggleFloor(context.get("user").id, id, body.date) });
+});
+
+api.post("/life/calendar/sync", async (context) => {
+  const body = await readJson(context.req.raw, calendarSyncSchema, 2_000_000);
+  return context.json(await new LifeRepository(context.env.DB).upsertCalendarEvents(context.get("user").id, body.events));
+});
+
+api.post("/life/health/sync", async (context) => {
+  const body = await readJson(context.req.raw, healthSyncSchema, 4_000_000);
+  return context.json(await new LifeRepository(context.env.DB).upsertHealthMetrics(context.get("user").id, body.metrics));
+});
+
+api.post("/life/finance/accounts/sync", async (context) => {
+  const body = await readJson(context.req.raw, accountSyncSchema, 1_000_000);
+  return context.json(await new LifeRepository(context.env.DB).upsertFinanceAccounts(context.get("user").id, body.accounts));
+});
+
+api.post("/life/finance/transactions/sync", async (context) => {
+  const body = await readJson(context.req.raw, transactionSyncSchema, 4_000_000);
+  return context.json(await new LifeRepository(context.env.DB).upsertFinanceTransactions(context.get("user").id, body.transactions));
+});
+
+api.post("/life/files", async (context) => {
+  const userId = context.get("user").id;
+  const declaredLength = Number(context.req.header("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > 26 * 1_024 * 1_024) throw new ApiError(422, "file_too_large", "Files must be 25 MB or smaller.");
+  const form = await context.req.raw.formData();
+  const upload = form.get("file");
+  if (!(upload instanceof File)) throw new ApiError(422, "file_required", "Choose a file to upload.");
+  if (upload.size > 25 * 1_024 * 1_024) throw new ApiError(422, "file_too_large", "Files must be 25 MB or smaller.");
+  const name = upload.name.trim().slice(0, 500) || "Untitled file";
+  const mimeType = (upload.type || "application/octet-stream").slice(0, 200);
+  const folder = String(form.get("folder") ?? "").trim().slice(0, 500);
+  const summary = String(form.get("summary") ?? "").trim().slice(0, 5_000);
+  const tags = [...new Set(String(form.get("tags") ?? "").split(",").map((tag) => tag.trim().slice(0, 80)).filter(Boolean))].slice(0, 50);
+  const objectKey = `vault/${userId}/${crypto.randomUUID()}`;
+  await context.env.MEDIA.put(objectKey, upload.stream(), {
+    httpMetadata: { contentType: mimeType },
+    customMetadata: { originalName: name },
+  });
+  try {
+    const result = await new LifeRepository(context.env.DB).addFile(userId, {
+      name,
+      mimeType,
+      sizeBytes: upload.size,
+      objectKey,
+      folder,
+      tags,
+      summary,
+    });
+    return context.json({ file: result.record }, 201);
+  } catch (error) {
+    await context.env.MEDIA.delete(objectKey);
+    throw error;
+  }
+});
+
+api.get("/life/files/:id/download", async (context) => {
+  const file = await new LifeRepository(context.env.DB).requireFile(context.get("user").id, uuidParamSchema.parse(context.req.param("id")));
+  const object = await context.env.MEDIA.get(file.objectKey);
+  if (!object) throw new ApiError(404, "not_found", "File contents are unavailable.");
+  return new Response(object.body, {
+    headers: {
+      "content-type": file.record.mimeType,
+      "content-length": String(file.record.sizeBytes),
+      "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.record.name)}`,
+      "cache-control": "private, no-store",
+    },
+  });
+});
+
+api.delete("/life/files/:id", async (context) => {
+  const file = await new LifeRepository(context.env.DB).deleteFile(context.get("user").id, uuidParamSchema.parse(context.req.param("id")));
+  await context.env.MEDIA.delete(file.objectKey);
+  return context.body(null, 204);
+});
+
 api.post("/exports", async (context) => {
   const request = await readJson(context.req.raw, exportRequestSchema);
   return context.json(await new ExportService(context.env).create(context.get("user").id, request.format), 201);
@@ -267,6 +414,12 @@ api.delete("/account/data", async (context) => {
   let cursor: string | undefined;
   do {
     const listed = await context.env.MEDIA.list({ prefix: `exports/${userId}/`, ...(cursor ? { cursor } : {}) });
+    if (listed.objects.length) await context.env.MEDIA.delete(listed.objects.map((object) => object.key));
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+  cursor = undefined;
+  do {
+    const listed = await context.env.MEDIA.list({ prefix: `vault/${userId}/`, ...(cursor ? { cursor } : {}) });
     if (listed.objects.length) await context.env.MEDIA.delete(listed.objects.map((object) => object.key));
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
