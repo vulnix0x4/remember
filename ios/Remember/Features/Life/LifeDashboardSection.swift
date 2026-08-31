@@ -85,7 +85,9 @@ struct LifeDashboardSection: View {
                 Image(systemName: symbol).foregroundStyle(RememberDesign.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.caption).foregroundStyle(RememberDesign.secondaryText)
-                    Text(value).font(.subheadline.bold()).lineLimit(1)
+                    Text(value)
+                        .font(.subheadline.bold())
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

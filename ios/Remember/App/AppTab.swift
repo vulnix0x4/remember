@@ -2,14 +2,14 @@ import Foundation
 
 enum AppTab: Hashable, CaseIterable {
     case home
+    case library
+    case ask
     case tasks
     case calendar
     case health
     case goals
     case money
     case files
-    case library
-    case ask
     case evolution
     case settings
 
