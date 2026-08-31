@@ -107,7 +107,7 @@ struct LifeTasksView: View {
             .padding(.leading, 15)
             .overlay(alignment: .leading) { Rectangle().fill(RememberDesign.accent).frame(width: 2) }
             if let startedAt {
-                TimelineView(.periodic(from: startedAt, by: 1)) { context in
+                SwiftUI.TimelineView(.periodic(from: startedAt, by: 1)) { context in
                     Label(context.date.timeIntervalSince(startedAt).formattedElapsed, systemImage: "timer")
                         .font(.title2.monospacedDigit().bold())
                         .foregroundStyle(RememberDesign.accent)
@@ -238,11 +238,15 @@ private struct LifeTaskComposerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Outcome") { TextField("What will be different?", text: $title, axis: .vertical) }
-                Section("First physical action") {
+                SwiftUI.Section("Outcome") { TextField("What will be different?", text: $title, axis: .vertical) }
+                SwiftUI.Section {
                     TextField("Open…, write…, call…, put…", text: $firstStep, axis: .vertical)
-                } footer: { Text("Small enough to begin without more planning.") }
-                Section("Context") {
+                } header: {
+                    Text("First physical action")
+                } footer: {
+                    Text("Small enough to begin without more planning.")
+                }
+                SwiftUI.Section("Context") {
                     Picker("Area", selection: $area) { ForEach(LifeArea.allCases, id: \.self) { Text($0.label).tag($0) } }
                     Picker("Time box", selection: $duration) { ForEach([5, 10, 15, 25, 45, 60, 90], id: \.self) { Text("\($0) minutes").tag($0) } }
                     Picker("Priority", selection: $priority) { ForEach(LifeTaskPriority.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) } }
@@ -277,8 +281,8 @@ private struct LifeFloorComposerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Daily baseline") { TextField("Take medication", text: $title) }
-                Section("Measure") {
+                SwiftUI.Section("Daily baseline") { TextField("Take medication", text: $title) }
+                SwiftUI.Section("Measure") {
                     Picker("Area", selection: $area) { ForEach(LifeArea.allCases, id: \.self) { Text($0.label).tag($0) } }
                     Stepper("Target: \(target)", value: $target, in: 1...100)
                     TextField("Unit (time, minutes, glasses…)", text: $unit)

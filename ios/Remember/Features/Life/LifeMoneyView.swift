@@ -124,12 +124,12 @@ private struct FinanceAccountComposerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Account") {
+                SwiftUI.Section("Account") {
                     TextField("Name", text: $name)
                     TextField("Institution", text: $institution)
                     Picker("Type", selection: $type) { ForEach(types, id: \.self) { Text($0.capitalized).tag($0) } }
                 }
-                Section("Current balance") { TextField("0.00", value: $balance, format: .number).keyboardType(.decimalPad) }
+                SwiftUI.Section("Current balance") { TextField("0.00", value: $balance, format: .number).keyboardType(.decimalPad) }
             }
             .navigationTitle("Add account")
             .navigationBarTitleDisplayMode(.inline)
@@ -155,13 +155,17 @@ private struct FinanceTransactionComposerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Movement") {
+                SwiftUI.Section {
                     TextField("Name or merchant", text: $name)
                     TextField("Amount", value: $amount, format: .number).keyboardType(.numbersAndPunctuation)
                     TextField("Category", text: $category)
-                } footer: { Text("Use a negative amount for spending and a positive amount for income.") }
+                } header: {
+                    Text("Movement")
+                } footer: {
+                    Text("Use a negative amount for spending and a positive amount for income.")
+                }
                 if !store.lifeSnapshot.accounts.isEmpty {
-                    Section("Account") {
+                    SwiftUI.Section("Account") {
                         Picker("Account", selection: $accountId) {
                             Text("No account").tag(Optional<UUID>.none)
                             ForEach(store.lifeSnapshot.accounts) { Text($0.name).tag(Optional($0.id)) }

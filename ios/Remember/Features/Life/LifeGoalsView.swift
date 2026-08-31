@@ -73,9 +73,9 @@ private struct GoalComposerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Result") { TextField("What will be observably different?", text: $title, axis: .vertical) }
-                Section("Why now") { TextField("This matters because…", text: $why, axis: .vertical) }
-                Section("Life area") { Picker("Area", selection: $area) { ForEach(LifeArea.allCases, id: \.self) { Text($0.label).tag($0) } } }
+                SwiftUI.Section("Result") { TextField("What will be observably different?", text: $title, axis: .vertical) }
+                SwiftUI.Section("Why now") { TextField("This matters because…", text: $why, axis: .vertical) }
+                SwiftUI.Section("Life area") { Picker("Area", selection: $area) { ForEach(LifeArea.allCases, id: \.self) { Text($0.label).tag($0) } } }
             }
             .navigationTitle("New goal")
             .navigationBarTitleDisplayMode(.inline)

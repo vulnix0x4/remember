@@ -10,20 +10,10 @@ struct RootView: View {
                 AuthLoadingView()
             } else if store.isAuthenticated {
                 TabView(selection: $store.selectedTab) {
-                    Group {
-                        Tab("Today", systemImage: "house", value: .home) { HomeView() }
-                        Tab("Library", systemImage: "books.vertical", value: .library) { LibraryView() }
-                        Tab("Ask", systemImage: "bubble.left.and.text.bubble.right", value: .ask) { AskView() }
-                        Tab("Tasks", systemImage: "checklist", value: .tasks) { LifeTasksView() }
-                        Tab("Calendar", systemImage: "calendar", value: .calendar) { LifeCalendarView() }
-                        Tab("Health", systemImage: "heart.text.square", value: .health) { LifeHealthView() }
-                    }
-                    Group {
-                        Tab("Goals", systemImage: "scope", value: .goals) { LifeGoalsView() }
-                        Tab("Money", systemImage: "wallet.bifold", value: .money) { LifeMoneyView() }
-                        Tab("Files", systemImage: "folder", value: .files) { LifeFilesView() }
-                        Tab("Evolution", systemImage: "point.3.connected.trianglepath.dotted", value: .evolution) { EvolutionView() }
-                        Tab("Settings", systemImage: "gearshape", value: .settings) { SettingsView() }
+                    ForEach(AppTab.allCases, id: \.self) { tab in
+                        tabContent(for: tab)
+                            .tabItem { Label(tab.title, systemImage: tab.systemImage) }
+                            .tag(tab)
                     }
                 }
                 .toolbarBackground(RememberDesign.surface.opacity(0.96), for: .tabBar)
@@ -37,6 +27,23 @@ struct RootView: View {
             Button("OK") { store.errorMessage = nil }
         } message: {
             Text(store.errorMessage ?? "Please try again.")
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(for tab: AppTab) -> some View {
+        switch tab {
+        case .home: HomeView()
+        case .tasks: LifeTasksView()
+        case .calendar: LifeCalendarView()
+        case .health: LifeHealthView()
+        case .goals: LifeGoalsView()
+        case .money: LifeMoneyView()
+        case .files: LifeFilesView()
+        case .library: LibraryView()
+        case .ask: AskView()
+        case .evolution: EvolutionView()
+        case .settings: SettingsView()
         }
     }
 }
