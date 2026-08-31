@@ -30,6 +30,7 @@ targets:
     entitlements:
       path: Remember/Remember.entitlements
       properties:
+        com.apple.developer.healthkit: true
         com.apple.security.application-groups:
           - $(REMEMBER_APP_GROUP)
     settings:

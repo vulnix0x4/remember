@@ -24,6 +24,10 @@
     <string>$(REMEMBER_API_URL)</string>
     <key>RememberAppGroup</key>
     <string>$(REMEMBER_APP_GROUP)</string>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Remember reads the health categories you choose so your private dashboard can show sleep, movement, workouts, and recovery context.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Remember reads your calendars so commitments and tasks can share one private daily plan.</string>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

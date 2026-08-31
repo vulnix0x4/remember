@@ -1,11 +1,17 @@
 {
   "name": "Remember",
   "short_name": "Remember",
-  "description": "A personal memory for the things that shape you.",
+  "description": "Your private Personal Life OS for knowledge, goals, tasks, calendar, health, money, and files.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#090d0b",
   "theme_color": "#090d0b",
+  "shortcuts": [
+    { "name": "Today", "short_name": "Today", "url": "/#/home" },
+    { "name": "Next move", "short_name": "Tasks", "url": "/#/tasks" },
+    { "name": "Calendar", "short_name": "Calendar", "url": "/#/calendar" },
+    { "name": "Remember", "short_name": "Memory", "url": "/#/library" }
+  ],
   "icons": [
     { "src": "/remember-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/remember-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
