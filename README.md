@@ -4,7 +4,7 @@
 
 <h1 align="center">Remember</h1>
 
-<p align="center"><strong>Save what shapes you. Ask with citations. Notice the patterns over time.</strong></p>
+<p align="center"><strong>Your private Personal Life OS: remember, decide, act, and reset.</strong></p>
 
 <p align="center">
   <a href="https://github.com/vulnix0x4/remember/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vulnix0x4/remember/actions/workflows/ci.yml/badge.svg"></a>
@@ -13,21 +13,24 @@
   <img alt="iOS 26+" src="https://img.shields.io/badge/iOS-26%2B-9fd0b2.svg">
 </p>
 
-Remember is a private, self-hostable memory for the sources that influence you. Save a video or link, let structured analysis run in the background, then return through search, grounded Ask answers, connections, resurfacing, and an evidence-backed view of how your attention changes.
+Remember is a private, self-hostable Personal Life OS. It combines the knowledge that shapes you with goals, an adaptive task engine, calendar, files, health, and money in one calm command center. Save a source, choose a direction, do one concrete move, and keep the rest of life visible without handing it to an advertising platform.
 
 The product is dark-first, responsive, accessible, and available as a web app/PWA, Chromium extension, and native SwiftUI iPhone app with a Share Extension.
 
 > There is no public hosted demo. Clone this repository to run your own archive.
 
-## What it does
+## Seven apps, one private system
 
-- Captures YouTube videos, TikTok posts, X posts, and ordinary web links without storing audiovisual content.
-- Produces structured, schema-validated analysis with provider/model provenance.
-- Keeps personal-relevance statements explicitly labeled as hypotheses.
-- Answers questions only from your saved material and links every answer back to its sources.
-- Surfaces connections, themes, principles, tensions, and older ideas worth revisiting.
-- Preserves original URLs and supports portable Markdown and JSON exports.
-- Syncs the React web app, browser extension, and SwiftUI client through one authenticated API.
+- **Today** is the command center: one active move, today’s commitments, goal direction, health, net worth, and private files.
+- **Remember** captures YouTube, TikTok, X, and web sources, produces validated analysis, answers with citations, and resurfaces patterns over time.
+- **Goals** turn observable outcomes into concrete next moves instead of disconnected wish lists.
+- **Tasks** use the RESET execution model: exactly one active move, a focus timer, automatic next-action selection, blocker-aware shrinking, and a daily Life Floor.
+- **Calendar** combines synced Apple events, manual events, and scheduled moves without turning every task into calendar clutter.
+- **Health** imports user-approved Apple Health measurements and also supports private manual logging.
+- **Money** keeps balances and transactions in a calm ledger ready for manual, CSV, or provider-backed sync.
+- **Files** stores private documents in R2 with user-owned metadata, search, download, and account-deletion cleanup.
+
+All modules share one authenticated, ownership-scoped data model, with a resilient device cache and an honest local-only fallback when no API is configured. Portable JSON and Markdown exports include both saved knowledge and Life OS data.
 
 ## Repository
 
@@ -40,7 +43,7 @@ ios                    SwiftUI app and App Group Share Extension
 docs                   Architecture, design, and quality evidence
 ```
 
-The backend uses Cloudflare D1, R2, Vectorize, Workers AI, Workflows, and Cron Triggers. AI analysis sits behind a provider-neutral boundary; local development uses deterministic fixtures, while a self-hosted production deployment can use OpenRouter or another compatible provider.
+The backend uses Cloudflare D1, R2, Vectorize, Workers AI, Workflows, and Cron Triggers. D1 is the private relational source of truth, R2 stores vault files and exports, and AI analysis stays behind a provider-neutral boundary. Local development uses deterministic fixtures; a self-hosted production deployment can use OpenRouter or another compatible provider.
 
 ## Quick start
 
@@ -79,7 +82,7 @@ xcodebuild -project Remember.xcodeproj -scheme Remember \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' test
 ```
 
-For a signed device build, copy `ios/Local.xcconfig.example` to `ios/Local.xcconfig`, fill in your bundle ID, App Group, and Apple team, then pass it to `xcodebuild` with `-xcconfig ios/Local.xcconfig`. The local file is ignored by Git.
+For a signed device build, copy `ios/Local.xcconfig.example` to `ios/Local.xcconfig`, fill in your bundle ID, App Group, and Apple team, then pass it to `xcodebuild` with `-xcconfig ios/Local.xcconfig`. Enable HealthKit for the app identifier. Apple Health and Calendar permission prompts appear only after the user explicitly taps Sync; the local file is ignored by Git.
 
 ## Browser extension
 
@@ -128,6 +131,9 @@ Coverage includes URL safety, authentication and ownership, capture/deduplicatio
 - Model output is validated before persistence and records provenance.
 - Interpretations about the user are labeled as hypotheses, never facts.
 - Ask does not use the open web; it cites only user-owned saved material.
+- HealthKit and EventKit permissions are requested only from an explicit sync action; Remember reads only approved categories.
+- Financial sync endpoints accept normalized provider data, but no bank credential is stored by the checked-in app.
+- Vault objects are namespaced by user and removed with account deletion.
 - Generic links are saved as bookmarks unless a trustworthy source adapter can extract usable text.
 - Secrets belong in Worker secret storage, Keychain, or ignored local files, never source control.
 

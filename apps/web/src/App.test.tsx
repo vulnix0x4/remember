@@ -85,4 +85,32 @@ describe("Remember app", () => {
     expect(screen.queryByRole("switch", { name: "Weekly memory" })).toBeNull();
     expect(screen.queryByText("One relevant idea each Sunday")).toBeNull();
   });
+
+  it("turns a new move into the single active Reset task", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getAllByRole("button", { name: "Tasks" })[0]);
+    expect(screen.getByRole("heading", { name: "Do the next right thing." })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Add move" }));
+    await user.type(screen.getByLabelText("Outcome"), "Finish the Personal Life OS shell");
+    await user.type(screen.getByLabelText("First physical action"), "Open the app and wire the first route");
+    await user.click(screen.getByRole("button", { name: /Add to the path/i }));
+    expect(await screen.findByRole("heading", { name: "Finish the Personal Life OS shell" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "I can’t do this" }));
+    await user.click(screen.getByRole("button", { name: /It’s too big/i }));
+    expect(await screen.findByText(/begin for two minutes/i)).toBeTruthy();
+  });
+
+  it("traps focus in Life OS composers and restores it on Escape", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getAllByRole("button", { name: "Tasks" })[0]);
+    const trigger = screen.getByRole("button", { name: "Add move" });
+    trigger.focus();
+    await user.click(trigger);
+    await waitFor(() => expect(screen.getByLabelText("Outcome")).toBe(document.activeElement));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(trigger).toBe(document.activeElement));
+  });
 });

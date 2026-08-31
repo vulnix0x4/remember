@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { ApiError } from "./http";
 import { ITEM_SELECT, publicItem } from "./repository";
+import { LifeRepository } from "./life-repository";
+import type { LifeSnapshot } from "@remember/domain";
 import type { ItemRow } from "./types";
 
 export const exportRequestSchema = z.object({ format: z.enum(["json", "markdown"]) });
@@ -21,7 +23,7 @@ function markdownList(values: string[]): string {
 }
 
 interface ExportDataset {
-  schemaVersion: 1;
+  schemaVersion: 2;
   exportedAt: string;
   items: ReturnType<typeof publicItem>[];
   connections: Record<string, unknown>[];
@@ -30,6 +32,7 @@ interface ExportDataset {
   resurfacingEvents: Record<string, unknown>[];
   chatThreads: Record<string, unknown>[];
   chatMessages: Record<string, unknown>[];
+  life: LifeSnapshot;
 }
 
 function markdownFor(dataset: ExportDataset): string {
@@ -129,7 +132,7 @@ function markdownFor(dataset: ExportDataset): string {
     ]
       .join("\n");
   });
-  const recordList = (title: string, rows: Record<string, unknown>[]) =>
+  const recordList = (title: string, rows: unknown[]) =>
     rows.length ? `## ${title}\n\n\`\`\`json\n${JSON.stringify(rows, null, 2)}\n\`\`\`` : "";
   return [
     "# Remember export",
@@ -141,6 +144,14 @@ function markdownFor(dataset: ExportDataset): string {
     recordList("Candidate principles", dataset.candidatePrinciples),
     recordList("Resurfacing history", dataset.resurfacingEvents),
     recordList("Ask conversations", [...dataset.chatThreads, ...dataset.chatMessages]),
+    "# Personal Life OS data",
+    recordList("Goals", dataset.life.goals),
+    recordList("Tasks and blocker history", [...dataset.life.tasks, ...dataset.life.blockers]),
+    recordList("Life Floor", dataset.life.floor),
+    recordList("Calendar", dataset.life.events),
+    recordList("Health", dataset.life.health),
+    recordList("Finances", [...dataset.life.accounts, ...dataset.life.transactions]),
+    recordList("Private vault metadata", dataset.life.files),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -157,7 +168,7 @@ export class ExportService {
   }
 
   private async dataset(userId: string, exportedAt: string): Promise<ExportDataset> {
-    const [items, connections, personalSignals, candidatePrinciples, resurfacingEvents, chatThreads, chatMessages] = await Promise.all([
+    const [items, connections, personalSignals, candidatePrinciples, resurfacingEvents, chatThreads, chatMessages, life] = await Promise.all([
       this.allItems(userId),
       this.env.DB.prepare("SELECT * FROM connections WHERE user_id = ?1 ORDER BY created_at").bind(userId).all(),
       this.env.DB.prepare("SELECT * FROM personal_signals WHERE user_id = ?1 ORDER BY occurred_at").bind(userId).all(),
@@ -170,9 +181,10 @@ export class ExportService {
       )
         .bind(userId)
         .all(),
+      new LifeRepository(this.env.DB).snapshot(userId, { allHistory: true }),
     ]);
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt,
       items,
       connections: connections.results,
@@ -181,6 +193,7 @@ export class ExportService {
       resurfacingEvents: resurfacingEvents.results,
       chatThreads: chatThreads.results,
       chatMessages: chatMessages.results,
+      life,
     };
   }
 
@@ -197,7 +210,7 @@ export class ExportService {
       const contentType = format === "json" ? "application/json; charset=utf-8" : "text/markdown; charset=utf-8";
       await this.env.MEDIA.put(key, content, {
         httpMetadata: { contentType, contentDisposition: `attachment; filename="remember-export.${format === "json" ? "json" : "md"}"` },
-        customMetadata: { userId, exportId, schemaVersion: "1" },
+        customMetadata: { userId, exportId, schemaVersion: "2" },
       });
       await this.env.DB.prepare("UPDATE exports SET status = 'ready', r2_key = ?2, completed_at = ?3 WHERE id = ?1")
         .bind(exportId, key, new Date().toISOString())
