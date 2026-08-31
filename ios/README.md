@@ -1,6 +1,6 @@
 # Remember for iPhone
 
-Native SwiftUI client and Share Extension for the Remember personal-memory product.
+Native SwiftUI client and Share Extension for the Remember Personal Life OS.
 
 ## Requirements
 
@@ -24,7 +24,9 @@ xcodebuild -project Remember.xcodeproj -scheme Remember -destination 'platform=i
 
 The client looks for `REMEMBER_API_URL` in the scheme environment and otherwise uses the hosted owner deployment. Local requests use the backend's development user header. Remote previews read `REMEMBER_API_TOKEN` or a token stored in the Keychain and send bearer auth; no token is bundled. Set `REMEMBER_MOCK_FALLBACK=1` in a Debug scheme to use deterministic local fixtures when the API is unavailable. Release builds always use strict live behavior.
 
-For a signed device build, copy `Local.xcconfig.example` to `Local.xcconfig`, provide your own bundle ID, App Group, and Apple development team, then build with `-xcconfig Local.xcconfig`. The local configuration is ignored by Git.
+The native app includes Today, Remember, Ask, Tasks, Calendar, Health, Goals, Money, Files, Evolution, and Settings. Tasks preserve the RESET invariant of one active move and include adaptive blocker handling and a daily Life Floor. Calendar sync uses EventKit full access and health sync reads approved HealthKit samples from the previous 30 days. Both permissions are requested only after the user taps the corresponding Sync button.
+
+For a signed device build, copy `Local.xcconfig.example` to `Local.xcconfig`, provide your own bundle ID, App Group, and Apple development team, enable HealthKit for the app identifier, then build with `-xcconfig Local.xcconfig`. The local configuration is ignored by Git.
 
 ## Share Extension
 

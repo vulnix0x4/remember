@@ -2,13 +2,20 @@
 
 ## Visual thesis
 
-Remember should feel like a private, living archive: mineral-black depth, soft off-white type, a restrained archival-jade signal, and enough space for an idea to feel important without turning the product into a gallery. Dark is the default expression; light remains a fully tested user choice.
+Remember should feel like a private, living operating system: mineral-black depth, soft off-white type, a restrained archival-jade signal, and enough space for either an idea or one next action to feel important. Dark is the default expression; light remains a fully tested user choice.
 
 The product is content-first. Chrome recedes, typography establishes hierarchy, and cards appear only when an Imprint itself is the interaction.
 
 ## Product composition
 
-- **Home:** one resurfaced memory, then the newest Imprints and a quiet signal of recent themes.
+- **Today:** one active move and compact, honest state from calendar, goals, health, money, and files; the remembered source feed follows beneath it.
+- **Tasks:** one large active move, one first physical action, focus timing, blocker adaptation, a deliberate queue, and the daily Life Floor.
+- **Goals:** result-oriented direction with progress and a direct path to making the next move.
+- **Calendar:** a seven-day strip and one-day agenda combining events with scheduled moves.
+- **Health:** movement and recovery context, manual logging, and clear Apple Health permission state without moralized scores.
+- **Money:** net worth, monthly flow, accounts, and transactions in a calm ledger rather than a trading dashboard.
+- **Files:** a searchable private vault for the documents that belong beside decisions and plans.
+- **Home memory feed:** one resurfaced memory, then the newest Imprints and a quiet signal of recent themes.
 - **Library:** fast search and scan with progressive disclosure for analysis status and source metadata.
 - **Imprint:** source context first, then essence, key moments, ideas, personal hypotheses, and connected material.
 - **Ask:** a focused conversation surface where every conclusion returns to a source or timestamp.
@@ -20,6 +27,8 @@ The product is content-first. Chrome recedes, typography establishes hierarchy, 
 1. Capture acknowledges immediately, then changes from saved to processing without blocking dismissal.
 2. Imprints expand and route with a shared spatial transition so the source feels continuous between library and detail.
 3. Evolution uses restrained reveals to clarify relationships and time, while reduced-motion mode makes every transition immediate.
+4. A blocker is treated as information about the action, never as a failure by the user; the interface immediately changes the move.
+5. Health and Calendar permission prompts follow an explicit Sync action and explain what will happen before the system prompt.
 
 ## System
 

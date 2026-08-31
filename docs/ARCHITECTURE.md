@@ -1,11 +1,11 @@
-# Remember v1 architecture
+# Remember Personal Life OS architecture
 
 ## System boundary
 
-Remember stores source URLs, user reactions, derived analysis, relationships, and exportable history. It does not download or retain copies of YouTube audiovisual content. Playback stays with the original source.
+Remember stores saved knowledge, user reactions, derived analysis, goals, tasks, calendar events, approved health measurements, finance records, private file metadata, and exportable history. It does not download or retain copies of source audiovisual content. Playback stays with the original source.
 
 ```text
-iOS app + Share Extension     Web/PWA     Browser Extension
+iOS + HealthKit + EventKit    Web/PWA     Browser Extension
              |                   |                |
              +-------------------+----------------+
                                  |
@@ -15,11 +15,9 @@ iOS app + Share Extension     Web/PWA     Browser Extension
               |                  |                  |
              D1             Workflow jobs          R2
               |                  |                  |
-              +---------- analysis provider --------+
-                                 |
-                         Workers AI embeddings
-                                 |
-                             Vectorize
+        Life OS records     source analysis    files + exports
+              |                  |
+              +----------- Vectorize ---------+
 ```
 
 ## Trust boundaries
@@ -29,6 +27,25 @@ iOS app + Share Extension     Web/PWA     Browser Extension
 - Analysis providers return untrusted model output. The Worker validates it against the domain schema and records provenance and uncertainty.
 - AI answers can reference only retrieved, user-owned Imprints and must emit structured citations.
 - Personal relevance is always a hypothesis unless the user supplied the statement directly.
+- Apple Health and Calendar access begins only after explicit interaction in the native app. Their data is normalized client-side before sync.
+- Finance provider credentials are outside the current system boundary. Provider adapters send normalized accounts and transactions only.
+- Every Life OS table carries `user_id`; all reads, mutations, downloads, and R2 keys enforce that ownership boundary.
+
+## Life OS domain
+
+| Module | Source of truth | Core invariant |
+| --- | --- | --- |
+| Today | Derived from all modules | Shows current context; creates no duplicate data |
+| Remember | D1 + Vectorize projection | Answers cite user-owned sources |
+| Goals | D1 | A goal describes an observable result |
+| Tasks | D1 | At most one active task per user |
+| Life Floor | D1 | A completion is an explicit date, not an inferred streak |
+| Calendar | D1 normalized events | External events upsert by source + external ID |
+| Health | D1 normalized measurements | Health access remains read-only and user-approved |
+| Money | D1 accounts + transactions | Currency and transaction signs are preserved |
+| Files | R2 object + D1 metadata | Objects are user-namespaced and private |
+
+The task engine is intentionally adaptive. Completing the active move selects the best queued move. Blocking a move records the reason and either shrinks, clarifies, time-boxes, adapts, or removes it. The database partial index enforces the single-active invariant even if multiple clients race.
 
 ## Processing contract
 
@@ -47,5 +64,5 @@ iOS app + Share Extension     Web/PWA     Browser Extension
 - Workflow steps are retryable and idempotent.
 - Unsupported sources remain useful bookmarks.
 - Missing remote AI bindings fall back to deterministic local fixtures only in development and tests.
-- Export reads from D1 and produces portable JSON plus Markdown.
+- Export reads from D1 and produces versioned portable JSON plus Markdown for both knowledge and Life OS records. Vault contents remain individually downloadable instead of being silently duplicated into an export.
 - Live credentials are never embedded in clients or committed files.

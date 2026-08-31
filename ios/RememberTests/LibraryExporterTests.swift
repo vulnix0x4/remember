@@ -7,8 +7,11 @@ struct LibraryExporterTests {
         let data = try LibraryExporter.data(for: FixtureLibrary.imprints, format: .json)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode([Imprint].self, from: data)
-        #expect(decoded == FixtureLibrary.imprints)
+        struct Export: Decodable { let schemaVersion: Int; let imprints: [Imprint]; let life: LifeSnapshot }
+        let decoded = try decoder.decode(Export.self, from: data)
+        #expect(decoded.schemaVersion == 2)
+        #expect(decoded.imprints == FixtureLibrary.imprints)
+        #expect(decoded.life.tasks.isEmpty)
     }
 
     @Test func markdownExportContainsSourceAndEssence() throws {
@@ -30,5 +33,6 @@ struct LibraryExporterTests {
         #expect(markdown.contains("## Uncertainties"))
         #expect(markdown.contains("`supports`"))
         #expect(markdown.contains("I want to remember the difference"))
+        #expect(markdown.contains("# Personal Life OS data"))
     }
 }

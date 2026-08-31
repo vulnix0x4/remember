@@ -55,7 +55,7 @@ describe("automated serious accessibility gate", () => {
     const { container } = render(<App />);
     await expectAccessible(container, "Home");
 
-    for (const page of ["Library", "Ask", "Evolution", "Settings"]) {
+    for (const page of ["Tasks", "Goals", "Calendar", "Health", "Money", "Files", "Library", "Ask", "Evolution", "Settings"]) {
       await user.click(screen.getAllByRole("button", { name: page })[0]);
       await expectAccessible(container, page);
     }

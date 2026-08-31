@@ -1,15 +1,22 @@
 import Foundation
 
 enum LibraryExporter {
-    static func data(for imprints: [Imprint], format: ExportFormat) throws -> Data {
+    private struct PortableExport: Codable {
+        let schemaVersion: Int
+        let exportedAt: Date
+        let imprints: [Imprint]
+        let life: LifeSnapshot
+    }
+
+    static func data(for imprints: [Imprint], life: LifeSnapshot = .empty, format: ExportFormat) throws -> Data {
         switch format {
         case .json:
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            return try encoder.encode(imprints)
+            return try encoder.encode(PortableExport(schemaVersion: 2, exportedAt: .now, imprints: imprints, life: life))
         case .markdown:
-            let text = imprints.map { imprint in
+            let memories = imprints.map { imprint in
                 let ideas = bullets(imprint.keyIdeas)
                 let moments = imprint.moments.map { moment in
                     "- [\(moment.timestamp)](\(timestampURL(for: imprint.url, seconds: moment.seconds).absoluteString)): **\(moment.title)**: \(moment.detail)"
@@ -64,6 +71,23 @@ enum LibraryExporter {
                 \(connections)
                 """
             }.joined(separator: "\n\n---\n\n")
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let lifeJSON = String(decoding: try encoder.encode(life), as: UTF8.self)
+            let text = """
+            \(memories)
+
+            ---
+
+            # Personal Life OS data
+
+            Vault file contents are downloaded separately; their private metadata is included below.
+
+            ```json
+            \(lifeJSON)
+            ```
+            """
             return Data(text.utf8)
         }
     }

@@ -52,9 +52,10 @@ describe("local vertical slice", () => {
 
     const createdExport = await new ExportService(env).create(userId, "json");
     const response = await new ExportService(env).download(userId, createdExport.id);
-    const payload = (await response.json()) as { schemaVersion: number; items: Array<{ id: string }> };
-    expect(payload.schemaVersion).toBe(1);
+    const payload = (await response.json()) as { schemaVersion: number; items: Array<{ id: string }>; life: { tasks: unknown[]; health: unknown[] } };
+    expect(payload.schemaVersion).toBe(2);
     expect(payload.items.map((item) => item.id)).toContain(captured.row.id);
+    expect(payload.life).toMatchObject({ tasks: [], health: [] });
 
     const markdownExport = await new ExportService(env).create(userId, "markdown");
     const markdownResponse = await new ExportService(env).download(userId, markdownExport.id);
@@ -68,6 +69,7 @@ describe("local vertical slice", () => {
     expect(markdown).toContain("## Uncertainties");
     expect(markdown).toContain("captured_timestamp_seconds:");
     expect(markdown).toContain("## Processing provenance");
+    expect(markdown).toContain("# Personal Life OS data");
   });
 
   it("does not call a recent Ready item a resurfaced memory", async () => {
