@@ -59,7 +59,7 @@ struct TaskEditorSheet: View {
                     }
 
                     chipGroup("Repeat") {
-                        ForEach([nil, 1, 7, 30] as [Int?], id: \.self) { days in
+                        ForEach(repeatChoices, id: \.self) { days in
                             chip(days?.repeatLabel ?? "Never", isOn: repeatDays == days) { repeatDays = days }
                         }
                     }
@@ -112,6 +112,12 @@ struct TaskEditorSheet: View {
         .presentationBackground(RememberDesign.canvas)
         .presentationCornerRadius(RememberDesign.sheetRadius)
         .onDisappear { if !isDeleting { save() } }
+    }
+
+    private var repeatChoices: [Int?] {
+        let base: [Int?] = [nil, 1, 7, 30]
+        guard let current = task.repeatEveryDays, !base.contains(current) else { return base }
+        return base + [current]
     }
 
     private func chipGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

@@ -639,7 +639,7 @@ final class AppStore {
     /// Adds a task from one typed or spoken line. Jev decides when it happens.
     @discardableResult
     func quickAddTask(_ text: String, goalId: UUID? = nil) async -> Bool {
-        let parsed = QuickTaskParser.parse(text)
+        let parsed = QuickTaskParser.parse(text, history: taskHistory)
         guard !parsed.title.isEmpty else { return false }
         do {
             let task = try await lifeRepository.createTask(CreateLifeTaskRequest(
@@ -656,6 +656,11 @@ final class AppStore {
         } catch {
             return false
         }
+    }
+
+    /// Past tasks the quick-add parser learns repeat rhythms from.
+    var taskHistory: [QuickTaskParser.HistoryEntry] {
+        lifeSnapshot.tasks.map { QuickTaskParser.HistoryEntry(title: $0.title, completedAt: $0.completedAt) }
     }
 
     func startTask(_ task: LifeTask) async {

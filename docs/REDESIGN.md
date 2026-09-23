@@ -79,9 +79,22 @@ Implement as a pure function `parseQuickTask(text, now, calendar) -> { title, du
   - `by <any of the above day words>`: sets **dueAt** at 17:00 on that day instead of notBefore.
 - **Repeat:** `every day` / `daily` / `everyday` → 1. `every week` / `weekly` → 7. `every month` / `monthly` → 30. `every (\d+) days` → N (1...365). `every other day` → 2.
 - **Priority:** `!!` or `urgent` → `must`. A standalone `!`, `asap`, or `important` → `high`.
+- **Automatic repeat:** people should never have to set up recurring chores. When the text doesn't say how often (and doesn't say `once`, `one time` or `just once`, which are removed and turn this off), repeat is chosen in this order:
+  1. **Your rhythm:** if tasks with the same title (case-insensitive) have been completed before, use the gap between the last two completions, or between the last completion and now if there's only one. Round it to the nearest of 1, 2, 3, 7, 14, 30, 90, 180 or 365 days. Ignore gaps under half a day.
+  2. **The usual rhythm** for common chores (whole-word, case-insensitive, first match wins):
+     - 1 day: dishes, make (the/my) bed, meds, medication, pills, vitamins, walk (the) dog, feed (the) dog/cat/pet(s), floss, journal, skincare
+     - 3 days: water (the) plants
+     - 7 days: laundry, vacuum, mop, groceries, grocery, trash, garbage, recycling, bins, dust, meal prep, clean (the) bathroom/kitchen/room/house/apartment, mow (the) lawn, weekly review, plan (the/my) week, call mom/dad/grandma/grandpa/parents
+     - 14 days: sheets, bedding, change (the) bed
+     - 30 days: rent, bill(s), pay (the) bills, credit card, mortgage, haircut, budget, wash (the) car, car wash, clean (the) fridge, back up / backup
+     - 90 days: air filter, hvac filter, furnace filter, toothbrush, oil change, change (the) oil
+     - 180 days: dentist, teeth cleaning
+     - 365 days: checkup, eye exam, registration
+  
+  The preview chip says where it came from: `Weekly` when typed, `Weekly · usual` for the chore list, `Weekly · your rhythm` when learned. The task sheet's Repeat chips always include the chosen value.
 - **Title:** collapse whitespace, trim trailing ` on`, ` by`, ` at`, `,`, and `-`, then uppercase the first character. If the title would be empty, use the original trimmed text with no parsing.
 - **Defaults:** durationMinutes 15, area `direction`, status `queued`, priority `normal`.
-- **Tests:** "Call mom tomorrow 20m" → title "Call mom", 20, tomorrow 09:00. "laundry every week 1h" → "Laundry", 60, repeat 7. "pay rent by friday !" → "Pay rent", dueAt Friday 17:00, high. "email sam" → "Email sam", nothing else. "today" → title "today" (empty fallback). "gym tonight 45 min" at 20:00 → "Gym", 45, no notBefore.
+- **Tests:** "laundry" → weekly (usual); "laundry once" → no repeat; "pay rent by friday" → monthly and due Friday. "Call mom tomorrow 20m" → title "Call mom", 20, tomorrow 09:00. "laundry every week 1h" → "Laundry", 60, repeat 7. "pay rent by friday !" → "Pay rent", dueAt Friday 17:00, high. "email sam" → "Email sam", nothing else. "today" → title "today" (empty fallback). "gym tonight 45 min" at 20:00 → "Gym", 45, no notBefore.
 
 ## Today
 
