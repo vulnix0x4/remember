@@ -53,6 +53,16 @@ describe("Jev scheduling", () => {
     expect(plan[0]!.startAt).toBe("2026-11-01T15:30:00.000Z");
     expect(plan.some((block) => block.taskId === active.id)).toBe(false);
   });
+  it("plans a day that runs past midnight", () => {
+    const nightOwl = brainSettingsSchema.parse({ timeZone: "America/Denver", startHour: 12, endHour: 3 });
+    const next = task();
+    // 1:00 AM local is still inside a noon-to-3 AM day.
+    expect(scheduleTasks({ ...empty(), tasks: [next] }, nightOwl, [judgment(next)], new Date("2026-09-20T07:00:00Z"))[0]!.startAt).toBe("2026-09-20T07:00:00.000Z");
+    // At 2:40 AM a 30-minute task no longer fits before 3 AM, so it waits for the first slot after noon.
+    expect(scheduleTasks({ ...empty(), tasks: [next] }, nightOwl, [judgment(next)], new Date("2026-09-20T08:40:00Z"))[0]!.startAt).toBe("2026-09-20T18:10:00.000Z");
+    // Morning hours outside the day are skipped.
+    expect(scheduleTasks({ ...empty(), tasks: [next] }, nightOwl, [judgment(next)], now)[0]!.startAt).toBe("2026-09-19T18:00:00.000Z");
+  });
   it("keeps manual time slots fixed and applies Jev's preferred part of day", () => {
     const manual = task({ scheduledStart: "2026-09-19T23:00:00Z", scheduledEnd: "2026-09-19T23:30:00Z" }); const next = task();
     const plan = scheduleTasks({ ...empty(), tasks: [manual, next] }, settings, [judgment(next, { period: "evening" })], now);
@@ -141,7 +151,7 @@ describe("persistent automatic planning", () => {
   it("requires authentication and rejects invalid planning hours", async () => {
     expect((await app.request("https://remember.test/api/life/brain/sync", { method: "POST" }, env)).status).toBe(401);
     const { userId } = await setup();
-    const response = await app.request("https://remember.test/api/life/brain", { method: "PATCH", headers: { "x-dev-user-id": userId, "content-type": "application/json" }, body: JSON.stringify({ ...settings, startHour: 20, endHour: 8 }) }, env);
+    const response = await app.request("https://remember.test/api/life/brain", { method: "PATCH", headers: { "x-dev-user-id": userId, "content-type": "application/json" }, body: JSON.stringify({ ...settings, startHour: 9, endHour: 9 }) }, env);
     expect(response.status).toBe(422);
   });
 });

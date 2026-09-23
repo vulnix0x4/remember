@@ -76,6 +76,9 @@ export function scheduleTasks(snapshot: LifeSnapshot, settings: BrainSettings, j
     const parts = Object.fromEntries(formatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]));
     return { day: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) + Number(parts.minute) / 60 };
   };
+  // Planning hours may cross midnight (start 12, end 3 means noon to 3 AM the next day).
+  const spanHours = settings.endHour > settings.startHour ? settings.endHour - settings.startHour : settings.endHour + 24 - settings.startHour;
+  const hoursIntoDay = (hour: number) => (hour - settings.startHour + 24) % 24;
   const overlaps = (start: number, end: number, other: { start: number; end: number }) => start < other.end && end > other.start;
   const occupied = snapshot.events.filter((event) => event.status !== "cancelled" && !event.allDay)
     .map((event) => ({ start: Date.parse(event.startAt) - 5 * 60_000, end: Date.parse(event.endAt) + 5 * 60_000 }));
@@ -101,14 +104,15 @@ export function scheduleTasks(snapshot: LifeSnapshot, settings: BrainSettings, j
     for (let start = current; start + duration <= horizon; start += 15 * 60_000) {
       if (start < earliest) continue;
       const end = start + duration;
-      const left = local(start); const right = local(end - 1);
-      if (left.day !== right.day || left.hour < settings.startHour || right.hour >= settings.endHour) continue;
+      if (hoursIntoDay(local(start).hour) + duration / 3_600_000 > spanHours) continue;
       if (occupied.some((block) => overlaps(start, end, block))) continue;
       if (task.dueAt && Date.parse(task.dueAt) > current && end > Date.parse(task.dueAt)) continue;
       valid.push(start);
     }
     const matches = (start: number) => {
-      const hour = local(start).hour;
+      const clockHour = local(start).hour;
+      // After midnight in an overnight day still counts as evening.
+      const hour = settings.endHour <= settings.startHour && clockHour < settings.startHour ? clockHour + 24 : clockHour;
       return judgment.period === "any" || (judgment.period === "morning" ? hour < 12 : judgment.period === "afternoon" ? hour >= 12 && hour < 17 : hour >= 17);
     };
     const start = valid.find(matches) ?? valid[0];

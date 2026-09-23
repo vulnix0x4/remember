@@ -57,7 +57,7 @@ export function JevSheet({ life, onClose }: { life: JevLife; onClose: () => void
     if (!brain) return;
     const changed = preferences !== brain.settings.preferences || startHour !== brain.settings.startHour || endHour !== brain.settings.endHour;
     if (!changed) return;
-    if (endHour <= startHour) { toast.error("Your day must end after it starts. Hours were not changed."); return; }
+    if (endHour === startHour) { toast.error("Your day can’t start and end at the same hour. Hours were not changed."); return; }
     life.refreshBrain({ ...brain.settings, enabled, preferences: preferences.trim(), startHour, endHour })
       .catch(() => toast.error("Jev’s settings didn’t save. Try again."));
   };
@@ -72,7 +72,8 @@ export function JevSheet({ life, onClose }: { life: JevLife; onClose: () => void
       <label className="field"><span>Day starts</span><select value={startHour} disabled={!brain} onChange={(event) => setStartHour(Number(event.target.value))}>{hours.slice(0, 24).map((hour) => <option key={hour} value={hour}>{hourLabel(hour)}</option>)}</select></label>
       <label className="field"><span>Day ends</span><select value={endHour} disabled={!brain} onChange={(event) => setEndHour(Number(event.target.value))}>{hours.slice(1).map((hour) => <option key={hour} value={hour}>{hourLabel(hour)}</option>)}</select></label>
     </div>
-    {endHour <= startHour && <p className="field-error" role="alert">Choose an end after the start.</p>}
+    {endHour === startHour && <p className="field-error" role="alert">Pick a different end hour.</p>}
+    {endHour < startHour && <p className="sheet-note">Ends the next day, after midnight.</p>}
     <label className="field"><span>What Jev should know</span><textarea value={preferences} maxLength={2000} disabled={!brain} onChange={(event) => setPreferences(event.target.value)} placeholder="I focus best in the morning. Chores after work." /></label>
     <p className="sheet-meta" role="status">{brainWorking ? "Jev is updating your plan…" : brain?.evaluatedAt ? `Last planned ${agoLabel(brain.evaluatedAt, new Date())}` : "Jev hasn’t planned yet"}</p>
     {(error || life.brainError) && <p role="alert" className="field-error">{error || life.brainError}</p>}
