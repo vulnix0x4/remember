@@ -53,32 +53,32 @@ struct LifeTasksView: View {
                     .padding(.horizontal, RememberDesign.spacing)
                     .padding(.vertical, RememberDesign.spacingSmall)
                 List {
-                    Group {
-
-                        if !todayTasks.isEmpty {
-                            section("Today", tasks: todayTasks, trailing: totalTime(todayTasks))
-                        }
-                        if !laterTasks.isEmpty {
-                            section("Later", tasks: laterTasks)
-                        }
-                        if currentID == nil && todayTasks.isEmpty && laterTasks.isEmpty {
+                    if !todayTasks.isEmpty {
+                        taskSection("Today", tasks: todayTasks, trailing: totalTime(todayTasks))
+                    }
+                    if !laterTasks.isEmpty {
+                        taskSection("Later", tasks: laterTasks)
+                    }
+                    if currentID == nil && todayTasks.isEmpty && laterTasks.isEmpty {
+                        Section {
                             RememberEmptyState(
                                 systemImage: "checklist",
                                 title: "Nothing planned",
                                 message: "Type anything in the bar below. “Call mom tomorrow 15m” works."
                             )
+                            .listRowBackground(Color.clear)
                         }
-
-                        DailyBasicsStrip { isAddingBasic = true }
-                            .padding(.top, RememberDesign.spacingSmall)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-
-                        if !doneToday.isEmpty { doneSection }
                     }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                    Section {
+                        DailyBasicsStrip { isAddingBasic = true }
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    }
+                    if !doneToday.isEmpty { doneSection }
                 }
-                .listStyle(.plain)
+                .listStyle(.insetGrouped)
+                .listSectionSpacing(RememberDesign.spacingLarge)
+                .environment(\.defaultMinListRowHeight, 44)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.immediately)
                 .refreshable { await store.loadLife() }
@@ -94,66 +94,69 @@ struct LifeTasksView: View {
         }
     }
 
-    @ViewBuilder
-    private func section(_ title: String, tasks: [LifeTask], trailing: String? = nil) -> some View {
-        SectionHeading(title: title, trailing: trailing)
-            .padding(.top, RememberDesign.spacing)
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 0, trailing: 16))
-        ForEach(tasks) { task in
-            TaskRow(task: task) { openTask = task }
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    Button {
-                        timer.start(task.id)
-                        Task { await store.startTask(task) }
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
+    private func taskSection(_ title: String, tasks: [LifeTask], trailing: String? = nil) -> some View {
+        Section {
+            ForEach(tasks) { task in
+                TaskRow(task: task) { openTask = task }
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(RememberDesign.card)
+                    .listRowSeparatorTint(RememberDesign.line)
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 56 }
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button {
+                            timer.start(task.id)
+                            Task { await store.startTask(task) }
+                        } label: {
+                            Label("Start", systemImage: "play.fill")
+                        }
+                        .tint(RememberDesign.accent)
                     }
-                    .tint(RememberDesign.accent)
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button(role: .destructive) {
-                        Task { await store.deleteTask(task) }
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            Task { await store.deleteTask(task) }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
                     }
-                }
+            }
+        } header: {
+            SectionHeading(title: title, trailing: trailing)
+                .textCase(nil)
+                .padding(.horizontal, -RememberDesign.spacingXXSmall)
         }
     }
 
-    @ViewBuilder
     private var doneSection: some View {
-        Button {
-            withAnimation(.snappy) { doneIsExpanded.toggle() }
-        } label: {
-            HStack {
-                SectionHeading(title: "Done today · \(doneToday.count)")
-                Image(systemName: doneIsExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(RememberDesign.text3)
-            }
-            .frame(minHeight: 44)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .padding(.top, RememberDesign.spacing)
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 0, trailing: 16))
-        .accessibilityValue(doneIsExpanded ? "Shown" : "Hidden")
-        if doneIsExpanded {
-            ForEach(doneToday) { task in
-                HStack(spacing: RememberDesign.spacingCompact) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(RememberDesign.accent)
-                    Text(task.title)
-                        .font(.body)
-                        .foregroundStyle(RememberDesign.text2)
-                        .strikethrough(color: RememberDesign.text3)
-                    Spacer()
+        Section {
+            if doneIsExpanded {
+                ForEach(doneToday) { task in
+                    HStack(spacing: RememberDesign.spacingCompact) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(RememberDesign.accent)
+                        Text(task.title)
+                            .foregroundStyle(RememberDesign.text3)
+                            .strikethrough(color: RememberDesign.text3)
+                    }
+                    .listRowBackground(RememberDesign.card)
+                    .listRowSeparatorTint(RememberDesign.line)
                 }
-                .frame(minHeight: 44)
-                .listRowInsets(EdgeInsets(top: 0, leading: 24, bottom: 0, trailing: 16))
             }
+        } header: {
+            Button {
+                withAnimation(.snappy) { doneIsExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    SectionHeading(title: "Done today · \(doneToday.count)")
+                    Image(systemName: doneIsExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(RememberDesign.text3)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .textCase(nil)
+            .padding(.horizontal, -RememberDesign.spacingXXSmall)
+            .accessibilityValue(doneIsExpanded ? "Shown" : "Hidden")
         }
     }
 

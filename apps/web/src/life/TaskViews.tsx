@@ -95,7 +95,7 @@ export function useTaskActions(life: LifeOSController) {
   const fail = useCallback((reason: unknown) => { toast.error(mutationMessage(reason)); }, [toast]);
 
   const add = useCallback(async (text: string) => {
-    const parsed = parseQuickTask(text, new Date());
+    const parsed = parseQuickTask(text, new Date(), life.snapshot?.tasks ?? []);
     try {
       await life.createTask({
         title: parsed.title,
@@ -185,7 +185,7 @@ export function TaskAddBar({ life }: { life: LifeOSController }) {
     label="Add a task"
     placeholder="Add a task…"
     sendLabel="Add task"
-    chips={(text) => quickTaskChips(parseQuickTask(text, new Date()), new Date())}
+    chips={(text) => quickTaskChips(parseQuickTask(text, new Date(), life.snapshot?.tasks ?? []), new Date())}
     onSubmit={actions.add}
   />;
 }

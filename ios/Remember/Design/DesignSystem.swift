@@ -187,9 +187,8 @@ struct SectionHeading: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title.uppercased())
-                .font(.rememberEyebrow)
-                .tracking(0.8)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(RememberDesign.text2)
             Spacer()
             if let trailing {
@@ -393,6 +392,7 @@ private struct ToastView: View {
 
 /// The one big white bar at the bottom of every screen. Type or speak, press return.
 struct AddBar: View {
+    @Environment(AppStore.self) private var store
     let placeholder: String
     var parsesTasks = false
     var allowsDictation = true
@@ -411,7 +411,7 @@ struct AddBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
             if parsesTasks, !trimmed.isEmpty {
-                ParsePreview(parsed: QuickTaskParser.parse(trimmed))
+                ParsePreview(parsed: QuickTaskParser.parse(trimmed, history: store.taskHistory))
             }
             HStack(spacing: RememberDesign.spacingSmall) {
                 TextField(
@@ -541,7 +541,12 @@ private struct ParsePreview: View {
                         MetaChip(text: "Due \(due.relativeDayLabel)", systemImage: "flag.fill", isAccent: true)
                     }
                     if let days = parsed.repeatEveryDays {
-                        MetaChip(text: days.repeatLabel, systemImage: "repeat", isAccent: true)
+                        let source = switch parsed.repeatSource {
+                        case .usual: " · usual"
+                        case .learned: " · your rhythm"
+                        default: ""
+                        }
+                        MetaChip(text: days.repeatLabel + source, systemImage: "repeat", isAccent: true)
                     }
                     if let priority = parsed.priority, priority == .high || priority == .must {
                         MetaChip(text: priority == .must ? "Urgent" : "Important", systemImage: "exclamationmark", isAccent: true)
@@ -599,6 +604,9 @@ extension Int {
         case 7: "Weekly"
         case 14: "Every 2 weeks"
         case 30: "Monthly"
+        case 90: "Every 3 months"
+        case 180: "Every 6 months"
+        case 365: "Yearly"
         default: "Every \(self) days"
         }
     }

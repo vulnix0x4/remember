@@ -103,3 +103,44 @@ final class QuickTaskParserTests: XCTestCase {
         XCTAssertNil(parse("buy sunscreen").notBefore)
     }
 }
+
+final class AutomaticRepeatTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+
+    func testCommonChoresGetTheirUsualRhythm() {
+        let laundry = QuickTaskParser.parse("laundry", now: now)
+        XCTAssertEqual(laundry.title, "Laundry")
+        XCTAssertEqual(laundry.repeatEveryDays, 7)
+        XCTAssertEqual(laundry.repeatSource, .usual)
+        XCTAssertEqual(QuickTaskParser.parse("do the dishes", now: now).repeatEveryDays, 1)
+        XCTAssertEqual(QuickTaskParser.parse("change sheets", now: now).repeatEveryDays, 14)
+        XCTAssertEqual(QuickTaskParser.parse("pay rent by friday", now: now).repeatEveryDays, 30)
+        XCTAssertEqual(QuickTaskParser.parse("replace air filter", now: now).repeatEveryDays, 90)
+        XCTAssertEqual(QuickTaskParser.parse("book dentist", now: now).repeatEveryDays, 180)
+    }
+
+    func testTypedRhythmAndOnceWin() {
+        let typed = QuickTaskParser.parse("laundry every 3 days", now: now)
+        XCTAssertEqual(typed.repeatEveryDays, 3)
+        XCTAssertEqual(typed.repeatSource, .typed)
+        let once = QuickTaskParser.parse("laundry once", now: now)
+        XCTAssertEqual(once.title, "Laundry")
+        XCTAssertNil(once.repeatEveryDays)
+    }
+
+    func testOneOffTasksStayOneOff() {
+        XCTAssertNil(QuickTaskParser.parse("email sam", now: now).repeatEveryDays)
+        XCTAssertNil(QuickTaskParser.parse("buy a rental car", now: now).repeatEveryDays)
+    }
+
+    func testLearnsThePersonsRhythm() {
+        let history = [
+            QuickTaskParser.HistoryEntry(title: "Clean litter box", completedAt: now.addingTimeInterval(-6 * 86_400)),
+            QuickTaskParser.HistoryEntry(title: "clean litter box", completedAt: now.addingTimeInterval(-3 * 86_400)),
+        ]
+        let learned = QuickTaskParser.parse("clean litter box", now: now, history: history)
+        XCTAssertEqual(learned.repeatEveryDays, 3)
+        XCTAssertEqual(learned.repeatSource, .learned)
+        XCTAssertEqual(QuickTaskParser.learnedRepeatDays(for: "Laundry", history: [.init(title: "laundry", completedAt: now.addingTimeInterval(-14 * 86_400))], now: now), 14)
+    }
+}

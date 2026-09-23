@@ -7,7 +7,43 @@ export interface QuickTask {
   notBefore?: Date;
   dueAt?: Date;
   repeatEveryDays?: number;
+  /** Where the repeat came from: typed in the text, the usual rhythm for a known chore, or learned from past completions. */
+  repeatSource?: "typed" | "usual" | "learned";
   priority?: Extract<TaskPriority, "high" | "must">;
+}
+
+/** A previously seen task, used to learn how often the person actually repeats something. */
+export interface TaskHistoryEntry { title: string; completedAt?: string | null }
+
+/** How often common chores usually repeat, in days. First match wins. Mirrors docs/REDESIGN.md. */
+const USUAL_RHYTHMS: Array<[RegExp, number]> = [
+  [/\b(?:dishes|make\s+(?:the\s+|my\s+)?bed|meds|medication|pills|vitamins|walk\s+(?:the\s+)?dog|feed\s+(?:the\s+)?(?:dog|cat|pets?)|floss|journal|skincare)\b/i, 1],
+  [/\bwater\s+(?:the\s+)?plants\b/i, 3],
+  [/\b(?:sheets|bedding|change\s+(?:the\s+)?bed)\b/i, 14],
+  [/\b(?:laundry|vacuum|mop|groceries|grocery|trash|garbage|recycling|bins|dust|meal\s+prep|clean\s+(?:the\s+)?(?:bathroom|kitchen|room|house|apartment)|mow\s+(?:the\s+)?lawn|weekly\s+review|plan\s+(?:the\s+|my\s+)?week|call\s+(?:mom|dad|grandma|grandpa|parents))\b/i, 7],
+  [/\b(?:rent|bills?|credit\s+card|mortgage|haircut|budget|wash\s+(?:the\s+)?car|car\s+wash|clean\s+(?:the\s+)?fridge|back\s*up)\b/i, 30],
+  [/\b(?:air\s+filter|hvac\s+filter|furnace\s+filter|toothbrush|oil\s+change|change\s+(?:the\s+)?oil)\b/i, 90],
+  [/\b(?:dentist|teeth\s+cleaning)\b/i, 180],
+  [/\b(?:checkup|check-up|eye\s+exam|registration)\b/i, 365],
+];
+const RHYTHM_STEPS = [1, 2, 3, 7, 14, 30, 90, 180, 365];
+
+export function usualRepeatDays(title: string): number | undefined {
+  return USUAL_RHYTHMS.find(([pattern]) => pattern.test(title))?.[1];
+}
+
+/** The person's own rhythm for a task title, from when they completed it before. */
+export function learnedRepeatDays(title: string, history: TaskHistoryEntry[], now: Date = new Date()): number | undefined {
+  const key = title.trim().toLowerCase();
+  const completions = history
+    .filter((entry) => entry.completedAt && entry.title.trim().toLowerCase() === key)
+    .map((entry) => Date.parse(entry.completedAt!))
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a);
+  if (!completions.length) return undefined;
+  const gapDays = ((completions.length > 1 ? completions[0] : now.getTime()) - (completions.length > 1 ? completions[1] : completions[0])) / 86_400_000;
+  if (gapDays < 0.5) return undefined;
+  return RHYTHM_STEPS.reduce((best, step) => Math.abs(step - gapDays) < Math.abs(best - gapDays) ? step : best);
 }
 
 export const QUICK_TASK_DEFAULTS = { durationMinutes: 15, area: "direction", status: "queued", priority: "normal" } as const;
@@ -54,7 +90,7 @@ function whenDay(word: string, now: Date): Date | null {
  * Turns one line such as "call mom tomorrow 20m" into a task. Pure and
  * case-insensitive; every recognized token is removed from the title.
  */
-export function parseQuickTask(text: string, now: Date = new Date()): QuickTask {
+export function parseQuickTask(text: string, now: Date = new Date(), history: TaskHistoryEntry[] = []): QuickTask {
   const original = text.trim();
   let rest = ` ${original} `;
   const result: Omit<QuickTask, "title"> = {};
@@ -65,6 +101,9 @@ export function parseQuickTask(text: string, now: Date = new Date()): QuickTask 
     rest = `${rest.slice(0, match.index)} ${rest.slice(match.index + match[0].length)}`;
     return true;
   };
+
+  // "once" turns automatic repeat off.
+  const once = take(/\b(?:just\s+once|one\s+time|once)\b/i, () => undefined);
 
   // Repeat (before durations and days so "every 3 days" is not read as anything else).
   take(/\bevery\s+(\d+)\s+days?\b/i, (match) => { result.repeatEveryDays = Math.min(365, Math.max(1, Number(match[1]))); })
@@ -108,7 +147,15 @@ export function parseQuickTask(text: string, now: Date = new Date()): QuickTask 
     title = title.replace(/(?:\s+(?:on|by|at)|\s*[,-])$/i, "").trim();
   }
   if (!title) return { title: original };
-  return { title: title[0].toUpperCase() + title.slice(1), ...result };
+  title = title[0].toUpperCase() + title.slice(1);
+  if (result.repeatEveryDays) result.repeatSource = "typed";
+  else if (!once) {
+    const learned = learnedRepeatDays(title, history, now);
+    const usual = learned ? undefined : usualRepeatDays(title);
+    if (learned) { result.repeatEveryDays = learned; result.repeatSource = "learned"; }
+    else if (usual) { result.repeatEveryDays = usual; result.repeatSource = "usual"; }
+  }
+  return { title, ...result };
 }
 
 function sameDay(left: Date, right: Date) {
@@ -129,6 +176,10 @@ export function describeRepeat(days: number): string {
   if (days === 7) return "Weekly";
   if (days === 30) return "Monthly";
   if (days === 2) return "Every other day";
+  if (days === 14) return "Every 2 weeks";
+  if (days === 90) return "Every 3 months";
+  if (days === 180) return "Every 6 months";
+  if (days === 365) return "Yearly";
   return `Every ${days} days`;
 }
 
@@ -140,7 +191,10 @@ export function quickTaskChips(parsed: QuickTask, now: Date = new Date()): Array
   if (parsed.durationMinutes) chips.push({ kind: "duration", label: parsed.durationMinutes >= 60 && parsed.durationMinutes % 60 === 0 ? `${parsed.durationMinutes / 60} hr` : `${parsed.durationMinutes} min` });
   if (parsed.notBefore) chips.push({ kind: "when", label: describeDay(parsed.notBefore, now) });
   if (parsed.dueAt) chips.push({ kind: "due", label: `Due ${describeDay(parsed.dueAt, now).replace("Tonight", "today").replace("Today", "today")}` });
-  if (parsed.repeatEveryDays) chips.push({ kind: "repeat", label: describeRepeat(parsed.repeatEveryDays) });
+  if (parsed.repeatEveryDays) {
+    const source = parsed.repeatSource === "usual" ? " · usual" : parsed.repeatSource === "learned" ? " · your rhythm" : "";
+    chips.push({ kind: "repeat", label: `${describeRepeat(parsed.repeatEveryDays)}${source}` });
+  }
   if (parsed.priority) chips.push({ kind: "priority", label: parsed.priority === "must" ? "Urgent" : "Important" });
   return chips;
 }

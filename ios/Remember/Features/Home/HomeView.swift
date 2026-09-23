@@ -54,9 +54,7 @@ struct HomeView: View {
         if !tasks.isEmpty {
             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                 SectionHeading(title: "Up next")
-                ForEach(tasks) { task in
-                    TaskRow(task: task) { openTask = task }
-                }
+                TaskGroup(tasks: tasks) { openTask = $0 }
                 if store.queuedLifeTasks.count > tasks.count + 1 {
                     Button("See all in Plan") { store.selectedTab = .tasks }
                         .buttonStyle(.rememberQuiet)

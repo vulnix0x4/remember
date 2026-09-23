@@ -10,50 +10,53 @@ struct TaskRow: View {
     @State private var isChecked = false
 
     var body: some View {
-        HStack(spacing: RememberDesign.spacingCompact) {
+        // Rows are drawn flat; the group around them (TaskGroup or a grouped List) supplies the card and dividers.
+        HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacingCompact) {
             Button(action: complete) {
                 ZStack {
                     Circle()
-                        .strokeBorder(isChecked ? RememberDesign.accent : RememberDesign.text3, lineWidth: 2)
+                        .strokeBorder(isChecked ? RememberDesign.accent : RememberDesign.text3, lineWidth: 1.5)
                     if isChecked {
                         Circle().fill(RememberDesign.accent)
                         Image(systemName: "checkmark")
-                            .font(.caption.weight(.heavy))
+                            .font(.system(size: 11, weight: .heavy))
                             .foregroundStyle(RememberDesign.accentInk)
                     }
                 }
-                .frame(width: 28, height: 28)
+                .frame(width: 22, height: 22)
                 .frame(width: 44, height: 44)
                 .contentShape(.circle)
+                // Line the circle up with the title's first line rather than the middle of the row.
+                .alignmentGuide(.firstTextBaseline) { dimensions in dimensions[VerticalAlignment.center] + 6 }
             }
             .buttonStyle(.plain)
+            .padding(.leading, -RememberDesign.spacingCompact)
             .accessibilityLabel("Mark \(task.title) done")
             .sensoryFeedback(.success, trigger: isChecked)
 
             Button(action: onOpen) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(task.title)
-                        .font(.rememberRowTitle)
-                        .foregroundStyle(isChecked ? RememberDesign.text3 : .white)
+                        .font(.body)
+                        .foregroundStyle(isChecked ? RememberDesign.text3 : RememberDesign.text)
                         .strikethrough(isChecked, color: RememberDesign.text3)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
                     Text(meta)
-                        .font(.rememberMeta)
-                        .foregroundStyle(RememberDesign.text2)
+                        .font(.footnote)
+                        .foregroundStyle(RememberDesign.text3)
                         .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 13)
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens the task to change it")
             .accessibilityIdentifier("remember.life-task.\(task.id.uuidString.lowercased())")
         }
-        .padding(.leading, 6)
         .padding(.trailing, RememberDesign.spacing)
-        .frame(minHeight: RememberDesign.rowHeight + 8)
-        .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+        .padding(.leading, RememberDesign.spacingCompact)
         .accessibilityElement(children: .contain)
         .accessibilityAction(named: "Start now") { Task { timer.start(task.id); await store.startTask(task) } }
         .accessibilityAction(named: "Delete") { Task { await store.deleteTask(task) } }
@@ -81,5 +84,26 @@ struct TaskRow: View {
             let succeeded = await store.completeTask(task, minutesSpent: 0)
             if !succeeded { withAnimation { isChecked = false } }
         }
+    }
+}
+
+/// A section of tasks drawn as one card with hairline dividers, like Reminders.
+struct TaskGroup: View {
+    let tasks: [LifeTask]
+    let onOpen: (LifeTask) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(tasks) { task in
+                TaskRow(task: task) { onOpen(task) }
+                if task.id != tasks.last?.id {
+                    Rectangle()
+                        .fill(RememberDesign.line)
+                        .frame(height: 0.5)
+                        .padding(.leading, 56)
+                }
+            }
+        }
+        .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.controlRadius))
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDay, describeRepeat, parseQuickTask, quickTaskChips } from "./quickTask";
+import { describeDay, describeRepeat, learnedRepeatDays, parseQuickTask, quickTaskChips } from "./quickTask";
 
 // Wednesday, September 23, 2026 at 10:30 local time.
 const wednesday = new Date(2026, 8, 23, 10, 30);
@@ -7,13 +7,13 @@ const local = (month: number, day: number, hour: number) => new Date(2026, month
 
 describe("parseQuickTask: spec examples", () => {
   it("Call mom tomorrow 20m", () => {
-    expect(parseQuickTask("Call mom tomorrow 20m", wednesday)).toEqual({ title: "Call mom", durationMinutes: 20, notBefore: local(9, 24, 9) });
+    expect(parseQuickTask("Call mom tomorrow 20m", wednesday)).toEqual({ title: "Call mom", durationMinutes: 20, notBefore: local(9, 24, 9), repeatEveryDays: 7, repeatSource: "usual" });
   });
   it("laundry every week 1h", () => {
-    expect(parseQuickTask("laundry every week 1h", wednesday)).toEqual({ title: "Laundry", durationMinutes: 60, repeatEveryDays: 7 });
+    expect(parseQuickTask("laundry every week 1h", wednesday)).toEqual({ title: "Laundry", durationMinutes: 60, repeatEveryDays: 7, repeatSource: "typed" });
   });
   it("pay rent by friday !", () => {
-    expect(parseQuickTask("pay rent by friday !", wednesday)).toEqual({ title: "Pay rent", dueAt: local(9, 25, 17), priority: "high" });
+    expect(parseQuickTask("pay rent by friday !", wednesday)).toEqual({ title: "Pay rent", dueAt: local(9, 25, 17), priority: "high", repeatEveryDays: 30, repeatSource: "usual" });
   });
   it("email sam", () => {
     expect(parseQuickTask("email sam", wednesday)).toEqual({ title: "Email sam" });
@@ -50,7 +50,7 @@ describe("parseQuickTask: when", () => {
     expect(parseQuickTask("stretch tonight", wednesday).notBefore).toEqual(local(9, 23, 18));
   });
   it.each(["tomorrow", "tmrw", "tmr", "TOMORROW"])("%s is tomorrow at 09:00", (word) => {
-    expect(parseQuickTask(`water plants ${word}`, wednesday)).toEqual({ title: "Water plants", notBefore: local(9, 24, 9) });
+    expect(parseQuickTask(`read a book ${word}`, wednesday)).toEqual({ title: "Read a book", notBefore: local(9, 24, 9) });
   });
   it("weekend is the next Saturday at 09:00", () => {
     expect(parseQuickTask("clean garage this weekend", wednesday)).toEqual({ title: "Clean garage", notBefore: local(9, 26, 9) });
@@ -69,11 +69,11 @@ describe("parseQuickTask: when", () => {
     ["thursday", 24], ["thu", 24], ["thur", 24], ["thurs", 24], ["friday", 25], ["fri", 25],
     ["saturday", 26], ["sat", 26], ["sunday", 27], ["sun", 27],
   ])("%s is the next one strictly after today", (word, day) => {
-    expect(parseQuickTask(`dentist ${word}`, wednesday)).toEqual({ title: "Dentist", notBefore: local(9, day, 9) });
+    expect(parseQuickTask(`coffee with jo ${word}`, wednesday)).toEqual({ title: "Coffee with jo", notBefore: local(9, day, 9) });
   });
   it("accepts on and next before a day name", () => {
-    expect(parseQuickTask("call dad on friday", wednesday)).toEqual({ title: "Call dad", notBefore: local(9, 25, 9) });
-    expect(parseQuickTask("call dad next fri", wednesday)).toEqual({ title: "Call dad", notBefore: local(9, 25, 9) });
+    expect(parseQuickTask("text jo on friday", wednesday)).toEqual({ title: "Text jo", notBefore: local(9, 25, 9) });
+    expect(parseQuickTask("text jo next fri", wednesday)).toEqual({ title: "Text jo", notBefore: local(9, 25, 9) });
   });
   it("only matches short day names as whole words", () => {
     expect(parseQuickTask("wedding gift", wednesday)).toEqual({ title: "Wedding gift" });
@@ -99,7 +99,7 @@ describe("parseQuickTask: repeat", () => {
     expect(parseQuickTask(text, wednesday).repeatEveryDays).toBe(days);
   });
   it("does not treat the repeat count as a duration", () => {
-    expect(parseQuickTask("water every 3 days", wednesday)).toEqual({ title: "Water", repeatEveryDays: 3 });
+    expect(parseQuickTask("water every 3 days", wednesday)).toEqual({ title: "Water", repeatEveryDays: 3, repeatSource: "typed" });
   });
 });
 
@@ -139,5 +139,39 @@ describe("preview chips", () => {
     expect(describeDay(local(9, 26, 9), wednesday)).toBe("Sat");
     expect(quickTaskChips(parseQuickTask("taxes by friday 2h urgent", wednesday), wednesday).map((chip) => chip.label)).toEqual(["2 hr", "Due Fri", "Urgent"]);
     expect(describeRepeat(3)).toBe("Every 3 days");
+  });
+});
+
+describe("automatic repeat", () => {
+  const now = new Date(2026, 8, 23, 10, 0);
+  it("gives common chores their usual rhythm", () => {
+    expect(parseQuickTask("laundry", now)).toMatchObject({ title: "Laundry", repeatEveryDays: 7, repeatSource: "usual" });
+    expect(parseQuickTask("do the dishes", now).repeatEveryDays).toBe(1);
+    expect(parseQuickTask("change sheets", now).repeatEveryDays).toBe(14);
+    expect(parseQuickTask("pay rent by friday", now)).toMatchObject({ title: "Pay rent", repeatEveryDays: 30 });
+    expect(parseQuickTask("replace air filter", now).repeatEveryDays).toBe(90);
+    expect(parseQuickTask("book dentist", now).repeatEveryDays).toBe(180);
+  });
+  it("lets typed rhythm and 'once' win", () => {
+    expect(parseQuickTask("laundry every 3 days", now)).toMatchObject({ repeatEveryDays: 3, repeatSource: "typed" });
+    const once = parseQuickTask("laundry once", now);
+    expect(once.title).toBe("Laundry");
+    expect(once.repeatEveryDays).toBeUndefined();
+  });
+  it("leaves one-off tasks alone", () => {
+    expect(parseQuickTask("email sam", now).repeatEveryDays).toBeUndefined();
+    expect(parseQuickTask("buy a rental car", now).repeatEveryDays).toBeUndefined();
+  });
+  it("learns the person's own rhythm from past completions", () => {
+    const history = [
+      { title: "Clean litter box", completedAt: new Date(2026, 8, 17, 9).toISOString() },
+      { title: "clean litter box", completedAt: new Date(2026, 8, 20, 9).toISOString() },
+    ];
+    expect(parseQuickTask("clean litter box", now, history)).toMatchObject({ repeatEveryDays: 3, repeatSource: "learned" });
+    // One earlier completion: the gap until now counts.
+    expect(learnedRepeatDays("Laundry", [{ title: "laundry", completedAt: new Date(2026, 8, 9, 10).toISOString() }], now)).toBe(14);
+  });
+  it("labels where the repeat came from", () => {
+    expect(quickTaskChips(parseQuickTask("laundry", now), now).find((chip) => chip.kind === "repeat")?.label).toBe("Weekly · usual");
   });
 });

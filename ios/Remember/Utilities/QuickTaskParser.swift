@@ -8,7 +8,11 @@ struct ParsedQuickTask: Equatable, Sendable {
     var notBefore: Date?
     var dueAt: Date?
     var repeatEveryDays: Int?
+    var repeatSource: RepeatSource?
     var priority: LifeTaskPriority?
+
+    /// Where the repeat came from: typed in the text, the usual rhythm for a known chore, or learned from past completions.
+    enum RepeatSource: Equatable, Sendable { case typed, usual, learned }
 
     var hasDetails: Bool {
         durationMinutes != nil || notBefore != nil || dueAt != nil || repeatEveryDays != nil || priority != nil
@@ -16,7 +20,13 @@ struct ParsedQuickTask: Equatable, Sendable {
 }
 
 enum QuickTaskParser {
-    static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current) -> ParsedQuickTask {
+    /// A previously seen task, used to learn how often the person actually repeats something.
+    struct HistoryEntry: Sendable {
+        let title: String
+        let completedAt: Date?
+    }
+
+    static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current, history: [HistoryEntry] = []) -> ParsedQuickTask {
         let original = text.trimmingCharacters(in: .whitespacesAndNewlines)
         var working = " \(original) "
         var result = ParsedQuickTask(title: original)
@@ -34,6 +44,9 @@ enum QuickTaskParser {
             }
             return groups
         }
+
+        // "once" turns automatic repeat off.
+        let once = take(#"\b(just\s+once|one\s+time|once)\b"#) != nil
 
         // Repeat first, so "every week" is never read as "next week" or a weekday.
         if let match = take(#"\bevery\s+(\d{1,3})\s+days?\b"#), let days = Int(match[1]) {
@@ -90,7 +103,48 @@ enum QuickTaskParser {
         }
         if title.isEmpty { return ParsedQuickTask(title: original) }
         result.title = title.prefix(1).uppercased() + title.dropFirst()
+        if result.repeatEveryDays != nil {
+            result.repeatSource = .typed
+        } else if !once {
+            if let learned = learnedRepeatDays(for: result.title, history: history, now: now) {
+                result.repeatEveryDays = learned
+                result.repeatSource = .learned
+            } else if let usual = usualRepeatDays(for: result.title) {
+                result.repeatEveryDays = usual
+                result.repeatSource = .usual
+            }
+        }
         return result
+    }
+
+    /// How often common chores usually repeat, in days. First match wins. Mirrors docs/REDESIGN.md.
+    private static let usualRhythms: [(pattern: String, days: Int)] = [
+        (#"\b(dishes|make\s+(the\s+|my\s+)?bed|meds|medication|pills|vitamins|walk\s+(the\s+)?dog|feed\s+(the\s+)?(dog|cat|pets?)|floss|journal|skincare)\b"#, 1),
+        (#"\bwater\s+(the\s+)?plants\b"#, 3),
+        (#"\b(sheets|bedding|change\s+(the\s+)?bed)\b"#, 14),
+        (#"\b(laundry|vacuum|mop|groceries|grocery|trash|garbage|recycling|bins|dust|meal\s+prep|clean\s+(the\s+)?(bathroom|kitchen|room|house|apartment)|mow\s+(the\s+)?lawn|weekly\s+review|plan\s+(the\s+|my\s+)?week|call\s+(mom|dad|grandma|grandpa|parents))\b"#, 7),
+        (#"\b(rent|bills?|credit\s+card|mortgage|haircut|budget|wash\s+(the\s+)?car|car\s+wash|clean\s+(the\s+)?fridge|back\s*up)\b"#, 30),
+        (#"\b(air\s+filter|hvac\s+filter|furnace\s+filter|toothbrush|oil\s+change|change\s+(the\s+)?oil)\b"#, 90),
+        (#"\b(dentist|teeth\s+cleaning)\b"#, 180),
+        (#"\b(checkup|check-up|eye\s+exam|registration)\b"#, 365),
+    ]
+    private static let rhythmSteps = [1, 2, 3, 7, 14, 30, 90, 180, 365]
+
+    static func usualRepeatDays(for title: String) -> Int? {
+        usualRhythms.first { title.range(of: $0.pattern, options: [.regularExpression, .caseInsensitive]) != nil }?.days
+    }
+
+    /// The person's own rhythm for a title: the gap between the last two completions, or since the only one.
+    static func learnedRepeatDays(for title: String, history: [HistoryEntry], now: Date = .now) -> Int? {
+        let key = title.trimmingCharacters(in: .whitespaces).lowercased()
+        let completions = history
+            .filter { $0.title.trimmingCharacters(in: .whitespaces).lowercased() == key }
+            .compactMap(\.completedAt)
+            .sorted(by: >)
+        guard let latest = completions.first else { return nil }
+        let gap = (completions.count > 1 ? latest.timeIntervalSince(completions[1]) : now.timeIntervalSince(latest)) / 86_400
+        guard gap >= 0.5 else { return nil }
+        return rhythmSteps.min { abs(Double($0) - gap) < abs(Double($1) - gap) }
     }
 
     private static func clampDuration(_ minutes: Int) -> Int { min(720, max(2, minutes)) }
