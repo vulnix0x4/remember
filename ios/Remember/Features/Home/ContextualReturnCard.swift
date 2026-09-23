@@ -27,7 +27,7 @@ struct ContextualReturnCard: View {
                 VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
                     Text(match.imprint.essence)
                         .font(.rememberSectionTitle)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(RememberDesign.text)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(match.suggestedAction.map { "Try: \($0.title)" } ?? match.contextTitle)

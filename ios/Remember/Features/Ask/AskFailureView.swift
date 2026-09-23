@@ -9,7 +9,7 @@ struct AskFailureView: View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
             Label(title, systemImage: "clock.badge.exclamationmark")
                 .font(.rememberRowTitle)
-                .foregroundStyle(.white)
+                .foregroundStyle(RememberDesign.text)
             Text(message)
                 .font(.subheadline)
                 .foregroundStyle(RememberDesign.text2)

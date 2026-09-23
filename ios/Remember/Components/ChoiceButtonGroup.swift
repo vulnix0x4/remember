@@ -42,7 +42,7 @@ struct ChoiceButtonGroup<Value: Hashable, ChoiceLabel: View>: View {
                     .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                     .padding(.horizontal, RememberDesign.spacing)
                     .contentShape(.capsule)
-                    .background(isSelected ? Color.white : RememberDesign.cardRaised, in: .capsule)
+                    .background(isSelected ? RememberDesign.primaryFill : RememberDesign.cardRaised, in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])

@@ -25,7 +25,7 @@ struct LivingThreadsView: View {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(thread.name)
                                     .font(.rememberSectionTitle)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(RememberDesign.text)
                                 Spacer()
                                 Text(CountLabelFormatter.text(thread.saves.count, singular: "save"))
                                     .font(.rememberMeta)
@@ -36,7 +36,7 @@ struct LivingThreadsView: View {
                                 .foregroundStyle(RememberDesign.text2)
                             Text(thread.latest.essence)
                                 .font(.subheadline)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(RememberDesign.text)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }

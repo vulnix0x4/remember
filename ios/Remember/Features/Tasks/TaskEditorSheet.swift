@@ -132,7 +132,7 @@ struct TaskEditorSheet: View {
                 .foregroundStyle(isOn ? RememberDesign.canvas : .white)
                 .padding(.horizontal, RememberDesign.spacing)
                 .frame(minHeight: 44)
-                .background(isOn ? Color.white : RememberDesign.cardRaised, in: .capsule)
+                .background(isOn ? RememberDesign.primaryFill : RememberDesign.cardRaised, in: .capsule)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isOn ? .isSelected : [])

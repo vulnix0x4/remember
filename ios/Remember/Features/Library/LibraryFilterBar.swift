@@ -18,7 +18,7 @@ struct LibraryFilterBar: View {
                             .foregroundStyle(isSelected ? RememberDesign.canvas : .white)
                             .padding(.horizontal, RememberDesign.spacing)
                             .frame(minHeight: 40)
-                            .background(isSelected ? Color.white : RememberDesign.card, in: .capsule)
+                            .background(isSelected ? RememberDesign.primaryFill : RememberDesign.card, in: .capsule)
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(isSelected ? .isSelected : [])

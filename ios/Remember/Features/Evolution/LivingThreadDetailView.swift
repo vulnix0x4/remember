@@ -64,7 +64,7 @@ struct LivingThreadDetailView: View {
                                         .foregroundStyle(RememberDesign.text2)
                                     Text(point.imprint.essence)
                                         .font(.rememberRowTitle)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(RememberDesign.text)
                                         .multilineTextAlignment(.leading)
                                         .fixedSize(horizontal: false, vertical: true)
                                     Text(point.detail)
@@ -88,7 +88,7 @@ struct LivingThreadDetailView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(imprint.title)
                                     .font(.rememberRowTitle)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(RememberDesign.text)
                                 Text(imprint.essence)
                                     .font(.subheadline)
                                     .foregroundStyle(RememberDesign.text2)

@@ -13,15 +13,19 @@ enum RememberDesign {
     static let cornerRadius = 22.0
     static let sheetRadius = 28.0
 
-    static let canvas = Color(red: 0.043, green: 0.043, blue: 0.051)
-    static let card = Color(red: 0.094, green: 0.094, blue: 0.110)
-    static let cardRaised = Color(red: 0.137, green: 0.137, blue: 0.161)
-    static let line = Color(red: 0.180, green: 0.180, blue: 0.208)
-    static let text2 = Color.white.opacity(0.64)
-    static let text3 = Color.white.opacity(0.40)
+    static let theme = RememberTheme.current
+    static let canvas = theme.canvas
+    static let card = theme.card
+    static let cardRaised = theme.cardRaised
+    static let line = theme.line
+    static let text = Color(hex: 0xF4EFE6)
+    static let text2 = text.opacity(0.64)
+    static let text3 = text.opacity(0.40)
     static let danger = Color(red: 1.0, green: 0.365, blue: 0.365)
-    static let accent = Color.accentColor
-    static let accentInk = Color("AccentInk")
+    static let accent = theme.accent
+    static let accentInk = theme.accentInk
+    static let primaryFill = theme.primaryFill
+    static let primaryInk = theme.primaryInk
 
     // Names kept for screens that predate the redesign.
     static let surface = card
@@ -35,6 +39,62 @@ enum RememberDesign {
     static let primaryHeight = 60.0
     static let secondaryHeight = 52.0
     static let rowHeight = 56.0
+}
+
+// MARK: - Themes
+
+/// Dark color themes. Chosen at launch from `REMEMBER_THEME` (for previews) or the saved preference.
+enum RememberTheme: String, CaseIterable, Identifiable {
+    case graphite, sand, sage, slate, mauve
+
+    var id: Self { self }
+    static let storageKey = "remember.theme"
+
+    static var current: RememberTheme {
+        let raw = ProcessInfo.processInfo.environment["REMEMBER_THEME"]
+            ?? UserDefaults.standard.string(forKey: storageKey)
+        return raw.flatMap(RememberTheme.init(rawValue:)) ?? .sand
+    }
+
+    var name: String {
+        switch self {
+        case .graphite: "Graphite"
+        case .sand: "Sand"
+        case .sage: "Sage"
+        case .slate: "Slate"
+        case .mauve: "Mauve"
+        }
+    }
+
+    private var palette: (canvas: UInt32, card: UInt32, raised: UInt32, line: UInt32, accent: UInt32, ink: UInt32, primary: UInt32) {
+        // Muted, low-saturation tones: the accent is a soft tint of the canvas, never a bright color.
+        switch self {
+        case .graphite: (0x0E0E0F, 0x19191B, 0x242427, 0x2F2F33, 0xC9CBD1, 0x121316, 0xF2F2F4)
+        case .sand: (0x12110F, 0x1D1B18, 0x282521, 0x34302B, 0xD6C3A2, 0x1E1810, 0xEDE3D1)
+        case .sage: (0x0E1210, 0x171D1A, 0x212824, 0x2C3530, 0xA9C0AA, 0x0F1A12, 0xDEE8DD)
+        case .slate: (0x0D1015, 0x161B22, 0x20262F, 0x2B323D, 0xA3B5CA, 0x0E1620, 0xDDE5EF)
+        case .mauve: (0x121013, 0x1C191D, 0x272329, 0x332E35, 0xC9AEBE, 0x221520, 0xEDDFE7)
+        }
+    }
+
+    var canvas: Color { Color(hex: palette.canvas) }
+    var card: Color { Color(hex: palette.card) }
+    var cardRaised: Color { Color(hex: palette.raised) }
+    var line: Color { Color(hex: palette.line) }
+    var accent: Color { Color(hex: palette.accent) }
+    var accentInk: Color { Color(hex: palette.ink) }
+    var primaryFill: Color { Color(hex: palette.primary) }
+    var primaryInk: Color { canvas }
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255
+        )
+    }
 }
 
 // MARK: - Type
@@ -56,10 +116,10 @@ struct RememberPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(RememberDesign.canvas)
+            .foregroundStyle(RememberDesign.primaryInk)
             .frame(maxWidth: .infinity, minHeight: RememberDesign.primaryHeight)
             .padding(.horizontal, RememberDesign.spacing)
-            .background(.white.opacity(isEnabled ? 1 : 0.4), in: .capsule)
+            .background(RememberDesign.primaryFill.opacity(isEnabled ? 1 : 0.4), in: .capsule)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.snappy(duration: 0.15), value: configuration.isPressed)
             .contentShape(.capsule)
@@ -70,7 +130,7 @@ struct RememberSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(RememberDesign.text)
             .frame(maxWidth: .infinity, minHeight: RememberDesign.secondaryHeight)
             .padding(.horizontal, RememberDesign.spacing)
             .background(configuration.isPressed ? RememberDesign.line : RememberDesign.cardRaised, in: .capsule)
@@ -300,7 +360,7 @@ private struct ToastView: View {
                 .accessibilityHidden(true)
             Text(toast.message)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(RememberDesign.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let undo = toast.undo {
                 Button("Undo") {
@@ -388,7 +448,7 @@ struct AddBar: View {
             .padding(.leading, 20)
             .padding(.trailing, 6)
             .frame(minHeight: 56)
-            .background(.white, in: .rect(cornerRadius: 28))
+            .background(RememberDesign.primaryFill, in: .rect(cornerRadius: 28))
             .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
             .contentShape(.rect(cornerRadius: 28))
             .onTapGesture { isFocused = true }
@@ -408,7 +468,7 @@ struct AddBar: View {
             Button(action: submit) {
                 Image(systemName: "arrow.up")
                     .font(.body.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RememberDesign.text)
                     .frame(width: 44, height: 44)
                     .background(.black, in: .circle)
             }
@@ -516,7 +576,7 @@ struct QuickAddBar: View {
             .foregroundStyle(.black)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, minHeight: 56)
-            .background(.white, in: .rect(cornerRadius: 28))
+            .background(RememberDesign.primaryFill, in: .rect(cornerRadius: 28))
             .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
         }
         .buttonStyle(.plain)

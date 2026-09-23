@@ -39,7 +39,7 @@ struct PracticeResultView: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(choice.label)
                                             .font(.rememberRowTitle)
-                                            .foregroundStyle(.white)
+                                            .foregroundStyle(RememberDesign.text)
                                         Text(choice.meaning)
                                             .font(.subheadline)
                                             .foregroundStyle(RememberDesign.text2)

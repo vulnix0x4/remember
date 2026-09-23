@@ -41,7 +41,7 @@ struct AdaptiveSectionControl<Value: Hashable>: View {
                             .fixedSize(horizontal: true, vertical: false)
                             .frame(minHeight: 44)
                             .padding(.horizontal, RememberDesign.spacingCompact)
-                            .background(isSelected ? Color.white : RememberDesign.card, in: .capsule)
+                            .background(isSelected ? RememberDesign.primaryFill : RememberDesign.card, in: .capsule)
                             .buttonStyle(.plain)
                             .accessibilityLabel(title(choice))
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -64,7 +64,7 @@ struct AdaptiveSectionControl<Value: Hashable>: View {
                                 .frame(maxWidth: .infinity, minHeight: 36)
                                 .background {
                                     if isSelected {
-                                        Capsule().fill(.white).matchedGeometryEffect(id: "selection", in: namespace)
+                                        Capsule().fill(RememberDesign.primaryFill).matchedGeometryEffect(id: "selection", in: namespace)
                                     }
                                 }
                                 .contentShape(.capsule)

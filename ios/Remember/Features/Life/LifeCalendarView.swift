@@ -173,7 +173,7 @@ struct LifeCalendarView: View {
                         .frame(maxWidth: .infinity, minHeight: 64)
                         .foregroundStyle(Calendar.current.isDate(day, inSameDayAs: selectedDate) ? RememberDesign.canvas : .white)
                         .background(
-                            Calendar.current.isDate(day, inSameDayAs: selectedDate) ? Color.white : .clear,
+                            Calendar.current.isDate(day, inSameDayAs: selectedDate) ? RememberDesign.primaryFill : .clear,
                             in: .rect(cornerRadius: RememberDesign.controlRadius)
                         )
                     }

@@ -29,7 +29,7 @@ struct ImprintCard: View {
             ImprintCardMetadata(imprint: imprint)
             Text(imprint.title)
                 .font(.rememberRowTitle)
-                .foregroundStyle(.white)
+                .foregroundStyle(RememberDesign.text)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             Text("\(imprint.creator) · \(imprint.savedAt.formatted(.relative(presentation: .named)))")
                 .font(.rememberMeta)

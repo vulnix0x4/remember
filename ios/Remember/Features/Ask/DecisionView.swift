@@ -144,7 +144,7 @@ struct DecisionView: View {
                                 HStack {
                                     Text(citation.title)
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(RememberDesign.text)
                                         .multilineTextAlignment(.leading)
                                     Spacer()
                                     Image(systemName: "chevron.right")
