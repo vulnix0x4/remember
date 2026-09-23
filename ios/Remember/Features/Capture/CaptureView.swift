@@ -135,7 +135,7 @@ struct CaptureView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(isSelected ? RememberDesign.canvas : RememberDesign.text2)
                         .frame(maxWidth: .infinity, minHeight: 36)
-                        .background(isSelected ? Color.white : Color.clear, in: .capsule)
+                        .background(isSelected ? RememberDesign.primaryFill : Color.clear, in: .capsule)
                         .contentShape(.capsule)
                 }
                 .buttonStyle(.plain)

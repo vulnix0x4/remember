@@ -22,7 +22,7 @@ struct AskEmptyState: View {
                             HStack(spacing: RememberDesign.spacingCompact) {
                                 Text(prompt)
                                     .font(.rememberRowTitle)
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(RememberDesign.text)
                                     .multilineTextAlignment(.leading)
                                 Spacer()
                                 Image(systemName: "arrow.up.right")

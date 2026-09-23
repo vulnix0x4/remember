@@ -32,7 +32,7 @@ struct AskComposer: View {
                         Image(systemName: "arrow.up").font(.body.weight(.bold))
                     }
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(RememberDesign.text)
                 .frame(width: 44, height: 44)
                 .background(canSubmit || isResponding ? Color.black : Color.black.opacity(0.15), in: .circle)
             }
@@ -45,7 +45,7 @@ struct AskComposer: View {
         .padding(.leading, 20)
         .padding(.trailing, 6)
         .frame(minHeight: 56)
-        .background(.white, in: .rect(cornerRadius: 28))
+        .background(RememberDesign.primaryFill, in: .rect(cornerRadius: 28))
         .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
     }
 

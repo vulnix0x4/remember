@@ -10,7 +10,7 @@ struct AskMessageView: View {
             if message.role == .user {
                 Text(message.text)
                     .font(.body.weight(.medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(RememberDesign.text)
                     .padding(.horizontal, RememberDesign.spacing)
                     .padding(.vertical, RememberDesign.spacingCompact)
                     .background(RememberDesign.cardRaised, in: .rect(cornerRadius: RememberDesign.cornerRadius))
@@ -76,7 +76,7 @@ struct AskMessageView: View {
         HStack(spacing: RememberDesign.spacingSmall) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(RememberDesign.text)
                 .multilineTextAlignment(.leading)
             Spacer(minLength: 0)
             Image(systemName: systemImage)

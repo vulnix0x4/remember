@@ -58,7 +58,7 @@ struct StuckSheet: View {
                     .frame(width: 40, height: 40)
                     .background(RememberDesign.accent.opacity(0.14), in: .circle)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.rememberRowTitle).foregroundStyle(.white)
+                    Text(title).font(.rememberRowTitle).foregroundStyle(RememberDesign.text)
                     Text(detail).font(.subheadline).foregroundStyle(RememberDesign.text2)
                 }
                 Spacer(minLength: 0)

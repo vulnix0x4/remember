@@ -22,6 +22,7 @@ struct RememberApp: App {
                 .environment(store)
                 .environment(focusTimer)
                 .tint(RememberDesign.accent)
+                .foregroundStyle(RememberDesign.text)
                 .preferredColorScheme(.dark)
                 .task { await store.bootstrap() }
                 .onChange(of: scenePhase) { _, phase in

@@ -14,13 +14,13 @@ struct KeyMomentsSection: View {
                             .font(.subheadline.monospacedDigit().weight(.bold))
                             .foregroundStyle(RememberDesign.text2)
                         VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
-                            Text(moment.title).font(.rememberRowTitle).foregroundStyle(.white)
+                            Text(moment.title).font(.rememberRowTitle).foregroundStyle(RememberDesign.text)
                             Text(moment.detail).font(.subheadline).foregroundStyle(RememberDesign.text2)
                         }
                         Spacer()
                         Image(systemName: "play.fill")
                             .font(.footnote.weight(.bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(RememberDesign.text)
                             .frame(width: 36, height: 36)
                             .background(RememberDesign.cardRaised, in: .circle)
                     }

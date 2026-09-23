@@ -48,7 +48,7 @@ struct MemoryCheckIn: View {
                         } label: {
                             Text(choice.label)
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(RememberDesign.text)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: .infinity, minHeight: 44)

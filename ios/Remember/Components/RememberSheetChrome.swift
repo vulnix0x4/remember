@@ -44,7 +44,7 @@ struct SheetTitleRow: View {
     var body: some View {
         Text(title)
             .font(.rememberHero)
-            .foregroundStyle(.white)
+            .foregroundStyle(RememberDesign.text)
             .accessibilityAddTraits(.isHeader)
             .listRowBackground(Color.clear)
             .listRowInsets(.init(top: 0, leading: RememberDesign.spacingXXSmall, bottom: 0, trailing: 0))

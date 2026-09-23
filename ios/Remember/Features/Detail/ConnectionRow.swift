@@ -9,7 +9,7 @@ struct ConnectionRow: View {
             Label(connection.type.label, systemImage: connection.type == .contradicts ? "arrow.left.arrow.right" : "link")
                 .font(.rememberMeta)
                 .foregroundStyle(RememberDesign.text3)
-            Text(connection.title).font(.rememberRowTitle).foregroundStyle(.white)
+            Text(connection.title).font(.rememberRowTitle).foregroundStyle(RememberDesign.text)
             Text(connection.explanation).font(.subheadline).foregroundStyle(RememberDesign.text2)
         }
         .padding(RememberDesign.spacing)
