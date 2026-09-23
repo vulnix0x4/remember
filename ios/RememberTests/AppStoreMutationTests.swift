@@ -89,8 +89,10 @@ struct AppStoreMutationTests {
 
         #expect(!completionSucceeded)
         #expect(!blockingSucceeded)
-        #expect(store.errorIsPresented)
-        #expect(store.errorMessage == "Remember could not adjust that task.")
+        // Retryable task failures show a non-blocking error toast instead of an alert.
+        #expect(store.toast?.isError == true)
+        #expect(store.toast?.message == "Remember could not adjust that task.")
+        #expect(!store.errorIsPresented)
     }
 
     @Test func taskCompletionAndBlockingReportConfirmedServerSuccess() async {

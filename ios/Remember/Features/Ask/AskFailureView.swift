@@ -6,25 +6,18 @@ struct AskFailureView: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+        VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
             Label(title, systemImage: "clock.badge.exclamationmark")
-                .font(.headline)
-                .foregroundStyle(.primary)
+                .font(.rememberRowTitle)
+                .foregroundStyle(.white)
             Text(message)
                 .font(.subheadline)
-                .foregroundStyle(RememberDesign.secondaryText)
+                .foregroundStyle(RememberDesign.text2)
             Button("Try again", systemImage: "arrow.clockwise", action: retry)
-                .buttonStyle(.borderedProminent)
-                .foregroundStyle(RememberDesign.accentInk)
-                .controlSize(.large)
+                .buttonStyle(.rememberSecondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(RememberDesign.spacing)
-        .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: RememberDesign.cornerRadius)
-                .stroke(RememberDesign.line, lineWidth: 1)
-        }
+        .rememberCard(padding: RememberDesign.spacing)
         .accessibilityElement(children: .contain)
     }
 }

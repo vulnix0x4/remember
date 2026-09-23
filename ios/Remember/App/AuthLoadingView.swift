@@ -3,11 +3,11 @@ import SwiftUI
 struct AuthLoadingView: View {
     var body: some View {
         ZStack {
-            WarmBackground()
+            RememberDesign.canvas.ignoresSafeArea()
             VStack(spacing: RememberDesign.spacing) {
                 RememberMark(size: 58)
-                ProgressView("Opening your archive...")
-                    .tint(RememberDesign.accent)
+                ProgressView("Opening…")
+                    .tint(RememberDesign.text2)
                     .foregroundStyle(RememberDesign.secondaryText)
             }
         }

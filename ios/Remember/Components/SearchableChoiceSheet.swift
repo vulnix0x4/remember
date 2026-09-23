@@ -27,7 +27,8 @@ struct SearchableChoiceSheet<Value: Hashable>: View {
         NavigationStack {
             Group {
                 if filteredChoices.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    RememberEmptyState(systemImage: "magnifyingglass", title: "No results", message: "Try a different word.")
+                        .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     List(filteredChoices, id: \.self) { choice in
                         Button {
@@ -55,12 +56,16 @@ struct SearchableChoiceSheet<Value: Hashable>: View {
                             .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparatorTint(RememberDesign.line)
                         .accessibilityAddTraits(selection == choice ? .isSelected : [])
                         .accessibilityValue(selection == choice ? "Selected" : "Not selected")
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
             }
+            .background(RememberDesign.canvas)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search \(title.lowercased())")
@@ -72,6 +77,8 @@ struct SearchableChoiceSheet<Value: Hashable>: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(RememberDesign.canvas)
+        .presentationCornerRadius(RememberDesign.sheetRadius)
     }
 
     private var filteredChoices: [Value] {

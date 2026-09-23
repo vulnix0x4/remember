@@ -313,6 +313,16 @@ actor APIClient {
         return response.task
     }
 
+    func patchLifeTask(id: UUID, patch: LifeTaskPatch) async throws -> LifeTask {
+        struct Response: Decodable { let task: LifeTask }
+        let response: Response = try await request(
+            path: "api/life/tasks/\(id.uuidString.lowercased())",
+            method: "PATCH",
+            body: try encoder.encode(patch)
+        )
+        return response.task
+    }
+
     func completeLifeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws {
         struct Body: Encodable { let minutesSpent: Int; let result: PracticeResult? }
         struct Response: Decodable { let task: LifeTask; let next: LifeTask? }
@@ -347,6 +357,16 @@ actor APIClient {
         struct Response: Decodable { let goal: LifeGoal }
         let response: Response = try await request(path: "api/life/goals", method: "POST", body: try encoder.encode(goal))
         return response.goal
+    }
+
+    func updateLifeGoal(id: UUID, progress: Int?, status: String?) async throws {
+        struct Body: Encodable { let progress: Int?; let status: String? }
+        struct Response: Decodable { let goal: LifeGoal }
+        let _: Response = try await request(
+            path: "api/life/goals/\(id.uuidString.lowercased())",
+            method: "PATCH",
+            body: try encoder.encode(Body(progress: progress, status: status))
+        )
     }
 
     func createLifeFloorItem(_ item: CreateLifeFloorRequest) async throws -> LifeFloorItem {

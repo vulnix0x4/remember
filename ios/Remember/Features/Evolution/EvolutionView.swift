@@ -26,30 +26,30 @@ struct EvolutionView: View {
                     accessibilityIdentifier: "remember.section.library",
                     title: { $0.rawValue }
                 )
-                ZStack {
-                    WarmBackground()
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: RememberDesign.spacing) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: RememberDesign.spacing) {
                         if store.isLoadingEvolution {
                             ProgressView("Checking your saves…")
+                                .tint(RememberDesign.text2)
                                 .frame(maxWidth: .infinity, minHeight: 240)
                         } else if store.evolutionLoadFailed {
-                            ContentUnavailableView {
-                                Label("Patterns unavailable", systemImage: "wifi.exclamationmark")
-                            } description: {
-                                Text("Your saves are safe. Remember couldn’t load their shared patterns just now.")
-                            } actions: {
-                                Button("Try again", systemImage: "arrow.clockwise", action: reload)
-                            }
+                            RememberEmptyState(
+                                systemImage: "wifi.exclamationmark",
+                                title: "Couldn’t load patterns",
+                                message: "Your saves are safe.",
+                                actionTitle: "Try again",
+                                action: reload
+                            )
                         } else if analyzedSourceCount == 0 || (store.evolutionOverview.isEmpty && livingThreads.isEmpty) {
-                            ContentUnavailableView(
-                                analyzedSourceCount == 0 ? "Patterns will appear here" : "No recurring patterns yet",
+                            RememberEmptyState(
                                 systemImage: "square.stack.3d.up",
-                                description: Text(analyzedSourceCount == 0
-                                    ? "Save a few links and recurring topics and useful connections will appear here."
-                                    : "There is not enough overlap between your saves to show a useful pattern yet.")
+                                title: analyzedSourceCount == 0 ? "No patterns yet" : "Not enough overlap yet",
+                                message: analyzedSourceCount == 0 ? "Save a few things and they’ll show up here." : "Keep saving. Patterns need a few related saves."
                             )
                         } else {
+                            if let weeklySynthesis = WeeklySynthesisBuilder.build(imprints: store.imprints, life: store.lifeSnapshot) {
+                                WeeklySynthesisCard(synthesis: weeklySynthesis)
+                            }
                             PatternSectionControl(selection: $section)
 
                             Group {
@@ -70,16 +70,20 @@ struct EvolutionView: View {
                             }
                         }
                     }
-                        .padding(RememberDesign.spacing)
-                        .padding(.bottom, RememberDesign.spacingXLarge)
-                    }
+                    .padding(.horizontal, RememberDesign.spacing)
+                    .padding(.top, RememberDesign.spacingSmall)
+                    .padding(.bottom, RememberDesign.spacingXLarge)
                 }
+                .background(RememberDesign.canvas)
             }
-            .navigationTitle("Patterns")
-            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: LivingThread.self) { LivingThreadDetailView(thread: $0) }
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
             .refreshable { await store.loadDerivedData() }
+            .rememberBottomDock {
+                AddBar(placeholder: "Save a link or thought…", accessibilityIdentifier: "remember.library.quickSave") {
+                    await store.quickSave($0)
+                }
+            }
             .rememberPrimaryActions()
         }
     }

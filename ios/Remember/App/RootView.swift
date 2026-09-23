@@ -9,6 +9,7 @@ struct RootView: View {
     @State private var lastPrimaryTab = AppConfiguration.initialTab
     @State private var settingsIsPresented = false
     @State private var settingsLaunchIsPending = AppConfiguration.presentsSettingsOnLaunch
+    @State private var captureLaunchIsPending = AppConfiguration.presentsCaptureOnLaunch
 
     var body: some View {
         @Bindable var store = store
@@ -28,7 +29,7 @@ struct RootView: View {
                         identifiers: AppTab.primaryTabs.map(\.accessibilityIdentifier)
                     )
                 }
-                .toolbarBackground(RememberDesign.surface.opacity(0.96), for: .tabBar)
+                .toolbarBackground(RememberDesign.canvas, for: .tabBar)
                 .toolbarBackground(.visible, for: .tabBar)
             } else {
                 LoginView()
@@ -46,6 +47,9 @@ struct RootView: View {
             if isAuthenticated, settingsLaunchIsPending {
                 settingsLaunchIsPending = false
                 settingsIsPresented = true
+            } else if isAuthenticated, captureLaunchIsPending {
+                captureLaunchIsPending = false
+                store.captureIsPresented = true
             } else if !isAuthenticated {
                 settingsIsPresented = false
             }

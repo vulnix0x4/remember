@@ -8,59 +8,37 @@ struct CompassGuidanceSection: View {
     @State private var experimentToRetry: CompassExperiment?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
-                Text("From real life")
-                    .font(.subheadline)
-                    .bold()
-                    .foregroundStyle(RememberDesign.accent)
-                    .accessibilityIdentifier("remember.compass-guidance")
-                Text("What your experiments are teaching you")
-                    .font(.title2)
-                    .bold()
-                Text("Remember uses what happened, not just what you saved.")
-                    .font(.body)
-                    .foregroundStyle(RememberDesign.secondaryText)
-            }
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: "From real life")
+                .accessibilityIdentifier("remember.compass-guidance")
 
             ForEach(guidance) { item in
                 VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                     Label(label(for: item.kind), systemImage: symbol(for: item.kind))
-                        .font(.subheadline)
-                        .bold()
-                        .foregroundStyle(item.kind == .keep ? RememberDesign.accent : RememberDesign.secondaryText)
+                        .font(.rememberMeta)
+                        .foregroundStyle(item.kind == .keep ? RememberDesign.accent : RememberDesign.text2)
                         .accessibilityIdentifier("remember.compass-guidance.\(item.kind)")
                     Text(item.experiment.task.title)
-                        .font(.headline)
+                        .font(.rememberRowTitle)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(detail(for: item.kind))
-                        .font(.body)
-                        .foregroundStyle(RememberDesign.secondaryText)
+                        .font(.subheadline)
+                        .foregroundStyle(RememberDesign.text2)
                     if let reflection = item.experiment.task.practiceReflection, !reflection.isEmpty {
-                        Text(reflection)
-                            .font(.body)
-                            .italic()
-                            .padding(.leading, RememberDesign.spacingSmall)
-                            .overlay(alignment: .leading) {
-                                Rectangle()
-                                    .fill(RememberDesign.accent)
-                                    .frame(width: 2)
-                            }
+                        PatternQuote(text: reflection)
                     }
                     actionRow(for: item)
                 }
-                .padding(.vertical, RememberDesign.spacingSmall)
-                Divider()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .rememberCard(padding: RememberDesign.spacing)
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.rememberMeta)
                     .foregroundStyle(RememberDesign.danger)
             }
         }
-        .padding(RememberDesign.spacing)
-        .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
         .sheet(item: $experimentToRetry) { experiment in
             RetryPracticeView(experiment: experiment)
         }
@@ -68,51 +46,48 @@ struct CompassGuidanceSection: View {
 
     @ViewBuilder
     private func actionRow(for item: CompassGuidance) -> some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+        VStack(alignment: .leading, spacing: 0) {
             switch item.kind {
             case .keep:
                 if let principle = item.principle {
                     if principle.status == "active" {
-                        Label("Already in your compass", systemImage: "checkmark")
+                        Label("In your compass", systemImage: "checkmark")
                             .font(.subheadline)
-                            .foregroundStyle(RememberDesign.secondaryText)
+                            .foregroundStyle(RememberDesign.text2)
+                            .frame(minHeight: 44)
                     } else {
                         Button("Keep as a principle", systemImage: "checkmark") {
                             update(principle, status: "active")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(RememberDesign.accent)
-                        .foregroundStyle(RememberDesign.accentInk)
+                        .buttonStyle(.rememberSecondary)
                     }
                 }
             case .adjust:
                 Button("Adjust and try again", systemImage: "arrow.clockwise") {
                     experimentToRetry = item.experiment
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RememberDesign.accent)
-                .foregroundStyle(RememberDesign.accentInk)
+                .buttonStyle(.rememberSecondary)
             case .release:
                 if let principle = item.principle {
                     if principle.status == "dismissed" {
-                        Label("Already released", systemImage: "checkmark")
+                        Label("Released", systemImage: "checkmark")
                             .font(.subheadline)
-                            .foregroundStyle(RememberDesign.secondaryText)
+                            .foregroundStyle(RememberDesign.text2)
+                            .frame(minHeight: 44)
                     } else {
                         Button("Release this idea", systemImage: "minus") {
                             update(principle, status: "dismissed")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.rememberSecondary)
                     }
                 }
             }
 
             if let imprint = item.experiment.imprint {
                 NavigationLink(value: imprint) {
-                    Label("See what this came from", systemImage: "bookmark")
+                    Label("See where it came from", systemImage: "bookmark")
                 }
-                .buttonStyle(.plain)
-                .frame(minHeight: 44)
+                .buttonStyle(.rememberQuiet)
             }
         }
         .disabled(workingID != nil)
@@ -126,7 +101,7 @@ struct CompassGuidanceSection: View {
             do {
                 try await store.setPrincipleStatus(principle, status: status)
             } catch {
-                errorMessage = "That choice could not be saved. Try again."
+                errorMessage = "Couldn’t save that. Try again."
             }
             workingID = nil
         }
@@ -150,9 +125,9 @@ struct CompassGuidanceSection: View {
 
     private func detail(for kind: CompassGuidanceKind) -> String {
         switch kind {
-        case .keep: "This helped. Keep it available as a principle, not just a saved thought."
-        case .adjust: "Part of this worked. Change one part before you decide whether it belongs."
-        case .release: "This did not fit you. You can stop carrying it."
+        case .keep: "This helped. Keep it as a principle."
+        case .adjust: "Part of it worked. Change one thing."
+        case .release: "Didn’t fit. You can let it go."
         }
     }
 }

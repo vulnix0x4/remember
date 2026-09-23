@@ -11,23 +11,28 @@ final class RememberUITests: XCTestCase {
         "remember.tab.ask",
         "remember.tab.life"
     ]
+    private let practiceTaskID = "60000000-0000-0000-0000-000000000001"
+    private let firstNowTask = "Reply to Sam about Saturday"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
-    func testTodayShowsOneSuggestedTaskAndPlanNavigation() {
+    // MARK: - Shell
+
+    func testTodayShowsOneNowCardAndPlanNavigation() {
         let app = makeApp()
         app.launch()
-        let start = app.buttons["Do this now"]
+
+        let start = app.buttons["remember.now.start"]
         XCTAssertTrue(start.waitForExistence(timeout: timeout))
         XCTAssertTrue(start.isHittable)
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Focused Today"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+        XCTAssertEqual(app.buttons.matching(identifier: "remember.now.start").count, 1, "Today shows exactly one Start.")
+        XCTAssertTrue(app.staticTexts[firstNowTask].exists)
+        attachScreenshot(of: app, named: "Focused Today")
+
         selectPrimaryTab("Plan", in: app)
-        XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Plan"].waitForExistence(timeout: timeout))
     }
 
     func testPrimaryNavigationHasExactlyFiveTabsAndNoMore() {
@@ -55,40 +60,24 @@ final class RememberUITests: XCTestCase {
 
         selectPrimaryTab("Plan", in: app)
         assertSectionPicker("remember.section.plan", labels: ["Tasks", "Calendar", "Goals"], selected: "Tasks", in: app)
-        selectSection("Calendar", screenTitle: "Calendar", in: app)
-        selectSection("Goals", screenTitle: "Goals", in: app)
+        selectSection("Calendar", in: app)
+        selectSection("Goals", in: app)
+        XCTAssertTrue(element("remember.goal.quickAdd", in: app).waitForExistence(timeout: timeout))
 
         selectPrimaryTab("Library", in: app)
         assertSectionPicker("remember.section.library", labels: ["Saved", "Patterns"], selected: "Saved", in: app)
-        selectSection("Patterns", screenTitle: "Patterns", in: app)
+        selectSection("Patterns", in: app)
+        XCTAssertTrue(app.staticTexts["What you’re carrying now"].waitForExistence(timeout: timeout))
 
         selectPrimaryTab("Life", in: app)
         assertSectionPicker("remember.section.life", labels: ["Health", "Money", "Files"], selected: "Health", in: app)
-        selectSection("Money", screenTitle: "Money", in: app)
-        selectSection("Files", screenTitle: "Files", in: app)
+        selectSection("Money", in: app)
+        selectSection("Files", in: app)
     }
 
-    func testGlobalSaveAndSettingsOpenAndDismissFromSecondaryTabs() {
+    func testSettingsOpensFromTheAvatarAndDismisses() {
         let app = makeApp()
         app.launch()
-
-        selectPrimaryTab("Library", in: app)
-        let saveButton = app.buttons["Save a link or thought"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: timeout))
-        XCTAssertTrue(saveButton.isHittable)
-        saveButton.tap()
-
-        let captureBar = app.navigationBars["Save something"]
-        XCTAssertTrue(captureBar.waitForExistence(timeout: timeout))
-        let linkField = app.textFields["Link to save"]
-        XCTAssertTrue(linkField.exists)
-        XCTAssertTrue(linkField.isHittable)
-        linkField.tap()
-        linkField.typeText("not-a-link")
-        app.buttons["Save link"].tap()
-        XCTAssertTrue(app.staticTexts["Enter a complete https link."].waitForExistence(timeout: timeout))
-        captureBar.buttons["Cancel"].tap()
-        XCTAssertTrue(captureBar.waitForNonExistence(timeout: timeout))
 
         selectPrimaryTab("Life", in: app)
         let profileButton = app.buttons["remember.global.settings"]
@@ -96,131 +85,24 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(profileButton.isHittable)
         profileButton.tap()
 
-        let settingsBar = app.navigationBars["Settings"]
-        XCTAssertTrue(settingsBar.waitForExistence(timeout: timeout))
-        let doneButton = settingsBar.buttons["Done"]
+        XCTAssertTrue(app.staticTexts["Settings"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.buttons["Export data"].exists)
+        let doneButton = app.buttons["Done"]
         XCTAssertTrue(doneButton.isHittable)
         doneButton.tap()
-        XCTAssertTrue(settingsBar.waitForNonExistence(timeout: timeout))
+        XCTAssertTrue(app.buttons["Export data"].waitForNonExistence(timeout: timeout))
         XCTAssertTrue(waitForSelection(shellTabBar(in: app).buttons["Life"]))
-    }
-
-    func testSavingAThoughtMakesItPartOfTheLibraryWithoutAskingForALink() {
-        let app = makeApp(initialRoute: "library")
-        app.launch()
-
-        let saveButton = app.buttons["Save a link or thought"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: timeout))
-        saveButton.tap()
-
-        let captureBar = app.navigationBars["Save something"]
-        XCTAssertTrue(captureBar.waitForExistence(timeout: timeout))
-        let thoughtChoice = app.segmentedControls.buttons["Thought"]
-        XCTAssertTrue(thoughtChoice.waitForExistence(timeout: timeout))
-        thoughtChoice.tap()
-
-        let thought = "A slower start helps me choose the day instead of inherit it"
-        let thoughtField = app.textFields["Thought to remember"]
-        XCTAssertTrue(thoughtField.waitForExistence(timeout: timeout))
-        thoughtField.tap()
-        thoughtField.typeText(thought)
-        attachScreenshot(of: app, named: "Quick Thought composer")
-
-        let saveThought = app.buttons["Save thought"]
-        XCTAssertTrue(waitForEnabled(saveThought))
-        saveThought.tap()
-        XCTAssertTrue(app.staticTexts["Saved"].waitForExistence(timeout: timeout))
-        app.buttons["Done"].tap()
-
-        XCTAssertTrue(captureBar.waitForNonExistence(timeout: timeout))
-        let savedThought = app.staticTexts[thought]
-        XCTAssertTrue(savedThought.waitForExistence(timeout: timeout))
-        attachScreenshot(of: app, named: "Quick Thought in Library")
-
-        savedThought.tap()
-        XCTAssertTrue(app.navigationBars["Saved item"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Your words")).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Remember’s reflection")).firstMatch.exists)
-        XCTAssertFalse(app.buttons["Open original"].exists)
-        attachScreenshot(of: app, named: "Quick Thought detail")
-    }
-
-    func testReturnedIdeaLearnsWhatStillBelongsToTheUser() {
-        let app = makeApp()
-        app.launch()
-
-        app.buttons["remember.today.savedIdeas"].tap()
-        let getUnstuck = app.buttons["Get unstuck"]
-        scrollUntilHittable(getUnstuck, in: app)
-        XCTAssertTrue(getUnstuck.isHittable)
-        getUnstuck.tap()
-
-        let checkIn = app.staticTexts["Where does this land now?"]
-        scrollGentlyUntilHittable(checkIn, in: app)
-        XCTAssertTrue(checkIn.waitForExistence(timeout: timeout))
-        XCTAssertTrue(checkIn.isHittable)
-        XCTAssertTrue(app.buttons["remember.memory-check-in.still_true"].exists)
-        XCTAssertTrue(app.buttons["remember.memory-check-in.changed_mind"].exists)
-        XCTAssertTrue(app.buttons["remember.memory-check-in.not_sure"].exists)
-        XCTAssertTrue(app.buttons["remember.memory-check-in.no_longer_relevant"].exists)
-        attachScreenshot(of: app, named: "Memory check-in choices")
-
-        let changed = app.buttons["remember.memory-check-in.changed_mind"]
-        scrollUntilHittable(changed, in: app)
-        changed.tap()
-        XCTAssertTrue(app.staticTexts["Your change of mind is part of the story."].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Remember will use this as evidence of how your thinking has evolved."].exists)
-        attachScreenshot(of: app, named: "Memory check-in learned")
-
-        let compass = app.buttons["remember.memory-check-in.compass"]
-        scrollUntilHittable(compass, in: app)
-        compass.tap()
-        XCTAssertTrue(app.navigationBars["Patterns"].waitForExistence(timeout: timeout))
-    }
-
-    func testReleasedReturnKeepsItsAcknowledgementThenLetsAnotherIdeaStartFresh() {
-        let app = makeApp()
-        app.launch()
-
-        app.buttons["remember.today.savedIdeas"].tap()
-        let getUnstuck = app.buttons["remember.today.need.stuck"]
-        scrollUntilHittable(getUnstuck, in: app)
-        getUnstuck.tap()
-        let release = app.buttons["remember.memory-check-in.no_longer_relevant"]
-        scrollGentlyUntilHittable(release, in: app)
-        XCTAssertTrue(release.isHittable)
-        release.tap()
-
-        let acknowledgement = app.staticTexts["Released from your current guidance."]
-        XCTAssertTrue(acknowledgement.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Remember will stop bringing this back as something you should follow."].exists)
-        attachScreenshot(of: app, named: "Released return acknowledgement")
-
-        let done = app.buttons["remember.today.return.done"]
-        scrollGentlyUntilHittable(done, in: app)
-        done.tap()
-        XCTAssertTrue(app.staticTexts["Nothing waiting for this moment yet"].waitForExistence(timeout: timeout))
-        XCTAssertFalse(app.buttons["remember.memory-check-in.still_true"].exists)
-
-        let focus = app.buttons["remember.today.need.focus"]
-        for _ in 0..<8 where !focus.isHittable { app.swipeDown() }
-        focus.tap()
-        let freshCheckIn = app.buttons["remember.memory-check-in.still_true"]
-        scrollGentlyUntilHittable(freshCheckIn, in: app)
-        XCTAssertTrue(freshCheckIn.isHittable)
-        XCTAssertFalse(acknowledgement.exists)
-        attachScreenshot(of: app, named: "Next return starts with a fresh check-in")
     }
 
     func testLegacyLaunchRouteAliasesOpenTheirCompatibleDestination() {
         let routes = [
-            LegacyRoute(name: "tasks", primaryTab: "Plan", section: "Tasks", screenTitle: "Plan"),
-            LegacyRoute(name: "calendar", primaryTab: "Plan", section: "Calendar", screenTitle: "Calendar"),
-            LegacyRoute(name: "goals", primaryTab: "Plan", section: "Goals", screenTitle: "Goals"),
-            LegacyRoute(name: "health", primaryTab: "Life", section: "Health", screenTitle: "Health"),
-            LegacyRoute(name: "money", primaryTab: "Life", section: "Money", screenTitle: "Money"),
-            LegacyRoute(name: "files", primaryTab: "Life", section: "Files", screenTitle: "Files"),
-            LegacyRoute(name: "evolution", primaryTab: "Library", section: "Patterns", screenTitle: "Patterns")
+            LegacyRoute(name: "tasks", primaryTab: "Plan", section: "Tasks"),
+            LegacyRoute(name: "calendar", primaryTab: "Plan", section: "Calendar"),
+            LegacyRoute(name: "goals", primaryTab: "Plan", section: "Goals"),
+            LegacyRoute(name: "health", primaryTab: "Life", section: "Health"),
+            LegacyRoute(name: "money", primaryTab: "Life", section: "Money"),
+            LegacyRoute(name: "files", primaryTab: "Life", section: "Files"),
+            LegacyRoute(name: "evolution", primaryTab: "Library", section: "Patterns")
         ]
 
         for route in routes {
@@ -229,86 +111,11 @@ final class RememberUITests: XCTestCase {
 
         let settingsApp = makeApp(initialRoute: "settings")
         settingsApp.launch()
-        XCTAssertTrue(settingsApp.navigationBars["Settings"].waitForExistence(timeout: timeout))
-        settingsApp.navigationBars["Settings"].buttons["Done"].tap()
-        XCTAssertTrue(settingsApp.navigationBars["Settings"].waitForNonExistence(timeout: timeout))
+        XCTAssertTrue(settingsApp.staticTexts["Settings"].waitForExistence(timeout: timeout))
+        settingsApp.buttons["Done"].tap()
+        XCTAssertTrue(settingsApp.buttons["Export data"].waitForNonExistence(timeout: timeout))
         XCTAssertTrue(waitForSelection(shellTabBar(in: settingsApp).buttons["Today"]))
         settingsApp.terminate()
-    }
-
-    func testTaskComposerSupportsAccessibleKeyboardEntryAndConfirmedSave() {
-        let app = makeApp(initialRoute: "tasks")
-        app.launch()
-
-        XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: timeout))
-        let addTask = app.buttons["Add task with details"]
-        XCTAssertTrue(addTask.waitForExistence(timeout: timeout))
-        XCTAssertTrue(addTask.isHittable)
-        addTask.tap()
-
-        let composerBar = app.navigationBars["Add task"]
-        XCTAssertTrue(composerBar.waitForExistence(timeout: timeout))
-        let titleField = app.textFields["Task name"]
-        let submitButton = app.buttons["remember.task.submit"]
-
-        XCTAssertTrue(titleField.exists)
-        XCTAssertTrue(titleField.isHittable)
-        XCTAssertFalse(submitButton.isEnabled)
-
-        titleField.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: timeout))
-        titleField.typeText("UI regression task")
-        XCTAssertTrue(waitForEnabled(submitButton))
-
-        submitButton.tap()
-        XCTAssertTrue(composerBar.waitForNonExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["UI regression task"].waitForExistence(timeout: timeout))
-    }
-
-    func testTaskCanBeAddedFromTheBottomBarWithoutOpeningAForm() {
-        let app = makeApp(initialRoute: "tasks")
-        app.launch()
-
-        let quickEntry = app.textFields["Quick add task"]
-        XCTAssertTrue(quickEntry.waitForExistence(timeout: timeout))
-        quickEntry.tap()
-        quickEntry.typeText("Send the short update")
-        let add = app.buttons["remember.task.quickAction"]
-        XCTAssertTrue(waitForEnabled(add))
-        add.tap()
-
-        XCTAssertTrue(app.staticTexts["Send the short update"].waitForExistence(timeout: timeout))
-        XCTAssertFalse(app.navigationBars["Add task"].exists)
-    }
-
-    func testSwitchingTasksKeepsThePreviousTaskInPlan() {
-        let app = makeApp(initialRoute: "tasks")
-        app.launch()
-        app.buttons["Do this now"].tap()
-
-        let quickEntry = app.textFields["Quick add task"]
-        quickEntry.tap()
-        quickEntry.typeText("Write a reply")
-        app.buttons["remember.task.quickAction"].tap()
-
-        let easier = app.buttons["Make this easier"]
-        XCTAssertTrue(easier.waitForExistence(timeout: timeout))
-        easier.tap()
-        app.buttons["Choose another task"].tap()
-        XCTAssertTrue(app.navigationBars["Choose another task"].waitForExistence(timeout: timeout))
-
-        let alternative = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "Write a reply")
-        ).firstMatch
-        XCTAssertTrue(alternative.waitForExistence(timeout: timeout))
-        alternative.tap()
-
-        XCTAssertTrue(app.navigationBars["Choose another task"].waitForNonExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Write a reply"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(
-            app.buttons["remember.life-task.60000000-0000-0000-0000-000000000001"].waitForExistence(timeout: timeout),
-            "The previous task should still be available after switching."
-        )
     }
 
     func testSignedOutOwnerSeesPrivateArchiveLogin() {
@@ -321,117 +128,318 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Sign in"].exists)
     }
 
-    func testAskKeepsGroundingQuietlyAvailable() {
+    // MARK: - Tasks
+
+    func testQuickAddFromTheBottomBarCreatesTasksWithoutAForm() {
+        let app = makeApp(initialRoute: "tasks")
+        app.launch()
+
+        let quickAdd = element("remember.task.quickAdd", in: app)
+        XCTAssertTrue(quickAdd.waitForExistence(timeout: timeout))
+        quickAdd.tap()
+        quickAdd.typeText("Send the short update\n")
+        XCTAssertTrue(app.staticTexts["Send the short update"].waitForExistence(timeout: timeout))
+
+        // Focus stays in the bar, so several tasks can be dumped in a row.
+        quickAdd.typeText("Water the plants tomorrow 20m\n")
+        let row = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "remember.life-task.", "Water the plants"
+        )).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: timeout), "A quick-added task appears as a Plan row.")
+        XCTAssertTrue(row.label.contains("20 min"), "Duration is parsed from the words.")
+        XCTAssertFalse(app.staticTexts["Add task"].exists, "Quick add never opens a form.")
+    }
+
+    func testStartShowsDoingThenDoneOffersUndo() {
         let app = makeApp()
         app.launch()
 
-        selectPrimaryTab("Ask", in: app)
-        app.buttons["What have I saved about focus?"].tap()
-        XCTAssertTrue(app.staticTexts["From your saves"].waitForExistence(timeout: timeout))
-        let supportingSaves = app.buttons["Supporting saves"]
-        XCTAssertTrue(supportingSaves.waitForExistence(timeout: timeout))
-        supportingSaves.tap()
-        let firstSource = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", "Your worst years are not wasted years")
-        ).firstMatch
-        XCTAssertTrue(firstSource.waitForExistence(timeout: timeout))
+        let start = app.buttons["remember.now.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: timeout))
+        start.tap()
+
+        let done = app.buttons["remember.now.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["DOING"].exists || app.otherElements["DOING"].exists || app.descendants(matching: .any)["DOING"].exists)
+        XCTAssertTrue(app.buttons["remember.now.stuck"].exists)
+        attachScreenshot(of: app, named: "Doing")
+
+        done.tap()
+        let undo = visibleUndo(in: app)
+        XCTAssertTrue(undo.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Done. Nice work."].firstMatch.exists)
+
+        undo.tap()
+        XCTAssertTrue(anyElement(containing: firstNowTask, in: app).waitForExistence(timeout: timeout), "Undo brings the finished task back.")
     }
 
-    func testAskTurnsAGroundedAnswerIntoAPlanExperiment() {
+    func testStuckSheetOffersFourChoicesAndDeleteCanBeUndone() {
         let app = makeApp()
         app.launch()
 
-        selectPrimaryTab("Ask", in: app)
-        app.buttons["What have I saved about focus?"].tap()
-        XCTAssertTrue(app.staticTexts["Put this to work"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Write one thing this season clarified, and one thing you are ready to release."].exists)
+        app.buttons["remember.now.start"].tap()
+        let stuck = app.buttons["remember.now.stuck"]
+        XCTAssertTrue(stuck.waitForExistence(timeout: timeout))
+        stuck.tap()
 
-        let tryExperiment = app.buttons["Try this experiment"]
-        scrollUntilHittable(tryExperiment, in: app)
-        XCTAssertTrue(tryExperiment.isHittable)
-        tryExperiment.tap()
+        XCTAssertTrue(app.staticTexts["What’s getting in the way?"].waitForExistence(timeout: timeout))
+        for option in ["It’s too big", "Not sure where to start", "Only have 5 minutes", "Do something else"] {
+            XCTAssertTrue(button(startingWith: option, in: app).exists, "Stuck sheet should offer \(option).")
+        }
+        XCTAssertFalse(app.buttons["Choose another task"].exists)
+        attachScreenshot(of: app, named: "Stuck sheet")
 
-        let addedToPlan = app.buttons["Added to Plan"]
-        XCTAssertTrue(addedToPlan.waitForExistence(timeout: timeout))
-        addedToPlan.tap()
-        XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Write one thing this season clarified, and one thing you are ready to release."].waitForExistence(timeout: timeout))
+        app.buttons["remember.stuck.delete"].tap()
+        XCTAssertTrue(app.staticTexts["What’s getting in the way?"].waitForNonExistence(timeout: timeout))
+        let undo = visibleUndo(in: app)
+        XCTAssertTrue(undo.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Deleted"].firstMatch.exists)
+        XCTAssertTrue(anyElement(containing: firstNowTask, in: app).waitForNonExistence(timeout: timeout))
+
+        undo.tap()
+        if !anyElement(containing: firstNowTask, in: app).waitForExistence(timeout: timeout) { print("DEBUGDUMP-DELETE\n" + app.debugDescription) }
+        XCTAssertTrue(anyElement(containing: firstNowTask, in: app).exists, "Undo restores the deleted task.")
     }
 
-    func testDecisionUsesSavedMemoryAndCreatesARealWorldTest() {
-        let app = makeApp(initialRoute: "ask")
+    func testDoingSomethingElseKeepsThePreviousTaskInPlan() {
+        let app = makeApp(initialRoute: "tasks")
+        // Runs on Plan on purpose: the Now card's sheets must open there too.
         app.launch()
 
-        let decisionEntry = app.buttons["remember.ask.decision"]
-        XCTAssertTrue(decisionEntry.waitForExistence(timeout: timeout))
-        XCTAssertTrue(decisionEntry.isHittable)
-        decisionEntry.tap()
+        let start = app.buttons["remember.now.start"]
+        XCTAssertTrue(start.waitForExistence(timeout: timeout))
+        start.tap()
+        let stuck = app.buttons["remember.now.stuck"]
+        XCTAssertTrue(stuck.waitForExistence(timeout: timeout))
+        stuck.tap()
 
-        XCTAssertTrue(app.navigationBars["Decision"].waitForExistence(timeout: timeout))
-        let decisionField = app.textFields["remember.decision.input"]
-        XCTAssertTrue(decisionField.waitForExistence(timeout: timeout))
-        decisionField.tap()
-        decisionField.typeText("Should I protect more time for creative work?")
+        let somethingElse = button(startingWith: "Do something else", in: app)
+        XCTAssertTrue(somethingElse.waitForExistence(timeout: timeout))
+        somethingElse.tap()
 
-        let submit = app.buttons["remember.decision.submit"]
-        XCTAssertTrue(waitForEnabled(submit))
-        submit.tap()
-
-        XCTAssertTrue(app.descendants(matching: .any)["remember.decision.result"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["What seems to matter"].exists)
-        XCTAssertTrue(app.staticTexts["What pulls you toward it"].exists)
-
-        let tryThis = app.buttons["remember.decision.try"]
-        scrollUntilHittable(tryThis, in: app)
-        XCTAssertTrue(tryThis.isHittable)
-        tryThis.tap()
-        XCTAssertTrue(app.buttons["Added to Plan"].waitForExistence(timeout: timeout))
-
-        selectPrimaryTab("Plan", in: app)
-        XCTAssertTrue(app.staticTexts["Should I protect more time for creative work"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(visibleUndo(in: app).waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.buttons["remember.now.start"].waitForExistence(timeout: timeout), "Jev offers the next task.")
+        let previous = app.buttons.matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "remember.life-task.", firstNowTask
+        )).firstMatch
+        scrollUntilHittable(previous, in: app)
+        XCTAssertTrue(previous.exists, "The set-aside task should still be in Plan.")
     }
 
-    func testLargestDynamicTypeKeepsGlobalActionsAndNavigationReachable() {
-        let app = makeApp()
-        app.launchArguments += [
-            "-UIPreferredContentSizeCategoryName",
-            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge"
-        ]
+    func testTaskSheetKeepsDetailsOptionalAndCurrencySearchRemainsAvailable() {
+        let taskApp = makeApp(initialRoute: "tasks")
+        taskApp.launch()
+
+        let row = taskApp.buttons["remember.life-task.\(practiceTaskID)"]
+        scrollUntilHittable(row, in: taskApp)
+        XCTAssertTrue(row.waitForExistence(timeout: timeout))
+        row.tap()
+
+        XCTAssertTrue(taskApp.buttons["Start now"].waitForExistence(timeout: timeout))
+        for label in ["5 min", "30 min", "Tomorrow", "This weekend", "Weekly"] {
+            XCTAssertTrue(taskApp.buttons[label].exists, "Expected a direct choice for \(label).")
+        }
+        XCTAssertTrue(taskApp.switches.firstMatch.exists, "Important is a toggle.")
+        taskApp.buttons["Done"].tap()
+        XCTAssertTrue(taskApp.buttons["Start now"].waitForNonExistence(timeout: timeout))
+        taskApp.terminate()
+
+        let moneyApp = makeApp(initialRoute: "money")
+        moneyApp.launch()
+        let addAccount = moneyApp.buttons["Add an account"]
+        XCTAssertTrue(addAccount.waitForExistence(timeout: timeout))
+        addAccount.tap()
+        XCTAssertTrue(moneyApp.staticTexts["Add account"].waitForExistence(timeout: timeout))
+
+        let currencyButton = moneyApp.buttons["remember.currency.selection"]
+        XCTAssertTrue(currencyButton.waitForExistence(timeout: timeout))
+        // The row starts behind the pinned "Add account" button; bring it up first.
+        moneyApp.staticTexts["Add account"].swipeUp()
+        XCTAssertTrue(currencyButton.isHittable)
+        currencyButton.tap()
+
+        if !moneyApp.navigationBars["Currency"].waitForExistence(timeout: timeout) { print("DEBUGDUMP-CURRENCY\n" + moneyApp.debugDescription) }
+        XCTAssertTrue(moneyApp.navigationBars["Currency"].exists)
+        let search = moneyApp.searchFields["Search currency"]
+        XCTAssertTrue(search.waitForExistence(timeout: timeout))
+        search.tap()
+        search.typeText("yen")
+        XCTAssertTrue(moneyApp.staticTexts["JPY"].waitForExistence(timeout: timeout))
+    }
+
+    func testFinishedExperimentBecomesPersonalCompassEvidence() {
+        let app = makeApp(initialRoute: "tasks")
         app.launch()
 
-        let tabBar = shellTabBar(in: app)
-        XCTAssertEqual(tabBar.buttons.count, 5)
-        XCTAssertTrue(app.buttons["Save"].isHittable)
-        XCTAssertTrue(app.buttons["Profile and settings"].isHittable)
+        let row = app.buttons["remember.life-task.\(practiceTaskID)"]
+        scrollUntilHittable(row, in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: timeout))
+        row.tap()
+        let startNow = app.buttons["Start now"]
+        XCTAssertTrue(startNow.waitForExistence(timeout: timeout))
+        startNow.tap()
 
-        let dailyBasics = app.staticTexts["Daily basics"].firstMatch
-        scrollUntilHittable(dailyBasics, in: app)
-        XCTAssertTrue(dailyBasics.isHittable)
-        XCTAssertLessThan(dailyBasics.frame.maxY, tabBar.frame.minY)
+        let done = app.buttons["remember.now.done"]
+        for _ in 0..<4 where !done.isHittable { app.swipeDown() }
+        XCTAssertTrue(done.waitForExistence(timeout: timeout))
+        done.tap()
+
+        XCTAssertTrue(app.staticTexts["Did it help?"].waitForExistence(timeout: timeout))
+        app.descendants(matching: .any)["remember.practice-result.helped"].tap()
+        let note = app.descendants(matching: .any)["remember.practice-result.note"]
+        XCTAssertTrue(note.waitForExistence(timeout: timeout))
+        note.tap()
+        note.typeText("Removing it made the day feel quieter.")
+        app.buttons["remember.practice-result.save"].tap()
+        XCTAssertTrue(app.staticTexts["Did it help?"].waitForNonExistence(timeout: timeout))
 
         selectPrimaryTab("Library", in: app)
-        XCTAssertTrue(app.buttons["Saved"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.buttons["Patterns"].exists)
-        XCTAssertTrue(app.buttons["Newest first"].exists)
+        selectSection("Patterns", in: app)
+        let guidance = app.descendants(matching: .any)["remember.compass-guidance.keep"]
+        scrollUntilHittable(guidance, in: app)
+        XCTAssertTrue(guidance.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["This helped. Keep it as a principle."].exists)
+        XCTAssertTrue(app.staticTexts["Removing it made the day feel quieter."].exists)
+    }
 
-        let firstSave = app.staticTexts["A link waiting for another try"]
-        scrollUntilHittable(firstSave, in: app)
-        XCTAssertTrue(firstSave.isHittable)
-        XCTAssertLessThan(firstSave.frame.maxY, tabBar.frame.minY)
+    // MARK: - Today ideas
 
-        selectPrimaryTab("Ask", in: app)
-        let askField = app.textFields["Ask your library"]
+    func testReturnedIdeaSitsUnderOneIdeaForTodayAndLearnsWhatStillBelongs() {
+        let app = makeApp()
+        app.launch()
+
+        addCurrentTask("Protect a focused block for creative work", in: app)
+        XCTAssertFalse(app.buttons["remember.today.savedIdeas"].exists, "No disclosure hides the returned idea.")
+        let heading = app.staticTexts["ONE IDEA FOR TODAY"]
+        scrollGentlyUntilHittable(heading, in: app)
+        XCTAssertTrue(heading.exists)
+
+        let changed = app.buttons["remember.memory-check-in.changed_mind"]
+        scrollGentlyUntilHittable(changed, in: app)
+        XCTAssertTrue(changed.isHittable)
+        XCTAssertTrue(app.buttons["remember.memory-check-in.still_true"].exists)
+        XCTAssertTrue(app.buttons["remember.memory-check-in.not_sure"].exists)
+        XCTAssertTrue(app.buttons["remember.memory-check-in.no_longer_relevant"].exists)
+        attachScreenshot(of: app, named: "Memory check-in choices")
+
+        changed.tap()
+        if !app.staticTexts["Your change of mind is part of the story."].waitForExistence(timeout: timeout) { print("DEBUGDUMP-CHANGED\n" + app.debugDescription) }
+        XCTAssertTrue(app.staticTexts["Your change of mind is part of the story."].exists)
+        attachScreenshot(of: app, named: "Memory check-in learned")
+
+        let compass = app.buttons["remember.memory-check-in.compass"]
+        scrollGentlyUntilHittable(compass, in: app)
+        compass.tap()
+        XCTAssertTrue(app.staticTexts["What you’re carrying now"].waitForExistence(timeout: timeout))
+    }
+
+    func testReleasedReturnKeepsItsAcknowledgementUntilTheUserIsDone() {
+        let app = makeApp()
+        app.launch()
+
+        addCurrentTask("Protect a focused block for creative work", in: app)
+        let release = app.buttons["remember.memory-check-in.no_longer_relevant"]
+        scrollGentlyUntilHittable(release, in: app)
+        XCTAssertTrue(release.isHittable)
+        release.tap()
+
+        let acknowledgement = app.staticTexts["Released from your current guidance."]
+        XCTAssertTrue(acknowledgement.waitForExistence(timeout: timeout))
+        attachScreenshot(of: app, named: "Released return acknowledgement")
+
+        let done = app.buttons["remember.today.return.done"]
+        scrollGentlyUntilHittable(done, in: app)
+        done.tap()
+        XCTAssertTrue(acknowledgement.waitForNonExistence(timeout: timeout))
+    }
+
+    func testTodayReturnsAUsefulSaveForTheCurrentTask() {
+        let app = makeApp()
+        app.launch()
+
+        addCurrentTask("Protect a focused block for creative work", in: app)
+
+        let contextualReturn = app.descendants(matching: .any)["remember.today.contextual-return"]
+        scrollGentlyUntilHittable(contextualReturn, in: app)
+        XCTAssertTrue(contextualReturn.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["For your current task"].exists)
+
+        let tryToday = app.buttons["remember.today.contextual-return.try"]
+        scrollGentlyUntilHittable(tryToday, in: app)
+        XCTAssertTrue(tryToday.isHittable)
+        tryToday.tap()
+        XCTAssertTrue(app.buttons["Added to Plan"].waitForExistence(timeout: timeout))
+
+        let explore = app.buttons["Ask about this"]
+        scrollGentlyUntilHittable(explore, in: app)
+        XCTAssertTrue(explore.isHittable)
+        explore.tap()
+
+        XCTAssertTrue(waitForSelection(shellTabBar(in: app).buttons["Ask"]))
+        let askField = field(labeled: "Ask your library", in: app)
         XCTAssertTrue(askField.waitForExistence(timeout: timeout))
-        XCTAssertTrue(askField.isHittable)
-        let askButton = app.buttons["remember.ask.submit"]
-        XCTAssertTrue(askButton.exists)
-        XCTAssertLessThan(askButton.frame.maxY, tabBar.frame.minY)
+        let handoff = askField.value as? String ?? ""
+        XCTAssertTrue(handoff.hasPrefix("What from “"), "Ask receives the returned save as the question: \(handoff)")
+        XCTAssertTrue(handoff.hasSuffix("could help me with “Protect a focused block for creative work” today?"))
+    }
+
+    // MARK: - Library
+
+    func testSavingAThoughtFromTheLibraryAddBar() {
+        let app = makeApp(initialRoute: "library")
+        app.launch()
+
+        let quickSave = element("remember.library.quickSave", in: app)
+        XCTAssertTrue(quickSave.waitForExistence(timeout: timeout))
+        quickSave.tap()
+        let thought = "A slower start helps me choose the day instead of inherit it"
+        quickSave.typeText(thought + "\n")
+
+        XCTAssertTrue(app.staticTexts["Thought saved"].firstMatch.waitForExistence(timeout: timeout))
+        let savedThought = app.staticTexts[thought]
+        XCTAssertTrue(savedThought.waitForExistence(timeout: timeout))
+        attachScreenshot(of: app, named: "Quick Thought in Library")
+
+        savedThought.tap()
+        XCTAssertTrue(app.staticTexts["YOUR WORDS"].waitForExistence(timeout: timeout) || app.staticTexts["Your words"].exists)
+        XCTAssertFalse(app.buttons["Open original"].exists)
+        attachScreenshot(of: app, named: "Quick Thought detail")
+    }
+
+    func testDetailedCaptureValidatesLinksAndSavesThoughts() {
+        let app = makeApp(initialRoute: "capture")
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Save something"].waitForExistence(timeout: timeout))
+        let linkField = app.textFields["Link to save"]
+        XCTAssertTrue(linkField.waitForExistence(timeout: timeout))
+        linkField.tap()
+        linkField.typeText("not-a-link")
+        app.buttons["Save link"].tap()
+        XCTAssertTrue(app.staticTexts["Enter a complete https link."].waitForExistence(timeout: timeout))
+        attachScreenshot(of: app, named: "Capture")
+
+        app.buttons["Thought"].tap()
+        let thought = "Quiet mornings make hard choices easier"
+        let thoughtField = field(labeled: "Thought to remember", in: app)
+        XCTAssertTrue(thoughtField.waitForExistence(timeout: timeout))
+        thoughtField.tap()
+        thoughtField.typeText(thought)
+        let saveThought = app.buttons["Save thought"]
+        XCTAssertTrue(waitForEnabled(saveThought))
+        saveThought.tap()
+        XCTAssertTrue(app.staticTexts["Saved"].waitForExistence(timeout: timeout))
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.staticTexts["Saved"].waitForNonExistence(timeout: timeout))
+
+        selectPrimaryTab("Library", in: app)
+        XCTAssertTrue(app.staticTexts[thought].waitForExistence(timeout: timeout))
     }
 
     func testLibraryLastItemRemainsReachableAboveTheTabBar() {
         let app = makeApp(initialRoute: "library")
         app.launch()
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Library"].waitForExistence(timeout: timeout))
 
         let lastItem = app.staticTexts["A link waiting for another try"]
         for _ in 0..<8 where !lastItem.isHittable {
@@ -448,13 +456,31 @@ final class RememberUITests: XCTestCase {
             "UICTContentSizeCategoryLarge"
         ]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: timeout))
 
         let row = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "remember.library.imprint.")
         ).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: timeout))
         XCTAssertLessThan(row.frame.height, 180, "A default-size Library row should stay compact and adaptive.")
+    }
+
+    func testLibraryFiltersAreOneChipRow() {
+        let app = makeApp(initialRoute: "library")
+        app.launch()
+
+        let filters = app.descendants(matching: .any)["remember.library.filter"]
+        XCTAssertTrue(filters.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.buttons["All"].isHittable)
+        XCTAssertTrue(app.buttons["Analyzed"].exists)
+        XCTAssertTrue(app.buttons["Analyzing"].exists)
+        XCTAssertTrue(app.buttons["Some details"].exists)
+        XCTAssertTrue(app.buttons["Couldn’t analyze"].exists)
+
+        let orderButton = app.buttons["Sorted newest first"]
+        XCTAssertTrue(orderButton.exists)
+        filters.swipeLeft()
+        orderButton.tap()
+        XCTAssertTrue(app.buttons["Sorted oldest first"].waitForExistence(timeout: timeout))
     }
 
     func testSavedExperimentCarriesForwardIntoPlan() {
@@ -466,54 +492,73 @@ final class RememberUITests: XCTestCase {
         ).firstMatch
         scrollUntilHittable(savedIdea, in: app)
         XCTAssertTrue(savedIdea.waitForExistence(timeout: timeout))
-        XCTAssertTrue(savedIdea.isHittable)
         savedIdea.tap()
 
-        XCTAssertTrue(app.navigationBars["Saved item"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.descendants(matching: .any)["remember.detail"].waitForExistence(timeout: timeout))
         let tryThis = app.buttons["Try this"]
         scrollUntilHittable(tryThis, in: app)
         XCTAssertTrue(tryThis.isHittable)
+        attachScreenshot(of: app, named: "Library item detail")
         tryThis.tap()
 
         let addedToPlan = app.buttons["Added to Plan"]
         XCTAssertTrue(addedToPlan.waitForExistence(timeout: timeout))
         addedToPlan.tap()
 
-        XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Write one thing this season clarified, and one thing you are ready to release."].waitForExistence(timeout: timeout))
+        XCTAssertTrue(waitForSelection(shellTabBar(in: app).buttons["Plan"]))
+        XCTAssertTrue(app.staticTexts["Write one thing this season clarified, and one thing you are ready to release"].waitForExistence(timeout: timeout))
+    }
+
+    // MARK: - Patterns
+
+    func testWeeklySynthesisSitsAtTopOfPatternsAndRepeatsWhatWorked() {
+        let app = makeApp(initialRoute: "patterns")
+        app.launch()
+
+        let weeklySynthesis = app.descendants(matching: .any)["remember.today.weekly-synthesis"]
+        XCTAssertTrue(weeklySynthesis.waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Something worked."].exists)
+        XCTAssertTrue(app.staticTexts["Writing it down made the next step feel obvious."].exists)
+        attachScreenshot(of: app, named: "Patterns")
+
+        let repeatWhatWorked = app.buttons["Repeat what worked"]
+        scrollUntilHittable(repeatWhatWorked, in: app)
+        XCTAssertTrue(repeatWhatWorked.isHittable)
+        repeatWhatWorked.tap()
+
+        XCTAssertTrue(waitForSelection(shellTabBar(in: app).buttons["Plan"]))
+        XCTAssertTrue(app.staticTexts["Name one thing this season clarified"].waitForExistence(timeout: timeout))
     }
 
     func testLivingThreadShowsChangeAndHandsTheQuestionToAsk() {
         let app = makeApp(initialRoute: "evolution")
         app.launch()
 
-        XCTAssertTrue(app.navigationBars["Patterns"].waitForExistence(timeout: timeout))
-        app.buttons["Threads"].tap()
-        XCTAssertTrue(app.staticTexts["Ideas that keep finding you"].waitForExistence(timeout: timeout))
+        let threads = app.buttons["Threads"]
+        XCTAssertTrue(threads.waitForExistence(timeout: timeout))
+        scrollUntilHittable(threads, in: app)
+        threads.tap()
+        XCTAssertTrue(app.staticTexts["IDEAS THAT KEEP FINDING YOU"].waitForExistence(timeout: timeout))
         let identity = app.descendants(matching: .any)["remember.thread.identity"]
+        scrollUntilHittable(identity, in: app)
         XCTAssertTrue(identity.waitForExistence(timeout: timeout))
         identity.tap()
 
-        XCTAssertTrue(app.navigationBars["Identity"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Still unresolved"].exists)
-        XCTAssertTrue(app.staticTexts["You left this open"].exists)
-        XCTAssertTrue(app.staticTexts["Where it started"].exists)
+        XCTAssertTrue(app.staticTexts["Identity"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["The question now"].exists)
+        attachScreenshot(of: app, named: "Living Thread")
+        let started = app.staticTexts["Where it started"]
+        scrollUntilHittable(started, in: app)
+        XCTAssertTrue(started.exists)
         XCTAssertTrue(app.staticTexts["Where it is now"].exists)
-        let threadScreenshot = XCTAttachment(screenshot: app.screenshot())
-        threadScreenshot.name = "Living Thread with a real turning point"
-        threadScreenshot.lifetime = .keepAlways
-        add(threadScreenshot)
+
         let explore = app.buttons["Explore in Ask"]
-        scrollUntilHittable(explore, in: app)
+        for _ in 0..<8 where !explore.isHittable { app.swipeDown() }
         XCTAssertTrue(explore.isHittable)
-        let turningPointScreenshot = XCTAttachment(screenshot: app.screenshot())
-        turningPointScreenshot.name = "Turning point and the question now"
-        turningPointScreenshot.lifetime = .keepAlways
-        add(turningPointScreenshot)
         explore.tap()
 
-        XCTAssertTrue(app.navigationBars["Ask"].waitForExistence(timeout: timeout))
-        let askField = app.textFields["Ask your library"]
+        XCTAssertTrue(waitForSelection(shellTabBar(in: app).buttons["Ask"]))
+        let askField = field(labeled: "Ask your library", in: app)
         XCTAssertTrue(askField.waitForExistence(timeout: timeout))
         XCTAssertEqual(askField.value as? String, "What would help me know what I think about identity, without forcing an answer too early?")
     }
@@ -522,10 +567,11 @@ final class RememberUITests: XCTestCase {
         let app = makeApp(initialRoute: "evolution")
         app.launch()
 
-        XCTAssertTrue(app.navigationBars["Patterns"].waitForExistence(timeout: timeout))
         XCTAssertTrue(app.descendants(matching: .any)["remember.personal-compass"].waitForExistence(timeout: timeout))
         XCTAssertTrue(app.staticTexts["What you’re carrying now"].exists)
-        XCTAssertTrue(app.staticTexts["Treat attention as evidence of what you value."].exists)
+        let truth = app.staticTexts["Treat attention as evidence of what you value."]
+        scrollUntilHittable(truth, in: app)
+        XCTAssertTrue(truth.exists)
         XCTAssertTrue(app.staticTexts["Remove one recurring input that does not deserve a place in your week"].exists)
 
         let keep = app.buttons["Keep"]
@@ -534,179 +580,119 @@ final class RememberUITests: XCTestCase {
         keep.tap()
 
         let releases = app.buttons.matching(identifier: "Release")
-        XCTAssertEqual(releases.count, 2)
+        XCTAssertTrue(wait(for: NSPredicate(format: "count == 2"), on: releases))
     }
 
-    func testFinishedExperimentBecomesPersonalCompassEvidence() {
-        let app = makeApp(initialRoute: "tasks")
+    // MARK: - Ask
+
+    func testAskKeepsGroundingQuietlyAvailable() {
+        let app = makeApp(initialRoute: "ask")
         app.launch()
 
-        let start = app.buttons["Do this now"]
-        XCTAssertTrue(start.waitForExistence(timeout: timeout))
-        start.tap()
-
-        let finish = app.buttons["Finish experiment"]
-        XCTAssertTrue(finish.waitForExistence(timeout: timeout))
-        finish.tap()
-
-        XCTAssertTrue(app.navigationBars["Experiment result"].waitForExistence(timeout: timeout))
-        app.descendants(matching: .any)["remember.practice-result.helped"].tap()
-        let note = app.descendants(matching: .any)["remember.practice-result.note"]
-        XCTAssertTrue(note.waitForExistence(timeout: timeout))
-        note.tap()
-        note.typeText("Removing it made the day feel quieter.")
-        app.buttons["remember.practice-result.save"].tap()
-        XCTAssertTrue(app.navigationBars["Experiment result"].waitForNonExistence(timeout: timeout))
-
-        selectPrimaryTab("Library", in: app)
-        selectSection("Patterns", screenTitle: "Patterns", in: app)
-        let guidance = app.descendants(matching: .any)["remember.compass-guidance.keep"]
-        scrollUntilHittable(guidance, in: app)
-        XCTAssertTrue(guidance.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["This helped. Keep it available as a principle, not just a saved thought."].exists)
-        XCTAssertTrue(app.staticTexts["Removing it made the day feel quieter."].exists)
-    }
-
-    func testTodayReturnsAUsefulSaveForTheCurrentTask() {
-        let app = makeApp(initialRoute: "tasks")
-        app.launch()
-
-        app.buttons["Add task with details"].tap()
-        let composerBar = app.navigationBars["Add task"]
-        XCTAssertTrue(composerBar.waitForExistence(timeout: timeout))
-        let titleField = app.textFields["Task name"]
-        titleField.tap()
-        titleField.typeText("Protect a focused block for creative work")
-        app.buttons["remember.task.submit"].tap()
-        XCTAssertTrue(composerBar.waitForNonExistence(timeout: timeout))
-
-        selectPrimaryTab("Today", in: app)
-        app.buttons["remember.today.savedIdeas"].tap()
-        let contextualReturn = app.descendants(matching: .any)["remember.today.contextual-return"]
-        scrollGentlyUntilHittable(contextualReturn, in: app)
-        XCTAssertTrue(contextualReturn.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["For your current task"].exists)
-        let returnedEssence = app.staticTexts.containing(
-            NSPredicate(format: "label CONTAINS %@", "Protecting the first quiet hour")
+        app.buttons["What have I saved about focus?"].tap()
+        XCTAssertTrue(app.staticTexts["From your saves"].waitForExistence(timeout: timeout))
+        let supportingSaves = app.buttons["Supporting saves"]
+        XCTAssertTrue(supportingSaves.waitForExistence(timeout: timeout))
+        attachScreenshot(of: app, named: "Ask conversation")
+        supportingSaves.tap()
+        let firstSource = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "Your worst years are not wasted years")
         ).firstMatch
-        XCTAssertTrue(returnedEssence.exists)
+        XCTAssertTrue(firstSource.waitForExistence(timeout: timeout))
+    }
 
-        let tryToday = app.buttons["remember.today.contextual-return.try"]
-        scrollGentlyUntilHittable(tryToday, in: app)
-        XCTAssertTrue(tryToday.isHittable)
-        tryToday.tap()
+    func testAskTurnsAGroundedAnswerIntoAPlanExperiment() {
+        let app = makeApp(initialRoute: "ask")
+        app.launch()
+
+        app.buttons["What have I saved about focus?"].tap()
+        XCTAssertTrue(app.staticTexts["Put this to work"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Write one thing this season clarified, and one thing you are ready to release."].exists)
+
+        let tryExperiment = app.buttons["Try this experiment"]
+        scrollUntilHittable(tryExperiment, in: app)
+        XCTAssertTrue(tryExperiment.isHittable)
+        tryExperiment.tap()
+
+        let addedToPlan = app.buttons["Added to Plan"]
+        XCTAssertTrue(addedToPlan.waitForExistence(timeout: timeout))
+        addedToPlan.tap()
+        XCTAssertTrue(waitForSelection(shellTabBar(in: app).buttons["Plan"]))
+        XCTAssertTrue(app.staticTexts["Write one thing this season clarified, and one thing you are ready to release"].waitForExistence(timeout: timeout))
+    }
+
+    func testDecisionUsesSavedMemoryAndCreatesARealWorldTest() {
+        let app = makeApp(initialRoute: "ask")
+        app.launch()
+
+        let decisionEntry = app.buttons["remember.ask.decision"]
+        XCTAssertTrue(decisionEntry.waitForExistence(timeout: timeout))
+        XCTAssertTrue(decisionEntry.isHittable)
+        decisionEntry.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["remember.decision.title"].waitForExistence(timeout: timeout))
+        let decisionField = element("remember.decision.input", in: app)
+        XCTAssertTrue(decisionField.waitForExistence(timeout: timeout))
+        decisionField.tap()
+        decisionField.typeText("Should I protect more time for creative work?")
+
+        let submit = app.buttons["remember.decision.submit"]
+        XCTAssertTrue(waitForEnabled(submit))
+        submit.tap()
+
+        XCTAssertTrue(app.staticTexts["What seems to matter"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["What pulls you toward it"].exists)
+
+        let tryThis = app.buttons["remember.decision.try"]
+        scrollUntilHittable(tryThis, in: app)
+        XCTAssertTrue(tryThis.isHittable)
+        tryThis.tap()
         XCTAssertTrue(app.buttons["Added to Plan"].waitForExistence(timeout: timeout))
 
-        let checkIn = app.buttons["remember.memory-check-in.still_true"]
-        scrollGentlyUntilHittable(checkIn, in: app)
-        XCTAssertTrue(checkIn.isHittable)
+        selectPrimaryTab("Plan", in: app)
+        XCTAssertTrue(app.staticTexts["Should I protect more time for creative work"].waitForExistence(timeout: timeout))
+    }
 
-        let explore = app.buttons["Ask about this"]
-        for _ in 0..<8 where !explore.isHittable { app.swipeDown() }
-        scrollGentlyUntilHittable(explore, in: app)
-        XCTAssertTrue(explore.isHittable)
-        explore.tap()
+    // MARK: - Accessibility
 
-        XCTAssertTrue(app.navigationBars["Ask"].waitForExistence(timeout: timeout))
-        let askField = app.textFields["Ask your library"]
+    func testLargestDynamicTypeKeepsGlobalActionsAndNavigationReachable() {
+        let app = makeApp()
+        app.launchArguments += [
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge"
+        ]
+        app.launch()
+
+        let tabBar = shellTabBar(in: app)
+        XCTAssertEqual(tabBar.buttons.count, 5)
+        XCTAssertTrue(app.buttons["Profile and settings"].isHittable)
+        let quickAdd = element("remember.task.quickAdd", in: app)
+        XCTAssertTrue(quickAdd.waitForExistence(timeout: timeout))
+        XCTAssertLessThan(quickAdd.frame.maxY, tabBar.frame.minY)
+
+        let start = app.buttons["remember.now.start"]
+        scrollUntilHittable(start, in: app)
+        XCTAssertTrue(start.isHittable)
+
+        selectPrimaryTab("Library", in: app)
+        XCTAssertTrue(app.buttons["Saved"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.buttons["Patterns"].exists)
+
+        let firstSave = app.staticTexts["A link waiting for another try"]
+        scrollUntilHittable(firstSave, in: app)
+        XCTAssertTrue(firstSave.isHittable)
+        XCTAssertLessThan(firstSave.frame.maxY, tabBar.frame.minY)
+
+        selectPrimaryTab("Ask", in: app)
+        let askField = field(labeled: "Ask your library", in: app)
         XCTAssertTrue(askField.waitForExistence(timeout: timeout))
-        XCTAssertEqual(askField.value as? String, "What from “The first quiet hour is where I can hear myself think” could help me with “Protect a focused block for creative work” today?")
+        XCTAssertTrue(askField.isHittable)
+        let askButton = app.buttons["remember.ask.submit"]
+        XCTAssertTrue(askButton.exists)
+        XCTAssertLessThan(askButton.frame.maxY, tabBar.frame.minY)
     }
 
-    func testTodayReturnsAnIdeaKeptForFocus() {
-        let app = makeApp(initialRoute: "today")
-        app.launch()
-
-        app.buttons["remember.today.savedIdeas"].tap()
-        let focus = app.buttons["remember.today.need.focus"]
-        XCTAssertTrue(focus.waitForExistence(timeout: timeout))
-        focus.tap()
-
-        let returnedIdea = app.descendants(matching: .any)["remember.today.intentional-return"]
-        XCTAssertTrue(returnedIdea.waitForExistence(timeout: timeout))
-        let openSavedItem = app.buttons["Open saved item"]
-        scrollGentlyUntilHittable(openSavedItem, in: app)
-        XCTAssertTrue(openSavedItem.isHittable)
-        XCTAssertTrue(app.staticTexts["Before focused work"].exists)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Protecting the first quiet hour may be less about productivity and more about choosing whether the day begins from intention or reaction.")).firstMatch.exists)
-
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Today - intentional focus return"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
-    }
-
-    func testWeeklySynthesisRepeatsWhatWorkedIntoPlan() {
-        let app = makeApp(initialRoute: "today")
-        app.launch()
-
-        app.buttons["remember.today.savedIdeas"].tap()
-        let weeklySynthesis = app.descendants(matching: .any)["remember.today.weekly-synthesis"]
-        scrollUntilHittable(weeklySynthesis, in: app)
-        XCTAssertTrue(weeklySynthesis.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Something worked."].exists)
-        XCTAssertTrue(app.staticTexts["Writing it down made the next step feel obvious."].exists)
-
-        let repeatWhatWorked = app.buttons["Repeat what worked"]
-        scrollUntilHittable(repeatWhatWorked, in: app)
-        XCTAssertTrue(repeatWhatWorked.isHittable)
-        repeatWhatWorked.tap()
-
-        XCTAssertTrue(app.navigationBars["Plan"].waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Name one thing this season clarified"].waitForExistence(timeout: timeout))
-    }
-
-    func testLibraryFiltersAreAvailableWithoutCrowdingTheList() {
-        let app = makeApp(initialRoute: "library")
-        app.launch()
-
-        XCTAssertTrue(app.navigationBars["Library"].waitForExistence(timeout: timeout))
-        XCTAssertFalse(app.buttons["Filter and sort"].exists)
-        app.buttons["remember.library.filter"].tap()
-        XCTAssertTrue(app.buttons["All"].isHittable)
-        XCTAssertTrue(app.buttons["Analyzed"].exists)
-        XCTAssertTrue(app.buttons["Analyzing"].exists)
-        XCTAssertTrue(app.buttons["Some details"].exists)
-        XCTAssertTrue(app.buttons["Couldn’t analyze"].exists)
-
-        let orderButton = app.buttons["Newest first"]
-        XCTAssertTrue(orderButton.isHittable)
-        orderButton.tap()
-        XCTAssertTrue(app.buttons["Oldest first"].waitForExistence(timeout: timeout))
-    }
-
-    func testTaskDetailsStayOptionalAndCurrencySearchRemainsAvailable() {
-        let taskApp = makeApp(initialRoute: "tasks")
-        taskApp.launch()
-
-        taskApp.buttons["Add task with details"].tap()
-        XCTAssertTrue(taskApp.navigationBars["Add task"].waitForExistence(timeout: timeout))
-        XCTAssertFalse(taskApp.buttons["5 minutes"].exists)
-        taskApp.buttons["Add details"].tap()
-        for label in ["Health", "Work", "Relationships", "5 minutes", "15 minutes"] {
-            XCTAssertTrue(taskApp.buttons[label].exists, "Expected a direct choice for \(label).")
-        }
-        XCTAssertTrue(taskApp.descendants(matching: .any)["remember.task.priority"].exists)
-        taskApp.navigationBars["Add task"].buttons["Close"].tap()
-        taskApp.terminate()
-
-        let moneyApp = makeApp(initialRoute: "money")
-        moneyApp.launch()
-        moneyApp.buttons["Add an account"].tap()
-        XCTAssertTrue(moneyApp.navigationBars["Add account"].waitForExistence(timeout: timeout))
-
-        let currencyButton = moneyApp.buttons["remember.currency.selection"]
-        XCTAssertTrue(currencyButton.waitForExistence(timeout: timeout))
-        XCTAssertTrue(currencyButton.isHittable)
-        currencyButton.tap()
-
-        XCTAssertTrue(moneyApp.navigationBars["Currency"].waitForExistence(timeout: timeout))
-        let search = moneyApp.searchFields["Search currency"]
-        XCTAssertTrue(search.waitForExistence(timeout: timeout))
-        search.tap()
-        search.typeText("yen")
-        XCTAssertTrue(moneyApp.staticTexts["JPY"].waitForExistence(timeout: timeout))
-    }
+    // MARK: - Helpers
 
     private func assertLegacyRoute(_ route: LegacyRoute) {
         let app = makeApp(initialRoute: route.name)
@@ -719,8 +705,8 @@ final class RememberUITests: XCTestCase {
             "Legacy route \(route.name) should select \(route.primaryTab)."
         )
         XCTAssertTrue(
-            app.navigationBars[route.screenTitle].waitForExistence(timeout: timeout),
-            "Legacy route \(route.name) should show \(route.screenTitle)."
+            app.staticTexts[route.primaryTab].waitForExistence(timeout: timeout),
+            "Legacy route \(route.name) should show the \(route.primaryTab) header."
         )
 
         let sectionButton = app.buttons[route.section]
@@ -753,12 +739,60 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(waitForSelection(picker.buttons[selected]))
     }
 
-    private func selectSection(_ title: String, screenTitle: String, in app: XCUIApplication) {
+    private func selectSection(_ title: String, in app: XCUIApplication) {
         let button = app.buttons[title]
         XCTAssertTrue(button.waitForExistence(timeout: timeout))
         button.tap()
         XCTAssertTrue(waitForSelection(button))
-        XCTAssertTrue(app.navigationBars[screenTitle].waitForExistence(timeout: timeout))
+    }
+
+    /// Any element by identifier (vertical text fields surface as text views).
+    private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    private func field(labeled label: String, in app: XCUIApplication) -> XCUIElement {
+        let textField = app.textFields[label]
+        return textField.exists ? textField : app.textViews[label].exists ? app.textViews[label] : textField
+    }
+
+    /// Every tab keeps its own dock, so pick the toast Undo that is on screen.
+    private func visibleUndo(in app: XCUIApplication) -> XCUIElement {
+        let undos = app.buttons.matching(identifier: "remember.toast.undo")
+        guard undos.firstMatch.waitForExistence(timeout: timeout) else { return undos.firstMatch }
+        for index in 0..<undos.count {
+            let candidate = undos.element(boundBy: index)
+            if candidate.isHittable { return candidate }
+        }
+        return undos.firstMatch
+    }
+
+    /// Quick-adds a task on Today (it becomes the current task in preview data), then drops the keyboard.
+    private func addCurrentTask(_ title: String, in app: XCUIApplication) {
+        let quickAdd = element("remember.task.quickAdd", in: app)
+        XCTAssertTrue(quickAdd.waitForExistence(timeout: timeout))
+        quickAdd.tap()
+        quickAdd.typeText(title + "\n")
+        XCTAssertTrue(app.staticTexts[title].firstMatch.waitForExistence(timeout: timeout))
+        // Scrolling the page drops the keyboard.
+        for _ in 0..<3 where keyboardIsVisible(in: app) {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+            start.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)))
+            _ = wait(for: NSPredicate(format: "exists == false"), on: app.otherElements["inputView"])
+        }
+        XCTAssertFalse(keyboardIsVisible(in: app), "Scrolling drops the keyboard.")
+    }
+
+    private func keyboardIsVisible(in app: XCUIApplication) -> Bool {
+        app.keyboards.count > 0 || app.otherElements["inputView"].exists
+    }
+
+    private func anyElement(containing text: String, in app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    private func button(startingWith prefix: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", prefix)).firstMatch
     }
 
     private func waitForSelection(_ element: XCUIElement) -> Bool {
@@ -775,16 +809,23 @@ final class RememberUITests: XCTestCase {
         }
     }
 
+    /// Scrolls in small steps until the element sits clear of the pinned add bar (and keyboard).
     private func scrollGentlyUntilHittable(_ element: XCUIElement, in app: XCUIApplication) {
-        for _ in 0..<16 where !element.isHittable {
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.72))
-            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.50))
+        func isComfortable() -> Bool {
+            guard element.exists, element.isHittable else { return false }
+            let limit = app.frame.height * (keyboardIsVisible(in: app) ? 0.55 : 0.75)
+            return element.frame.maxY < limit
+        }
+        for _ in 0..<16 where !isComfortable() {
+            let keyboardUp = keyboardIsVisible(in: app)
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: keyboardUp ? 0.42 : 0.62))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: keyboardUp ? 0.22 : 0.40))
             start.press(forDuration: 0.01, thenDragTo: end)
         }
     }
 
-    private func wait(for predicate: NSPredicate, on element: XCUIElement) -> Bool {
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    private func wait(for predicate: NSPredicate, on object: Any) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: object)
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
@@ -813,5 +854,4 @@ private struct LegacyRoute {
     let name: String
     let primaryTab: String
     let section: String
-    let screenTitle: String
 }

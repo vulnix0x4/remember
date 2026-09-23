@@ -212,6 +212,52 @@ struct CreateLifeTaskRequest: Encodable, Sendable {
     let source: String
     let sourceItemId: UUID?
     var repeatEveryDays: Int? = nil
+    var dueAt: Date? = nil
+    var notBefore: Date? = nil
+}
+
+/// A partial task update. Double optionals distinguish "leave unchanged" (nil) from "clear" (.some(nil)).
+struct LifeTaskPatch: Encodable, Sendable, Equatable {
+    var title: String?
+    var firstStep: String?
+    var status: LifeTaskStatus?
+    var priority: LifeTaskPriority?
+    var durationMinutes: Int?
+    var notBefore: Date??
+    var dueAt: Date??
+    var repeatEveryDays: Int??
+
+    private enum CodingKeys: String, CodingKey {
+        case title, firstStep, status, priority, durationMinutes, notBefore, dueAt, repeatEveryDays
+    }
+
+    var isEmpty: Bool { self == LifeTaskPatch() }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(firstStep, forKey: .firstStep)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(priority, forKey: .priority)
+        try container.encodeIfPresent(durationMinutes, forKey: .durationMinutes)
+        if let notBefore { try container.encode(notBefore, forKey: .notBefore) }
+        if let dueAt { try container.encode(dueAt, forKey: .dueAt) }
+        if let repeatEveryDays { try container.encode(repeatEveryDays, forKey: .repeatEveryDays) }
+    }
+
+    func applied(to task: LifeTask) -> LifeTask {
+        var task = task
+        if let title { task.title = title }
+        if let firstStep { task.firstStep = firstStep }
+        if let status { task.status = status }
+        if let priority { task.priority = priority }
+        if let durationMinutes { task.durationMinutes = durationMinutes }
+        if let notBefore { task.notBefore = notBefore }
+        if let dueAt { task.dueAt = dueAt }
+        if let repeatEveryDays { task.repeatEveryDays = repeatEveryDays }
+        task.updatedAt = .now
+        return task
+    }
 }
 
 struct PracticeResult: Codable, Hashable, Sendable {

@@ -340,11 +340,12 @@ export async function updateGoal(goalId: string, patch: Partial<Pick<Goal, "titl
   return goal;
 }
 
-export async function createTask(input: { title: string; firstStep?: string; notes?: string; area?: LifeArea; goalId?: string | null; durationMinutes?: number; priority?: LifeTask["priority"]; energy?: LifeTask["energy"]; dueAt?: string | null; status?: LifeTask["status"]; source?: LifeTask["source"]; sourceItemId?: string | null; repeatEveryDays?: number | null }): Promise<LifeTask> {
+export async function createTask(input: { title: string; firstStep?: string; notes?: string; area?: LifeArea; goalId?: string | null; durationMinutes?: number; priority?: LifeTask["priority"]; energy?: LifeTask["energy"]; dueAt?: string | null; status?: LifeTask["status"]; source?: LifeTask["source"]; sourceItemId?: string | null; repeatEveryDays?: number | null; notBefore?: string | null }): Promise<LifeTask> {
   const payload = { firstStep: "", notes: "", area: "direction", goalId: null, durationMinutes: 15, priority: "normal", energy: "any", dueAt: null, status: "queued", source: "manual", ...input };
   const snapshot = readLocalLife();
   let status = payload.status as LifeTask["status"];
-  if (status === "queued" && !snapshot.tasks.some((task) => task.status === "active")) status = "active";
+  const startsLater = Boolean(payload.notBefore && Date.parse(payload.notBefore) > Date.now());
+  if (status === "queued" && !startsLater && !snapshot.tasks.some((task) => task.status === "active")) status = "active";
   const localId = id();
   const timestamp = now();
   const created = await sendOrQueue<{ task: LifeTask }>(mutation({
@@ -352,7 +353,7 @@ export async function createTask(input: { title: string; firstStep?: string; not
     localEntities: [{ collection: "tasks", id: localId }],
     createMapping: { collection: "tasks", localId, responseKey: "task" },
   }));
-  const task = created?.task ?? { id: localId, goalId: payload.goalId, title: payload.title, firstStep: payload.firstStep, notes: payload.notes, area: payload.area as LifeArea, status, priority: payload.priority as LifeTask["priority"], energy: payload.energy as LifeTask["energy"], durationMinutes: payload.durationMinutes, dueAt: payload.dueAt, scheduledStart: null, scheduledEnd: null, source: payload.source as LifeTask["source"], sourceItemId: payload.sourceItemId ?? null, practiceOutcome: null, practiceReflection: "", reflectedAt: null, completedAt: null, createdAt: timestamp, updatedAt: timestamp, repeatEveryDays: payload.repeatEveryDays ?? null };
+  const task = created?.task ?? { id: localId, goalId: payload.goalId, title: payload.title, firstStep: payload.firstStep, notes: payload.notes, area: payload.area as LifeArea, status, priority: payload.priority as LifeTask["priority"], energy: payload.energy as LifeTask["energy"], durationMinutes: payload.durationMinutes, dueAt: payload.dueAt, scheduledStart: null, scheduledEnd: null, source: payload.source as LifeTask["source"], sourceItemId: payload.sourceItemId ?? null, practiceOutcome: null, practiceReflection: "", reflectedAt: null, completedAt: null, createdAt: timestamp, updatedAt: timestamp, repeatEveryDays: payload.repeatEveryDays ?? null, notBefore: payload.notBefore ?? null };
   if (task.status === "active") snapshot.tasks = snapshot.tasks.map((item) => item.status === "active" ? { ...item, status: "queued" } : item);
   snapshot.tasks = [task, ...snapshot.tasks.filter((item) => item.id !== task.id)]; saveLocalLife(snapshot);
   return task;
@@ -375,8 +376,8 @@ export async function updateTask(taskId: string, patch: Partial<LifeTask>): Prom
 
 function bestNext(tasks: LifeTask[]): LifeTask | null {
   const weight = { must: 4, high: 3, normal: 2, low: 1 };
-  return [...tasks].filter((task) => task.status === "queued" || task.status === "inbox").sort((a, b) => {
-    const nowMs = Date.now();
+  const nowMs = Date.now();
+  return [...tasks].filter((task) => (task.status === "queued" || task.status === "inbox") && (!task.notBefore || Date.parse(task.notBefore) <= nowMs)).sort((a, b) => {
     const aDue = a.dueAt ? new Date(a.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
     const bDue = b.dueAt ? new Date(b.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
     const aScore = weight[a.priority] * 100 + (aDue <= nowMs ? 1_000 : 0);
@@ -430,11 +431,14 @@ export async function blockTask(taskId: string, reason: BlockerReason): Promise<
   else if (reason === "unclear") task = { ...task, firstStep: "Write the first visible physical action in one sentence. Then do only that sentence.", durationMinutes: Math.min(5, task.durationMinutes) };
   else if (reason === "time") task = { ...task, firstStep: "Set a five-minute boundary and finish the smallest useful piece before it ends.", durationMinutes: Math.min(5, task.durationMinutes) };
   else if (reason === "place") task = { ...task, firstStep: "Choose the smallest version that works where you are now.", durationMinutes: Math.min(10, task.durationMinutes) };
-  else task = { ...task, status: "removed" };
+  else if (reason === "different") {
+    const aside = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    task = { ...task, status: "queued", notBefore: task.notBefore && task.notBefore > aside ? task.notBefore : aside };
+  } else task = { ...task, status: "removed" };
   const event = { id: eventId, taskId, taskTitle: current.title, reason, originalDuration: current.durationMinutes, createdAt: now() };
   snapshot.blockers = [event, ...snapshot.blockers]; snapshot.tasks = snapshot.tasks.map((item) => item.id === taskId ? task : item);
   if (result?.next) snapshot.tasks = snapshot.tasks.map((item) => item.id === result.next!.id ? result.next! : item);
-  else if (!result && task.status === "removed") { const next = bestNext(snapshot.tasks); if (next) snapshot.tasks = snapshot.tasks.map((item) => item.id === next.id ? { ...item, status: "active" } : item); }
+  else if (!result && current.status === "active" && task.status !== "active") { const next = bestNext(snapshot.tasks); if (next) snapshot.tasks = snapshot.tasks.map((item) => item.id === next.id ? { ...item, status: "active" } : item); }
   saveLocalLife(snapshot);
   if (result) acknowledgeForRefresh(blockedMutation, result);
 }

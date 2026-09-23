@@ -7,46 +7,35 @@ struct CompassSuggestionsSection: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
-                Text("WORTH DECIDING")
-                    .font(.caption)
-                    .bold()
-                    .foregroundStyle(RememberDesign.secondaryText)
-                Text("Does this belong in your compass?")
-                    .font(.title2)
-                    .bold()
-                Text("Remember can notice an idea. Only you can decide whether it feels true.")
-                    .foregroundStyle(RememberDesign.secondaryText)
-            }
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: "Keep this?")
 
             ForEach(principles) { principle in
                 VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
                     Text(principle.text)
-                        .font(.title3)
-                        .bold()
+                        .font(.rememberRowTitle)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let imprint = imprint(for: principle.itemId) {
-                        NavigationLink(value: imprint) {
-                            Label("Review the source", systemImage: "bookmark")
-                        }
-                        .buttonStyle(.plain)
-                    }
                     HStack(spacing: RememberDesign.spacingSmall) {
                         Button("Keep", systemImage: "checkmark", action: { update(principle, status: "active") })
-                            .buttonStyle(.borderedProminent)
-                        Button("Not for me", systemImage: "xmark", action: { update(principle, status: "dismissed") })
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.rememberSecondary)
+                        Button("Not for me", action: { update(principle, status: "dismissed") })
+                            .buttonStyle(.rememberQuiet)
                     }
                     .disabled(workingID != nil)
+                    if let imprint = imprint(for: principle.itemId) {
+                        NavigationLink(value: imprint) {
+                            Label("See the source", systemImage: "bookmark")
+                        }
+                        .buttonStyle(.rememberQuiet)
+                    }
                 }
-                .padding(.vertical, RememberDesign.spacingSmall)
-                Divider()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .rememberCard(padding: RememberDesign.spacing)
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.rememberMeta)
                     .foregroundStyle(RememberDesign.danger)
             }
         }
@@ -65,7 +54,7 @@ struct CompassSuggestionsSection: View {
             do {
                 try await store.setPrincipleStatus(principle, status: status)
             } catch {
-                errorMessage = "That choice could not be saved. Try again."
+                errorMessage = "Couldn’t save that. Try again."
             }
             workingID = nil
         }

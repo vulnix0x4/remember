@@ -4,6 +4,7 @@ import SwiftUI
 struct RememberApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var store: AppStore
+    @State private var focusTimer = FocusTimer()
 
     init() {
         let client = APIClient(baseURL: AppConfiguration.apiURL, credentials: AppConfiguration.apiCredentials)
@@ -19,6 +20,7 @@ struct RememberApp: App {
         WindowGroup {
             RootView()
                 .environment(store)
+                .environment(focusTimer)
                 .tint(RememberDesign.accent)
                 .preferredColorScheme(.dark)
                 .task { await store.bootstrap() }
