@@ -8,29 +8,29 @@ struct WeeklySynthesisCard: View {
     @State private var experimentToRetry: CompassExperiment?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Text("This week, remembered")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RememberDesign.accent)
+        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+            VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+                Text("This week")
+                    .font(.rememberMeta)
+                    .foregroundStyle(RememberDesign.text2)
                     .accessibilityIdentifier("remember.today.weekly-synthesis")
                 Text(synthesis.headline)
-                    .font(.title2.bold())
+                    .font(.rememberSectionTitle)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if !synthesis.story.isEmpty {
                 Text(synthesis.story)
-                    .font(.body)
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .font(.subheadline)
+                    .foregroundStyle(RememberDesign.text2)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if let reflection = synthesis.reflection {
                 VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                     Text("What you noticed")
-                        .font(.caption.bold())
-                        .foregroundStyle(RememberDesign.secondaryText)
+                        .font(.rememberMeta)
+                        .foregroundStyle(RememberDesign.text3)
                     Text(reflection)
                         .font(.body.italic())
                         .fixedSize(horizontal: false, vertical: true)
@@ -38,7 +38,7 @@ struct WeeklySynthesisCard: View {
                 .padding(.leading, RememberDesign.spacingCompact)
                 .overlay(alignment: .leading) {
                     Rectangle()
-                        .fill(RememberDesign.accent)
+                        .fill(RememberDesign.line)
                         .frame(width: 2)
                 }
             }
@@ -48,20 +48,18 @@ struct WeeklySynthesisCard: View {
             if let source = synthesis.experiment?.imprint {
                 NavigationLink(value: source) {
                     Label("See what shaped this", systemImage: "books.vertical")
-                        .frame(minHeight: 44)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(RememberDesign.accent)
+                .buttonStyle(.rememberQuiet)
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.rememberMeta)
                     .foregroundStyle(RememberDesign.danger)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .rememberSurface()
+        .rememberCard(padding: RememberDesign.spacing + 4)
         .sheet(item: $experimentToRetry) { experiment in
             RetryPracticeView(experiment: experiment) {
                 store.selectedTab = .tasks
@@ -76,35 +74,27 @@ struct WeeklySynthesisCard: View {
             if synthesis.canCarryForward, let experiment = synthesis.experiment {
                 Button(action: { carryForward(experiment) }) {
                     Label(isSaving ? "Adding…" : "Repeat what worked", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity, minHeight: 48)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RememberDesign.accent)
-                .foregroundStyle(RememberDesign.accentInk)
-                .buttonBorderShape(.roundedRectangle(radius: RememberDesign.controlRadius))
+                .buttonStyle(.rememberSecondary)
                 .disabled(isSaving)
             } else {
                 Label("Already carried into Plan", systemImage: "checkmark")
                     .font(.subheadline)
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .foregroundStyle(RememberDesign.text2)
             }
         case .some(.mixed):
             if synthesis.canCarryForward, let experiment = synthesis.experiment {
                 Button(action: { experimentToRetry = experiment }) {
                     Label("Try a smaller version", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity, minHeight: 48)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RememberDesign.accent)
-                .foregroundStyle(RememberDesign.accentInk)
-                .buttonBorderShape(.roundedRectangle(radius: RememberDesign.controlRadius))
+                .buttonStyle(.rememberSecondary)
             } else {
                 Label("Already carried into Plan", systemImage: "checkmark")
                     .font(.subheadline)
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .foregroundStyle(RememberDesign.text2)
             }
         case .some(.notForMe):
-            Text("Nothing to do. Knowing what not to carry is useful too.")
+            Text("Nothing to carry. That’s useful too.")
                 .font(.subheadline)
                 .foregroundStyle(RememberDesign.secondaryText)
         case nil:
@@ -131,7 +121,7 @@ struct WeeklySynthesisCard: View {
             if succeeded {
                 store.selectedTab = .tasks
             } else {
-                errorMessage = "That could not be added to Plan. Try again."
+                errorMessage = "Couldn’t add that. Try again."
                 isSaving = false
             }
         }

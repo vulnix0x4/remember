@@ -34,6 +34,7 @@ final class AppStore {
     var isSyncingCalendar = false
     var lastHealthSync: Date?
     var lastCalendarSync: Date?
+    var toast: AppToast?
 
     /// One ordering for Today and Plan, so they never recommend different tasks.
     var queuedLifeTasks: [LifeTask] {
@@ -620,7 +621,184 @@ final class AppStore {
     }
 
     private func presentLifeError(_ message: String) {
-        errorMessage = message
-        errorIsPresented = true
+        showToast(message, isError: true)
     }
+
+    // MARK: - Toasts
+
+    func showToast(_ message: String, isError: Bool = false, undo: (@MainActor () async -> Void)? = nil) {
+        toast = AppToast(message: message, isError: isError, undo: undo)
+    }
+
+    func dismissToast(_ id: UUID) {
+        if toast?.id == id { toast = nil }
+    }
+
+    // MARK: - Effortless task actions (optimistic, undoable)
+
+    /// Adds a task from one typed or spoken line. Jev decides when it happens.
+    @discardableResult
+    func quickAddTask(_ text: String, goalId: UUID? = nil) async -> Bool {
+        let parsed = QuickTaskParser.parse(text)
+        guard !parsed.title.isEmpty else { return false }
+        do {
+            let task = try await lifeRepository.createTask(CreateLifeTaskRequest(
+                title: parsed.title, firstStep: "", notes: "", area: .direction, status: .queued,
+                priority: parsed.priority ?? .normal, energy: .any,
+                durationMinutes: parsed.durationMinutes ?? 15, goalId: goalId, source: "manual", sourceItemId: nil,
+                repeatEveryDays: parsed.repeatEveryDays, dueAt: parsed.dueAt, notBefore: parsed.notBefore
+            ))
+            await loadLife()
+            showToast(brain?.settings.enabled == true ? "Added · Jev will fit it in" : "Added") { [weak self] in
+                await self?.patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func startTask(_ task: LifeTask) async {
+        let previousActive = lifeSnapshot.activeTask
+        replaceLocally(task.id) { $0.status = .active }
+        if let previousActive, previousActive.id != task.id {
+            replaceLocally(previousActive.id) { $0.status = .queued }
+        }
+        do {
+            try await lifeRepository.activateTask(id: task.id)
+            await loadLife()
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t start that task. Try again.")
+        }
+    }
+
+    func completeTask(_ task: LifeTask, minutesSpent: Int) async -> Bool {
+        let previousStatus = task.status
+        let completedAt = Date.now
+        replaceLocally(task.id) { $0.status = .done; $0.completedAt = completedAt }
+        do {
+            try await lifeRepository.completeTask(id: task.id, minutesSpent: minutesSpent, result: nil)
+            await loadLife()
+            showToast("Done. Nice work.") { [weak self] in
+                guard let self else { return }
+                // Finishing a repeating task spawns its one allowed next copy. Reopening the original would
+                // orphan the repeat, so undo instead brings that copy back in the original's place.
+                if task.repeatEveryDays != nil,
+                   let spawned = self.lifeSnapshot.tasks.first(where: {
+                       $0.id != task.id && $0.title == task.title && $0.repeatEveryDays == task.repeatEveryDays
+                           && $0.status != .done && $0.status != .removed && $0.createdAt >= completedAt.addingTimeInterval(-5)
+                   }) {
+                    await self.patchTask(spawned.id, LifeTaskPatch(
+                        firstStep: task.firstStep, status: .queued, notBefore: .some(task.notBefore), dueAt: .some(task.dueAt)
+                    ), quietly: true)
+                    await self.patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
+                } else {
+                    await self.patchTask(task.id, LifeTaskPatch(status: previousStatus == .active ? .queued : previousStatus), quietly: true)
+                }
+            }
+            return true
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t mark that done. Try again.")
+            return false
+        }
+    }
+
+    func deleteTask(_ task: LifeTask) async {
+        let previousStatus = task.status == .active ? LifeTaskStatus.queued : task.status
+        await patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
+        showToast("Deleted") { [weak self] in
+            await self?.patchTask(task.id, LifeTaskPatch(status: previousStatus), quietly: true)
+        }
+    }
+
+    /// "Not now" / "Do something else": moves the task aside for an hour and lets Jev choose again.
+    func setTaskAside(_ task: LifeTask) async {
+        let original = task
+        if await blockLifeTask(task.id, reason: .different) {
+            showToast("Moved aside for an hour") { [weak self] in
+                await self?.patchTask(original.id, LifeTaskPatch(status: .queued, notBefore: .some(original.notBefore)), quietly: true)
+            }
+        }
+    }
+
+    /// Adapts a task that feels hard. Undo restores its original wording and length.
+    func adaptTask(_ task: LifeTask, reason: LifeBlockerReason) async {
+        let original = task
+        guard await blockLifeTask(task.id, reason: reason) else { return }
+        let message = switch reason {
+        case .big: "Made it smaller"
+        case .unclear: "Here’s a clear first step"
+        case .time: "Cut to five minutes"
+        default: "Updated"
+        }
+        showToast(message) { [weak self] in
+            await self?.patchTask(original.id, LifeTaskPatch(
+                title: original.title, firstStep: original.firstStep, durationMinutes: original.durationMinutes
+            ), quietly: true)
+        }
+    }
+
+    /// Saves edits from the task sheet.
+    func patchTask(_ id: UUID, _ patch: LifeTaskPatch, quietly: Bool = false) async {
+        guard !patch.isEmpty else { return }
+        replaceLocally(id) { $0 = patch.applied(to: $0) }
+        do {
+            try await lifeRepository.updateTask(id: id, patch: patch)
+            await loadLife()
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t save that change. Try again.")
+        }
+    }
+
+    /// Library add bar: a link becomes a saved link, anything else a thought.
+    @discardableResult
+    func quickSave(_ text: String) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLikeLink = !trimmed.contains(" ") && trimmed.contains(".")
+        let url = URLValidator.validatedWebURL(from: trimmed)
+            ?? (looksLikeLink && !trimmed.contains("://") ? URLValidator.validatedWebURL(from: "https://\(trimmed)") : nil)
+        do {
+            if let url {
+                let alreadySaved = imprints.contains { $0.url == url }
+                try await capture(url)
+                showToast(alreadySaved ? "Already in your library" : "Link saved · analyzing")
+            } else {
+                try await captureThought(trimmed)
+                showToast("Thought saved")
+            }
+            return true
+        } catch {
+            presentLifeError("Couldn’t save that. Your words are still in the bar.")
+            return false
+        }
+    }
+
+    func updateGoal(_ goal: LifeGoal, progress: Int? = nil, status: String? = nil) async {
+        if let index = lifeSnapshot.goals.firstIndex(where: { $0.id == goal.id }) {
+            if let progress { lifeSnapshot.goals[index].progress = progress }
+            if let status { lifeSnapshot.goals[index].status = status }
+        }
+        do {
+            try await lifeRepository.updateGoal(id: goal.id, progress: progress, status: status)
+            await loadLife()
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t update that goal. Try again.")
+        }
+    }
+
+    private func replaceLocally(_ id: UUID, _ change: (inout LifeTask) -> Void) {
+        guard let index = lifeSnapshot.tasks.firstIndex(where: { $0.id == id }) else { return }
+        change(&lifeSnapshot.tasks[index])
+    }
+}
+
+struct AppToast: Identifiable {
+    let id = UUID()
+    let message: String
+    let isError: Bool
+    let undo: (@MainActor () async -> Void)?
 }

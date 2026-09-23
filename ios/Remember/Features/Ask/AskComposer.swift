@@ -1,44 +1,52 @@
 import SwiftUI
 
+/// Ask's composer is the screen's white add bar.
 struct AskComposer: View {
     @Binding var input: String
     let isResponding: Bool
     let submit: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: RememberDesign.spacingSmall) {
-            TextField(dynamicTypeSize.isAccessibilitySize ? "Ask" : "Ask your library", text: $input, axis: .vertical)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1...3 : 1...4)
+        HStack(spacing: RememberDesign.spacingSmall) {
+            TextField("", text: $input, prompt: Text("Ask your library…").foregroundStyle(.black.opacity(0.45)), axis: .vertical)
+                .font(.body.weight(.medium))
+                .foregroundStyle(.black)
+                .tint(.black)
+                .lineLimit(1...4)
                 .accessibilityLabel("Ask your library")
                 .submitLabel(.send)
-                .textFieldStyle(.plain)
-                .layoutPriority(1)
-                .padding(.horizontal, RememberDesign.spacing)
-                .padding(.vertical, 12)
-                .background(Color.secondary.opacity(0.12), in: .rect(cornerRadius: 20))
                 .onChange(of: input) { _, value in
-                    if value.count > AskViewModel.maximumQuestionLength {
+                    if value.contains("\n") {
+                        input = value.replacingOccurrences(of: "\n", with: "")
+                        if canSubmit { submit() }
+                    } else if value.count > AskViewModel.maximumQuestionLength {
                         input = String(value.prefix(AskViewModel.maximumQuestionLength))
                     }
                 }
-                .onSubmit(submit)
-            Button("Ask", systemImage: "arrow.up", action: submit)
-                .labelStyle(.iconOnly)
-                .font(.headline)
-                .foregroundStyle(canSubmit ? RememberDesign.accentInk : RememberDesign.secondaryText)
-                .frame(width: 52, height: 52)
-                .background(canSubmit ? RememberDesign.accent : RememberDesign.surfaceRaised, in: .circle)
-                .overlay {
-                    Circle().stroke(RememberDesign.line)
+                .onSubmit { if canSubmit { submit() } }
+            Button(action: submit) {
+                Group {
+                    if isResponding {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "arrow.up").font(.body.weight(.bold))
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(!canSubmit)
-                .accessibilityIdentifier("remember.ask.submit")
-                .accessibilityHint("Searches only your saved material")
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(canSubmit || isResponding ? Color.black : Color.black.opacity(0.15), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSubmit)
+            .accessibilityLabel("Ask")
+            .accessibilityIdentifier("remember.ask.submit")
+            .accessibilityHint("Searches only your saved material")
         }
-        .padding(RememberDesign.spacing)
-        .background(.bar)
+        .padding(.leading, 20)
+        .padding(.trailing, 6)
+        .frame(minHeight: 56)
+        .background(.white, in: .rect(cornerRadius: 28))
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 4)
     }
 
     private var canSubmit: Bool {

@@ -38,18 +38,11 @@ struct ChoiceButtonGroup<Value: Hashable, ChoiceLabel: View>: View {
                     }
                     .font(.subheadline)
                     .bold()
-                    .foregroundStyle(isSelected ? RememberDesign.accentInk : .primary)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, RememberDesign.spacingCompact)
-                    .contentShape(.rect)
-                    .background(
-                        isSelected ? RememberDesign.accent : RememberDesign.surfaceRaised,
-                        in: .rect(cornerRadius: RememberDesign.controlRadius)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: RememberDesign.controlRadius)
-                            .stroke(isSelected ? RememberDesign.accent : RememberDesign.line, lineWidth: isSelected ? 2 : 1)
-                    }
+                    .foregroundStyle(isSelected ? RememberDesign.canvas : .white)
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    .padding(.horizontal, RememberDesign.spacing)
+                    .contentShape(.capsule)
+                    .background(isSelected ? Color.white : RememberDesign.cardRaised, in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])

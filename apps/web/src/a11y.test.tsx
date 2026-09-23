@@ -50,19 +50,40 @@ describe("automated serious accessibility gate", () => {
   afterEach(cleanup);
   beforeEach(() => { localStorage.clear(); sessionStorage.clear(); window.location.hash = ""; });
 
-  it("finds no serious semantic violations across core views and capture", async () => {
+  it("finds no serious semantic violations across core views and sheets", async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
-    await expectAccessible(container, "Home");
+    await screen.findByRole("heading", { name: "What’s on your mind?" });
+    await expectAccessible(container, "Today");
+
+    await user.type(screen.getByLabelText("Add a task"), "Call mom tomorrow 20m{Enter}");
+    await user.type(screen.getByLabelText("Add a task"), "Laundry every week{Enter}");
+    await screen.findByRole("heading", { name: "Laundry" });
+    await expectAccessible(container, "Today with tasks");
+
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await user.click(screen.getByRole("button", { name: "I’m stuck" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await expectAccessible(document.body, "Stuck sheet");
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Jev is paused" }));
+    await expectAccessible(document.body, "Jev sheet");
+    await user.keyboard("{Escape}");
 
     await user.click(screen.getAllByRole("button", { name: "Plan" })[0]);
+    await screen.findByRole("heading", { name: "Later" });
     await expectAccessible(container, "Tasks");
+    await user.click(screen.getByRole("button", { name: /^Call mom/ }));
+    await expectAccessible(document.body, "Task sheet");
+    await user.keyboard("{Escape}");
     for (const page of ["Goals", "Calendar"]) {
       await user.click(screen.getByRole("button", { name: page }));
       await expectAccessible(container, page);
     }
 
     await user.click(screen.getAllByRole("button", { name: "Life" })[0]);
+    await screen.findByRole("button", { name: "Log weight" });
     await expectAccessible(container, "Health");
     for (const page of ["Money", "Files"]) {
       await user.click(screen.getByRole("button", { name: page }));
@@ -83,10 +104,5 @@ describe("automated serious accessibility gate", () => {
     await user.click(screen.getAllByRole("button", { name: "Library" })[0]);
     await user.click(screen.getByRole("button", { name: /Your worst years can shape your best life/i }));
     await expectAccessible(container, "Imprint detail");
-
-    await user.click(screen.getAllByRole("button", { name: "Today" })[0]);
-    await user.click(screen.getAllByRole("button", { name: "Save" })[0]);
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    await expectAccessible(container, "Capture");
   });
 });

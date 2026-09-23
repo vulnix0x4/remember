@@ -28,6 +28,10 @@
     <string>Remember reads the health categories you choose so your private dashboard can show sleep, movement, workouts, and recovery context.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Remember reads your calendars so commitments and tasks can share one private daily plan.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Remember uses the microphone only while you add a task by voice.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Remember turns what you say into a task. Speech is processed on your device when possible.</string>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

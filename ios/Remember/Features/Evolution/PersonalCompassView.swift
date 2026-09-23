@@ -4,20 +4,11 @@ struct PersonalCompassView: View {
     let compass: PersonalCompass
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacingXLarge) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Label("Your compass", systemImage: "point.topleft.down.to.point.bottomright.curvepath")
-                    .font(.subheadline)
-                    .bold()
-                    .foregroundStyle(RememberDesign.accent)
-                    .accessibilityIdentifier("remember.personal-compass")
-                Text("What you’re carrying now")
-                    .font(.title)
-                    .bold()
-                Text("Built from choices you made and real-life tests, never a profile Remember assigned to you.")
-                    .font(.body)
-                    .foregroundStyle(RememberDesign.secondaryText)
-            }
+        VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
+            Text("What you’re carrying now")
+                .font(.rememberSectionTitle)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("remember.personal-compass")
 
             if !compass.guidance.isEmpty {
                 CompassGuidanceSection(guidance: compass.guidance)
@@ -41,5 +32,20 @@ struct PersonalCompassView: View {
                 CompassTensionSection(tension: tension)
             }
         }
+    }
+}
+
+/// A reflection in the person's own words, set off by a hairline.
+struct PatternQuote: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.body.italic())
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, RememberDesign.spacingCompact)
+            .overlay(alignment: .leading) {
+                Rectangle().fill(RememberDesign.line).frame(width: 2).accessibilityHidden(true)
+            }
     }
 }

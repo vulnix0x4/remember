@@ -42,6 +42,11 @@ enum AppConfiguration {
         initialRoute == "settings"
     }
 
+    /// Opens the detailed save sheet (note + return moment) on launch.
+    static var presentsCaptureOnLaunch: Bool {
+        initialRoute == "capture"
+    }
+
     static var apiURL: URL {
         if let value = ProcessInfo.processInfo.environment["REMEMBER_API_URL"],
            let configuredURL = URL(string: value) {

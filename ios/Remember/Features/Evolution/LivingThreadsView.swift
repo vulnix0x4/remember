@@ -10,57 +10,43 @@ struct LivingThreadsView: View {
 
     var body: some View {
         if threads.isEmpty {
-            ContentUnavailableView(
-                "Living threads will form here",
+            RememberEmptyState(
                 systemImage: "point.3.connected.trianglepath.dotted",
-                description: Text("When an idea returns across more than one analyzed save, Remember will show how the thought is changing.")
+                title: "No threads yet",
+                message: "They form when an idea shows up in a few saves."
             )
         } else {
-            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                Text("Ideas that keep finding you")
-                    .font(.title2)
-                    .bold()
-                Text("A thread is the path between related saves. Open one to see where the idea began, where it is now, and what remains worth asking.")
-                    .font(.body)
-                    .foregroundStyle(RememberDesign.secondaryText)
+            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                SectionHeading(title: "Ideas that keep finding you")
 
                 ForEach(threads) { thread in
                     NavigationLink(value: thread) {
-                        VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
+                        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(thread.name)
-                                    .font(.title3)
-                                    .bold()
+                                    .font(.rememberSectionTitle)
+                                    .foregroundStyle(.white)
                                 Spacer()
                                 Text(CountLabelFormatter.text(thread.saves.count, singular: "save"))
-                                    .font(.subheadline)
-                                    .foregroundStyle(RememberDesign.secondaryText)
+                                    .font(.rememberMeta)
+                                    .foregroundStyle(RememberDesign.text2)
                             }
                             Label(thread.pulse.label, systemImage: thread.pulse.systemImage)
+                                .font(.rememberMeta)
+                                .foregroundStyle(RememberDesign.text2)
+                            Text(thread.latest.essence)
                                 .font(.subheadline)
-                                .foregroundStyle(thread.pulse.kind == .held || thread.pulse.kind == .shifting ? RememberDesign.accent : RememberDesign.secondaryText)
-                            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                                Text(thread.earliest.essence)
-                                    .lineLimit(2)
-                                Image(systemName: "arrow.down")
-                                    .foregroundStyle(RememberDesign.accent)
-                                    .accessibilityHidden(true)
-                                Text(thread.latest.essence)
-                                    .bold()
-                                    .lineLimit(2)
-                            }
-                            .font(.subheadline)
-                            Label("Open thread", systemImage: "arrow.right")
-                                .font(.subheadline)
-                                .bold()
-                                .foregroundStyle(RememberDesign.accent)
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .rememberSurface()
+                        .rememberCard(padding: RememberDesign.spacing)
+                        .contentShape(.rect(cornerRadius: RememberDesign.cornerRadius))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("remember.thread.\(thread.id)")
-                    .accessibilityHint("Shows how this idea changed across your saves")
+                    .accessibilityHint("Shows how this idea changed")
                 }
             }
         }

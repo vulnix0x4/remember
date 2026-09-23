@@ -7,51 +7,43 @@ struct CompassTruthsSection: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
-                Text("TRUE FOR NOW")
-                    .font(.caption)
-                    .bold()
-                    .foregroundStyle(RememberDesign.secondaryText)
-                Text("Ideas you chose to keep")
-                    .font(.title2)
-                    .bold()
-            }
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: "True for now")
 
             if principles.isEmpty {
-                ContentUnavailableView(
-                    "Nothing is fixed here",
-                    systemImage: "compass.drawing",
-                    description: Text("Keep a takeaway when it earns a place in how you want to live.")
-                )
+                Text("Nothing kept yet. Keep a takeaway when it fits.")
+                    .font(.subheadline)
+                    .foregroundStyle(RememberDesign.text2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .rememberCard(padding: RememberDesign.spacing)
             } else {
                 ForEach(principles) { principle in
-                    VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                         Text(principle.text)
-                            .font(.title3)
-                            .bold()
+                            .font(.rememberRowTitle)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        HStack(spacing: RememberDesign.spacingSmall) {
+                        HStack(spacing: 0) {
                             if let imprint = imprint(for: principle.itemId) {
                                 NavigationLink(value: imprint) {
                                     Label("What shaped this", systemImage: "bookmark")
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(.rememberQuiet)
                             }
-                            Button("Release", systemImage: "minus", action: { release(principle) })
-                                .buttonStyle(.bordered)
+                            Spacer(minLength: 0)
+                            Button("Release", action: { release(principle) })
+                                .buttonStyle(.rememberQuiet)
                                 .disabled(workingID != nil)
                         }
                     }
-                    .padding(.vertical, RememberDesign.spacingSmall)
-                    Divider()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .rememberCard(padding: RememberDesign.spacing)
                 }
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.rememberMeta)
                     .foregroundStyle(RememberDesign.danger)
             }
         }
@@ -74,7 +66,7 @@ struct CompassTruthsSection: View {
             do {
                 try await store.setPrincipleStatus(principle, status: status)
             } catch {
-                errorMessage = "That choice could not be saved. Try again."
+                errorMessage = "Couldn’t save that. Try again."
             }
             workingID = nil
         }

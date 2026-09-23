@@ -5,32 +5,30 @@ struct TimelineView: View {
 
     var body: some View {
         if entries.isEmpty {
-            ContentUnavailableView(
-                "No history yet",
+            RememberEmptyState(
                 systemImage: "calendar",
-                description: Text("History is built from dates and topics across your saves.")
+                title: "No history yet",
+                message: "It builds up as you save more."
             )
         } else {
-            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                Text("How your interests changed")
-                    .font(.title2)
-                    .bold()
+            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                SectionHeading(title: "How your interests changed")
                 ForEach(entries) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacing) {
-                        VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+                    HStack(alignment: .center, spacing: RememberDesign.spacing) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(monthLabel(entry.month))
-                                .font(.headline)
+                                .font(.rememberRowTitle)
                             Text(entry.theme)
-                                .foregroundStyle(RememberDesign.secondaryText)
+                                .font(.subheadline)
+                                .foregroundStyle(RememberDesign.text2)
                         }
                         Spacer()
                         Text("\(entry.count)")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(RememberDesign.accent)
+                            .font(.title3.monospacedDigit().weight(.bold))
+                            .foregroundStyle(RememberDesign.text2)
                             .accessibilityLabel(CountLabelFormatter.text(entry.count, singular: "save"))
                     }
-                    .rememberSurface()
+                    .rememberCard(padding: RememberDesign.spacing)
                     .accessibilityElement(children: .combine)
                 }
             }

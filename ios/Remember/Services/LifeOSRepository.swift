@@ -6,10 +6,12 @@ protocol LifeOSRepository: Sendable {
     func load() async throws -> LifeSnapshot
     func createTask(_ task: CreateLifeTaskRequest) async throws -> LifeTask
     func activateTask(id: UUID) async throws
+    func updateTask(id: UUID, patch: LifeTaskPatch) async throws
     func completeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws
     func reflectOnPractice(id: UUID, result: PracticeResult) async throws
     func blockTask(id: UUID, reason: LifeBlockerReason) async throws
     func createGoal(_ goal: CreateLifeGoalRequest) async throws -> LifeGoal
+    func updateGoal(id: UUID, progress: Int?, status: String?) async throws
     func createFloorItem(_ item: CreateLifeFloorRequest) async throws -> LifeFloorItem
     func toggleFloorItem(id: UUID, date: Date) async throws
     func syncHealth(_ metrics: [HealthMetricUpload]) async throws
@@ -61,7 +63,7 @@ actor LiveLifeOSRepository: LifeOSRepository {
         catch where usesMockFallback {
             let timestamp = Date.now
             var status = request.status
-            if status == .queued && !mockSnapshot.tasks.contains(where: { $0.status == .active }) { status = .active }
+            if status == .queued && (request.notBefore ?? .distantPast) <= timestamp && !mockSnapshot.tasks.contains(where: { $0.status == .active }) { status = .active }
             if status == .active {
                 mockSnapshot.tasks = mockSnapshot.tasks.map { task in
                     var task = task
@@ -72,9 +74,10 @@ actor LiveLifeOSRepository: LifeOSRepository {
             let task = LifeTask(
                 id: UUID(), goalId: request.goalId, title: request.title, firstStep: request.firstStep,
                 notes: request.notes, area: request.area, status: status, priority: request.priority,
-                energy: request.energy, durationMinutes: request.durationMinutes, dueAt: nil,
+                energy: request.energy, durationMinutes: request.durationMinutes, dueAt: request.dueAt,
                 scheduledStart: nil, scheduledEnd: nil, source: request.source, sourceItemId: request.sourceItemId, completedAt: nil,
-                createdAt: timestamp, updatedAt: timestamp
+                createdAt: timestamp, updatedAt: timestamp,
+                repeatEveryDays: request.repeatEveryDays, notBefore: request.notBefore
             )
             mockSnapshot.tasks.insert(task, at: 0)
             return task
@@ -90,6 +93,19 @@ actor LiveLifeOSRepository: LifeOSRepository {
                 else if task.status == .active { task.status = .queued }
                 return task
             }
+        }
+    }
+
+    func updateTask(id: UUID, patch: LifeTaskPatch) async throws {
+        do { _ = try await client.patchLifeTask(id: id, patch: patch) }
+        catch where usesMockFallback {
+            guard let index = mockSnapshot.tasks.firstIndex(where: { $0.id == id }) else { return }
+            if patch.status == .active {
+                for other in mockSnapshot.tasks.indices where mockSnapshot.tasks[other].status == .active {
+                    mockSnapshot.tasks[other].status = .queued
+                }
+            }
+            mockSnapshot.tasks[index] = patch.applied(to: mockSnapshot.tasks[index])
         }
     }
 
@@ -156,6 +172,15 @@ actor LiveLifeOSRepository: LifeOSRepository {
             let goal = LifeGoal(id: UUID(), title: request.title, area: request.area, vision: request.vision, why: request.why, status: "active", progress: 0, targetDate: nil, createdAt: timestamp, updatedAt: timestamp)
             mockSnapshot.goals.insert(goal, at: 0)
             return goal
+        }
+    }
+
+    func updateGoal(id: UUID, progress: Int?, status: String?) async throws {
+        do { try await client.updateLifeGoal(id: id, progress: progress, status: status) }
+        catch where usesMockFallback {
+            guard let index = mockSnapshot.goals.firstIndex(where: { $0.id == id }) else { return }
+            if let progress { mockSnapshot.goals[index].progress = progress }
+            if let status { mockSnapshot.goals[index].status = status }
         }
     }
 
