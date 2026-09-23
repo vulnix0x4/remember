@@ -50,7 +50,7 @@ elements.save.addEventListener("click", async () => {
       reaction: elements.reaction.value
     });
     elements.saveLabel.textContent = result.duplicate ? "Already remembered" : "Saved";
-    setStatus(elements.status, result.duplicate ? "This Imprint is already in your library." : "Saved. Analysis can continue in the background.", "success");
+    setStatus(elements.status, result.duplicate ? "This link is already in your library." : "Saved. Analysis can continue in the background.", "success");
   } catch (error) {
     elements.saveLabel.textContent = "Try again";
     setStatus(elements.status, error.message, "error");

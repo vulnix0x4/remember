@@ -5,6 +5,6 @@ struct EvolutionPrinciple: Decodable, Identifiable, Hashable, Sendable {
     let itemId: String
     let text: String
     let rationale: String?
-    let status: String?
+    var status: String?
     let createdAt: String?
 }

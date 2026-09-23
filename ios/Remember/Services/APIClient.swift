@@ -92,6 +92,20 @@ actor APIClient {
         try await request(path: "api/evolution", method: "GET", body: Optional<Data>.none)
     }
 
+    func decideNextMove(_ input: EverydayDecisionRequest) async throws -> EverydayDecision {
+        try await request(path: "api/life/autopilot", method: "POST", body: encoder.encode(input))
+    }
+
+    func syncBrain(settings: BrainSettings? = nil) async throws -> BrainState? {
+        let body = try settings.map { try encoder.encode($0) }
+            ?? encoder.encode(["timeZone": TimeZone.current.identifier])
+        let response: APIBrainResponse = try await request(
+            path: settings == nil ? "api/life/brain/sync" : "api/life/brain",
+            method: settings == nil ? "POST" : "PATCH", body: body
+        )
+        return response.brain
+    }
+
     func fetchResurfacedItemID() async throws -> UUID? {
         let response: APIResurfacingResponse = try await request(
             path: "api/resurfacing/today",
@@ -103,17 +117,61 @@ actor APIClient {
         return id
     }
 
-    func capture(url: URL) async throws -> Imprint {
-        struct Body: Encodable { let url: String; let sourceText: String? }
+    func capture(url: URL, personalReaction: String? = nil, returnCue: ReturnCue? = nil, returnAt: Date? = nil) async throws -> Imprint {
+        struct Body: Encodable {
+            let url: String
+            let personalReaction: String?
+            let returnCue: String?
+            let returnAt: Date?
+            let sourceText: String?
+        }
         let sourceText = await youtubeTranscript(url)
-        let body = try encoder.encode(Body(url: url.absoluteString, sourceText: sourceText))
+        let body = try encoder.encode(Body(
+            url: url.absoluteString,
+            personalReaction: personalReaction,
+            returnCue: returnCue?.rawValue,
+            returnAt: returnAt,
+            sourceText: sourceText
+        ))
         let response: APICaptureResponse = try await request(path: "api/items", method: "POST", body: body, idempotencyKey: UUID().uuidString)
+        return try APIItemMapper.imprint(from: response.item)
+    }
+
+    func captureThought(_ thought: String, returnCue: ReturnCue? = nil, returnAt: Date? = nil) async throws -> Imprint {
+        struct Body: Encodable {
+            let thought: String
+            let returnCue: String?
+            let returnAt: Date?
+        }
+        let body = try encoder.encode(Body(
+            thought: thought,
+            returnCue: returnCue?.rawValue,
+            returnAt: returnAt
+        ))
+        let response: APICaptureResponse = try await request(
+            path: "api/items",
+            method: "POST",
+            body: body,
+            idempotencyKey: UUID().uuidString
+        )
+        return try APIItemMapper.imprint(from: response.item)
+    }
+
+    func updateReturnCue(itemID: UUID, cue: ReturnCue?, returnAt: Date?) async throws -> Imprint {
+        struct Body: Encodable { let returnCue: String?; let returnAt: Date? }
+        struct Response: Decodable { let item: APIItemDTO }
+        let body = try encoder.encode(Body(returnCue: cue?.rawValue, returnAt: returnAt))
+        let response: Response = try await request(
+            path: "api/items/\(itemID.uuidString.lowercased())/return-cue",
+            method: "PATCH",
+            body: body
+        )
         return try APIItemMapper.imprint(from: response.item)
     }
 
     func retry(itemID: UUID, sourceURL: URL) async throws -> Imprint {
         struct Body: Encodable { let sourceText: String? }
-        let sourceText = await youtubeTranscript(sourceURL)
+        let sourceText = sourceURL.scheme == "remember" ? nil : await youtubeTranscript(sourceURL)
         let body = try encoder.encode(Body(sourceText: sourceText))
         let response: APIRetryResponse = try await request(
             path: "api/items/\(itemID.uuidString.lowercased())/retry",
@@ -134,23 +192,104 @@ actor APIClient {
         )
     }
 
+    func reflectOnMemory(itemID: UUID, response: MemoryReflection) async throws {
+        struct Body: Encodable { let response: MemoryReflection }
+        struct Response: Decodable { let recorded: Bool }
+        let _: Response = try await request(
+            path: "api/items/\(itemID.uuidString.lowercased())/reflect",
+            method: "POST",
+            body: try encoder.encode(Body(response: response))
+        )
+    }
+
+    func rateContextualReturn(itemID: UUID, response: ContextualReturnFeedbackResponse) async throws {
+        struct Body: Encodable { let response: ContextualReturnFeedbackResponse }
+        struct Response: Decodable { let recorded: Bool }
+        let _: Response = try await request(
+            path: "api/items/\(itemID.uuidString.lowercased())/contextual-return-feedback",
+            method: "POST",
+            body: try encoder.encode(Body(response: response))
+        )
+    }
+
     func ask(_ question: String) async throws -> AskAnswer {
         struct Body: Encodable { let question: String; let threadId: String? }
-        let body = try encoder.encode(Body(question: question, threadId: askThreadID))
-        let response: APIAskResponse = try await request(
-            path: "api/ask",
-            method: "POST",
-            body: body,
-            timeout: 45
-        )
-        askThreadID = response.threadId
-        let citations = try response.citations.map { citation in
-            guard let itemID = UUID(uuidString: citation.itemId), let url = URLValidator.validatedWebURL(from: citation.url) else {
-                throw APIError.invalidResponse
+        for attempt in 0...1 {
+            let body = try encoder.encode(Body(question: question, threadId: askThreadID))
+            do {
+                let response: APIAskResponse = try await request(
+                    path: "api/ask",
+                    method: "POST",
+                    body: body,
+                    timeout: 50
+                )
+                askThreadID = response.threadId
+                let citations = response.citations.compactMap { citation -> Citation? in
+                    guard let itemID = UUID(uuidString: citation.itemId),
+                          let url = Self.citationURL(from: citation.url) else { return nil }
+                    return Citation(
+                        id: UUID(),
+                        itemID: itemID,
+                        title: citation.title,
+                        seconds: citation.timestampSeconds,
+                        url: url,
+                        excerpt: citation.excerpt
+                    )
+                }
+                return AskAnswer(
+                    text: response.answer,
+                    citations: citations,
+                    grounded: response.grounded && !citations.isEmpty,
+                    limitations: response.limitations
+                )
+            } catch let error as APIError where attempt == 0 && error.code == "thread_not_found" {
+                askThreadID = nil
             }
-            return Citation(id: UUID(), itemID: itemID, title: citation.title, seconds: citation.timestampSeconds, url: url, excerpt: citation.excerpt)
         }
-        return AskAnswer(text: response.answer, citations: citations, grounded: response.grounded, limitations: response.limitations)
+        throw APIError.invalidResponse
+    }
+
+    func thinkThroughDecision(_ decision: String, context: String) async throws -> DecisionBrief {
+        struct Body: Encodable { let decision: String; let context: String? }
+        let response: APIDecisionResponse = try await request(
+            path: "api/decisions",
+            method: "POST",
+            body: try encoder.encode(Body(decision: decision, context: context.isEmpty ? nil : context)),
+            timeout: 50
+        )
+        let citations = response.citations.compactMap { citation -> Citation? in
+            guard let itemID = UUID(uuidString: citation.itemId),
+                  let url = Self.citationURL(from: citation.url) else { return nil }
+            return Citation(
+                id: UUID(),
+                itemID: itemID,
+                title: citation.title,
+                seconds: citation.timestampSeconds,
+                url: url,
+                excerpt: citation.excerpt
+            )
+        }
+        return DecisionBrief(
+            decision: response.decision,
+            perspective: response.perspective,
+            whatMatters: response.whatMatters,
+            pullToward: response.pullToward,
+            pullAgainst: response.pullAgainst,
+            smallTest: response.smallTest,
+            nextQuestion: response.nextQuestion,
+            citations: citations,
+            grounded: response.grounded && !citations.isEmpty,
+            limitations: response.limitations
+        )
+    }
+
+    func resetAskConversation() {
+        askThreadID = nil
+    }
+
+    private static func citationURL(from value: String) -> URL? {
+        if let url = URL(string: value), url.scheme == "remember" { return url }
+        return URLValidator.validatedWebURL(from: value)
     }
 
     func fetchLifeSnapshot() async throws -> LifeSnapshot {
@@ -174,14 +313,24 @@ actor APIClient {
         return response.task
     }
 
-    func completeLifeTask(id: UUID, minutesSpent: Int) async throws {
-        struct Body: Encodable { let minutesSpent: Int }
+    func completeLifeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws {
+        struct Body: Encodable { let minutesSpent: Int; let result: PracticeResult? }
         struct Response: Decodable { let task: LifeTask; let next: LifeTask? }
         let _: Response = try await request(
             path: "api/life/tasks/\(id.uuidString.lowercased())/complete",
             method: "POST",
-            body: try encoder.encode(Body(minutesSpent: max(0, minutesSpent)))
+            body: try encoder.encode(Body(minutesSpent: max(0, minutesSpent), result: result))
         )
+    }
+
+    func reflectOnPractice(id: UUID, result: PracticeResult) async throws -> LifeTask {
+        struct Response: Decodable { let task: LifeTask }
+        let response: Response = try await request(
+            path: "api/life/tasks/\(id.uuidString.lowercased())/reflect",
+            method: "POST",
+            body: try encoder.encode(result)
+        )
+        return response.task
     }
 
     func blockLifeTask(id: UUID, reason: LifeBlockerReason) async throws {
@@ -273,6 +422,35 @@ actor APIClient {
         return try decoder.decode(Response.self, from: responseData).file
     }
 
+    func downloadVaultFile(id: UUID) async throws -> Data {
+        var download = URLRequest(
+            url: baseURL.appending(path: "api/life/files/\(id.uuidString.lowercased())/download")
+        )
+        download.httpMethod = "GET"
+        download.timeoutInterval = 60
+        for (name, value) in credentials.headers(for: baseURL) {
+            download.setValue(value, forHTTPHeaderField: name)
+        }
+        let (data, response) = try await session.data(for: download)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
+        return data
+    }
+
+    func deleteVaultFile(id: UUID) async throws {
+        var deletion = URLRequest(
+            url: baseURL.appending(path: "api/life/files/\(id.uuidString.lowercased())")
+        )
+        deletion.httpMethod = "DELETE"
+        deletion.timeoutInterval = 30
+        for (name, value) in credentials.headers(for: baseURL) {
+            deletion.setValue(value, forHTTPHeaderField: name)
+        }
+        let (_, response) = try await session.data(for: deletion)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
+    }
+
     private func request<Response: Decodable>(
         path: String,
         method: String,
@@ -306,7 +484,17 @@ actor APIClient {
         if let idempotencyKey { request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else { throw APIError.invalidResponse }
-        guard (200..<300).contains(httpResponse.statusCode) else { throw APIError.server(httpResponse.statusCode) }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if let payload = try? decoder.decode(APIErrorResponse.self, from: data) {
+                throw APIError.response(
+                    status: httpResponse.statusCode,
+                    code: payload.error.code,
+                    message: payload.error.message,
+                    requestID: payload.requestId
+                )
+            }
+            throw APIError.server(httpResponse.statusCode)
+        }
         return try decoder.decode(Response.self, from: data)
     }
 }

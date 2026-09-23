@@ -23,6 +23,7 @@ playwright-report/
 test-results/
 screenshots/
 .playwright-cli/
+.playwright-mcp/
 *.mobileprovision
 *.p12
 *.cer
@@ -30,3 +31,4 @@ screenshots/
 ios/Local.xcconfig
 apps/api/wrangler.private.jsonc
 PROGRESS.md
+!.env.deploy.example

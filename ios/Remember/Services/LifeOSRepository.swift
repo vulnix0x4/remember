@@ -1,10 +1,13 @@
 import Foundation
 
 protocol LifeOSRepository: Sendable {
+    func syncBrain(settings: BrainSettings?) async throws -> BrainState?
+    func decideNextMove(_ input: EverydayDecisionRequest) async throws -> EverydayDecision
     func load() async throws -> LifeSnapshot
     func createTask(_ task: CreateLifeTaskRequest) async throws -> LifeTask
     func activateTask(id: UUID) async throws
-    func completeTask(id: UUID, minutesSpent: Int) async throws
+    func completeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws
+    func reflectOnPractice(id: UUID, result: PracticeResult) async throws
     func blockTask(id: UUID, reason: LifeBlockerReason) async throws
     func createGoal(_ goal: CreateLifeGoalRequest) async throws -> LifeGoal
     func createFloorItem(_ item: CreateLifeFloorRequest) async throws -> LifeFloorItem
@@ -14,16 +17,34 @@ protocol LifeOSRepository: Sendable {
     func addFinanceAccount(_ account: FinanceAccountUpload) async throws -> LifeFinanceAccount
     func addFinanceTransaction(_ transaction: FinanceTransactionUpload) async throws
     func uploadFile(data: Data, name: String, mimeType: String) async throws -> LifeVaultFile
+    func downloadFile(id: UUID) async throws -> Data
+    func deleteFile(id: UUID) async throws
+}
+
+extension LifeOSRepository {
+    func syncBrain(settings: BrainSettings?) async throws -> BrainState? { nil }
+    func decideNextMove(_ input: EverydayDecisionRequest) async throws -> EverydayDecision {
+        throw APIError.response(status: 503, code: "jev_not_configured", message: "Connect your Remember server and its OpenRouter key to let Jev decide.", requestID: nil)
+    }
 }
 
 actor LiveLifeOSRepository: LifeOSRepository {
     private let client: APIClient
     private let usesMockFallback: Bool
-    private var mockSnapshot = LifeSnapshot.empty
+    private var mockSnapshot = FixtureLibrary.lifeSnapshot
 
     init(client: APIClient, usesMockFallback: Bool = false) {
         self.client = client
         self.usesMockFallback = usesMockFallback
+    }
+
+    func decideNextMove(_ input: EverydayDecisionRequest) async throws -> EverydayDecision {
+        // Never present fixture choices as Jev decisions, even in preview mode.
+        try await client.decideNextMove(input)
+    }
+
+    func syncBrain(settings: BrainSettings?) async throws -> BrainState? {
+        try await client.syncBrain(settings: settings)
     }
 
     func load() async throws -> LifeSnapshot {
@@ -52,7 +73,7 @@ actor LiveLifeOSRepository: LifeOSRepository {
                 id: UUID(), goalId: request.goalId, title: request.title, firstStep: request.firstStep,
                 notes: request.notes, area: request.area, status: status, priority: request.priority,
                 energy: request.energy, durationMinutes: request.durationMinutes, dueAt: nil,
-                scheduledStart: nil, scheduledEnd: nil, source: request.source, completedAt: nil,
+                scheduledStart: nil, scheduledEnd: nil, source: request.source, sourceItemId: request.sourceItemId, completedAt: nil,
                 createdAt: timestamp, updatedAt: timestamp
             )
             mockSnapshot.tasks.insert(task, at: 0)
@@ -72,15 +93,30 @@ actor LiveLifeOSRepository: LifeOSRepository {
         }
     }
 
-    func completeTask(id: UUID, minutesSpent: Int) async throws {
-        do { try await client.completeLifeTask(id: id, minutesSpent: minutesSpent) }
+    func completeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws {
+        do { try await client.completeLifeTask(id: id, minutesSpent: minutesSpent, result: result) }
         catch where usesMockFallback {
             guard let index = mockSnapshot.tasks.firstIndex(where: { $0.id == id }) else { return }
             mockSnapshot.tasks[index].status = .done
             mockSnapshot.tasks[index].completedAt = .now
+            if let result {
+                mockSnapshot.tasks[index].practiceOutcome = result.outcome
+                mockSnapshot.tasks[index].practiceReflection = result.reflection
+                mockSnapshot.tasks[index].reflectedAt = .now
+            }
             if let next = mockSnapshot.tasks.indices.first(where: { mockSnapshot.tasks[$0].status == .queued || mockSnapshot.tasks[$0].status == .inbox }) {
                 mockSnapshot.tasks[next].status = .active
             }
+        }
+    }
+
+    func reflectOnPractice(id: UUID, result: PracticeResult) async throws {
+        do { _ = try await client.reflectOnPractice(id: id, result: result) }
+        catch where usesMockFallback {
+            guard let index = mockSnapshot.tasks.firstIndex(where: { $0.id == id }) else { return }
+            mockSnapshot.tasks[index].practiceOutcome = result.outcome
+            mockSnapshot.tasks[index].practiceReflection = result.reflection
+            mockSnapshot.tasks[index].reflectedAt = .now
         }
     }
 
@@ -104,8 +140,11 @@ actor LiveLifeOSRepository: LifeOSRepository {
             case .place:
                 mockSnapshot.tasks[index].firstStep = "Choose the smallest version that works where you are now."
                 mockSnapshot.tasks[index].durationMinutes = min(10, task.durationMinutes)
-            case .irrelevant, .different:
+            case .irrelevant:
                 mockSnapshot.tasks[index].status = .removed
+            case .different:
+                mockSnapshot.tasks[index].status = .queued
+                mockSnapshot.tasks[index].notBefore = .now.addingTimeInterval(3600)
             }
         }
     }
@@ -193,6 +232,18 @@ actor LiveLifeOSRepository: LifeOSRepository {
             let file = LifeVaultFile(id: UUID(), name: name, mimeType: mimeType, sizeBytes: data.count, folder: "", tags: [], summary: "", createdAt: timestamp, updatedAt: timestamp)
             mockSnapshot.files.insert(file, at: 0)
             return file
+        }
+    }
+
+    func downloadFile(id: UUID) async throws -> Data {
+        do { return try await client.downloadVaultFile(id: id) }
+        catch where usesMockFallback { return Data() }
+    }
+
+    func deleteFile(id: UUID) async throws {
+        do { try await client.deleteVaultFile(id: id) }
+        catch where usesMockFallback {
+            mockSnapshot.files.removeAll { $0.id == id }
         }
     }
 }

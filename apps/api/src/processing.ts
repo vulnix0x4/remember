@@ -1,4 +1,4 @@
-import { sourceTypeSchema, type ImprintAnalysis } from "@remember/domain";
+import { sourceTypeSchema, type ImprintAnalysis, type SourceType } from "@remember/domain";
 import { z } from "zod";
 import { publicProcessingError, safeErrorMessage } from "./http";
 import { analysisProvider } from "./providers";
@@ -18,6 +18,10 @@ function sourceFromRow(row: ItemRow) {
   };
 }
 
+export function sourceTypeForRow(row: ItemRow): SourceType {
+  return row.memory_kind === "thought" ? "note" : sourceTypeSchema.parse(row.source_type);
+}
+
 export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSourceText?: string): Promise<SourceMetadata> {
   let metadata: SourceMetadata;
   let metadataError: unknown;
@@ -28,13 +32,24 @@ export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSour
   } catch {
     persistedSourceText = undefined;
   }
-  const rawSourceText = suppliedSourceText?.trim() || persistedSourceText;
+  const rawSourceText = suppliedSourceText?.trim() || row.note_text?.trim() || persistedSourceText;
   const sourceText = rawSourceText && row.source_type === "youtube"
     ? normalizeYouTubeTranscript(rawSourceText)
     : rawSourceText;
   try {
-    metadata = await sourceAdapterFor(sourceTypeSchema.parse(row.source_type), String(env.ANALYSIS_PROVIDER) === "openrouter" && !sourceText).fetchMetadata(sourceFromRow(row));
-    if (sourceText) metadata = { ...metadata, transcript: sourceText, providerMetadata: { ...metadata.providerMetadata, transcriptSource: suppliedSourceText ? "client_caption_proxy" : "persisted", transcript: sourceText } };
+    if (row.memory_kind === "thought") {
+      metadata = {
+        title: row.title,
+        author: row.author ?? "You",
+        thumbnailUrl: null,
+        durationSeconds: null,
+        transcript: sourceText ?? row.note_text,
+        providerMetadata: { metadataSource: "personal_thought", contentSource: "personal_thought" },
+      };
+    } else {
+      metadata = await sourceAdapterFor(sourceTypeSchema.parse(row.source_type), String(env.ANALYSIS_PROVIDER) === "openrouter" && !sourceText).fetchMetadata(sourceFromRow(row));
+      if (sourceText) metadata = { ...metadata, transcript: sourceText, providerMetadata: { ...metadata.providerMetadata, transcriptSource: suppliedSourceText ? "client_caption_proxy" : "persisted", transcript: sourceText } };
+    }
   } catch (error) {
     metadataError = error;
     metadata = {
@@ -58,7 +73,7 @@ export async function fetchAndStoreMetadata(env: Env, row: ItemRow, suppliedSour
 export async function analyzeRow(env: Env, row: ItemRow, metadata: SourceMetadata): Promise<ImprintAnalysis> {
   return analysisProvider(env).analyze({
     canonicalUrl: row.canonical_url,
-    sourceType: sourceTypeSchema.parse(row.source_type),
+    sourceType: sourceTypeForRow(row),
     title: metadata.title ?? row.title,
     author: metadata.author ?? row.author,
     personalReaction: row.personal_reaction,
@@ -82,7 +97,7 @@ export async function indexAnalysis(env: Env, row: ItemRow, analysis: ImprintAna
         id: row.id,
         namespace: row.user_id,
         values: vector,
-        metadata: { userId: row.user_id, itemId: row.id, sourceType: row.source_type },
+        metadata: { userId: row.user_id, itemId: row.id, sourceType: sourceTypeForRow(row) },
       },
     ]);
     return true;

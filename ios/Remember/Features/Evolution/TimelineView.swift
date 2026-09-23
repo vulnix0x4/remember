@@ -6,30 +6,32 @@ struct TimelineView: View {
     var body: some View {
         if entries.isEmpty {
             ContentUnavailableView(
-                "No timeline yet",
+                "No history yet",
                 systemImage: "calendar",
-                description: Text("The timeline is built from the actual save dates and themes of analyzed sources.")
+                description: Text("History is built from dates and topics across your saves.")
             )
         } else {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+                Text("How your interests changed")
+                    .font(.title2)
+                    .bold()
                 ForEach(entries) { entry in
-                HStack(alignment: .top, spacing: RememberDesign.spacing) {
-                    VStack(spacing: 0) {
-                        Circle().fill(RememberDesign.accent).frame(width: 12, height: 12)
-                        Rectangle().fill(.tertiary).frame(width: 1).frame(minHeight: 88)
-                    }
-                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                        Text(monthLabel(entry.month)).font(.title2).bold()
-                        Text(entry.theme)
-                            .font(.subheadline)
+                    HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacing) {
+                        VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+                            Text(monthLabel(entry.month))
+                                .font(.headline)
+                            Text(entry.theme)
+                                .foregroundStyle(RememberDesign.secondaryText)
+                        }
+                        Spacer()
+                        Text("\(entry.count)")
+                            .font(.title2)
+                            .fontWeight(.semibold)
                             .foregroundStyle(RememberDesign.accent)
-                        Text("\(CountLabelFormatter.text(entry.count, singular: "analyzed source")) saved in this month")
-                            .font(.body)
-                            .foregroundStyle(RememberDesign.secondaryText)
+                            .accessibilityLabel(CountLabelFormatter.text(entry.count, singular: "save"))
                     }
-                    .padding(.bottom, RememberDesign.spacingLarge)
-                }
-                .accessibilityElement(children: .combine)
+                    .rememberSurface()
+                    .accessibilityElement(children: .combine)
                 }
             }
         }

@@ -50,6 +50,7 @@ Before any deployment:
 4. Set `LOGIN_EMAIL`, a salted `LOGIN_PASSWORD_HASH`, and a random `SESSION_SECRET` as production Worker secrets.
 5. Set `OPENROUTER_API_KEY` as a production Worker secret.
 6. Apply D1 migrations explicitly with `wrangler d1 migrations apply remember-db-production --remote --env production`.
-7. Verify the Ox Alpha model route, transcript-grounded JSON output, denied data collection, and schema validation before release. The current Ox endpoint accepts text but rejects native video URLs, structured-output routing, and Zero Data Retention. Remember therefore acquires public captions first, prompts Ox for JSON, and validates the result through the shared Zod contract.
+7. Copy `.env.deploy.example` to `.env.deploy` (git-ignored) and set `PRODUCTION_DOMAIN`. Deploy with `pnpm --filter @remember/api deploy:production`; it attaches that domain and sets `CORS_ORIGIN` and `OPENROUTER_SITE_URL` from it, so the real domain never lives in source. Build the web app first, because the Worker serves `../web/dist`.
+8. Verify the GLM 5.3 Flash model route, transcript-grounded JSON output, denied data collection, fallback routing, and schema validation before release. Remember acquires public captions first, prompts the configured model for JSON, and validates the result through the shared Zod contract.
 
-`OPENROUTER_API_KEY` is intentionally never stored in Wrangler variables. AI output is validated through the shared Zod contract, personal interpretations are marked as hypotheses, and Ask responses are synthesized exclusively from user-owned saved Imprints.
+`OPENROUTER_API_KEY` is intentionally never stored in Wrangler variables. AI output is validated through the shared Zod contract, personal interpretations are marked as hypotheses, and Ask responses are synthesized exclusively from the owner's saved items.

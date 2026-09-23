@@ -15,10 +15,20 @@ enum SharedCapture {
         defaults.set(values, forKey: pendingURLsKey)
     }
 
-    static func drain(defaults: UserDefaults? = UserDefaults(suiteName: appGroup)) -> [URL] {
+    static func pendingURLs(defaults: UserDefaults? = UserDefaults(suiteName: appGroup)) -> [URL] {
         guard let defaults else { return [] }
         let values = defaults.stringArray(forKey: pendingURLsKey) ?? []
-        defaults.removeObject(forKey: pendingURLsKey)
         return values.compactMap(URL.init(string:))
+    }
+
+    static func acknowledge(_ url: URL, defaults: UserDefaults? = UserDefaults(suiteName: appGroup)) {
+        guard let defaults else { return }
+        let values = defaults.stringArray(forKey: pendingURLsKey) ?? []
+        let remaining = values.filter { $0 != url.absoluteString }
+        if remaining.isEmpty {
+            defaults.removeObject(forKey: pendingURLsKey)
+        } else {
+            defaults.set(remaining, forKey: pendingURLsKey)
+        }
     }
 }

@@ -2,28 +2,29 @@ import SwiftUI
 
 struct ImprintCardMetadata: View {
     let imprint: Imprint
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacingSmall) {
-                sourceLabel
-                Spacer(minLength: RememberDesign.spacingSmall)
-                ProcessingBadge(state: imprint.state)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                sourceLabel
-                ProcessingBadge(state: imprint.state)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    sourceLabel
+                    ProcessingBadge(state: imprint.state)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacingSmall) {
+                    sourceLabel
+                    ProcessingBadge(state: imprint.state)
+                }
             }
         }
     }
 
     private var sourceLabel: some View {
-        Text(imprint.sourceLabel.uppercased())
+        Text(imprint.sourceLabel)
             .font(.caption)
-            .bold()
-            .tracking(0.8)
-            .foregroundStyle(RememberDesign.accent)
-            .fixedSize(horizontal: false, vertical: true)
+            .fontWeight(.semibold)
+            .foregroundStyle(RememberDesign.secondaryText)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
     }
 }

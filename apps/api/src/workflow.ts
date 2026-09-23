@@ -1,7 +1,7 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { analysisSchema, type ImprintAnalysis } from "@remember/domain";
 import { analysisProvider } from "./providers";
-import { fetchAndStoreMetadata, indexAnalysis } from "./processing";
+import { fetchAndStoreMetadata, indexAnalysis, sourceTypeForRow } from "./processing";
 import { Repository } from "./repository";
 import type { ItemRow, ProcessingInput, SourceMetadata } from "./types";
 import { publicProcessingError, safeErrorMessage } from "./http";
@@ -42,7 +42,7 @@ export class IngestionWorkflow extends WorkflowEntrypoint<Env, ProcessingInput> 
           const provider = analysisProvider(this.env);
           return provider.analyze({
             canonicalUrl: row.canonical_url,
-            sourceType: row.source_type === "youtube" ? "youtube" : "web",
+            sourceType: sourceTypeForRow(row),
             title: metadata.title ?? row.title,
             author: metadata.author ?? row.author,
             personalReaction: row.personal_reaction,

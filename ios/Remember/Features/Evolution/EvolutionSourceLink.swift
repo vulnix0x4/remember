@@ -10,6 +10,7 @@ struct EvolutionSourceLink: View {
                 Label(imprint.title, systemImage: "bookmark")
                     .lineLimit(2)
             }
+            .buttonStyle(.plain)
         } else {
             Label("Saved source", systemImage: "bookmark")
         }

@@ -4,7 +4,7 @@
 
 <h1 align="center">Remember</h1>
 
-<p align="center"><strong>Your private Personal Life OS: remember, decide, act, and reset.</strong></p>
+<p align="center"><strong>Save what matters. Find it when it matters.</strong></p>
 
 <p align="center">
   <a href="https://github.com/vulnix0x4/remember/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vulnix0x4/remember/actions/workflows/ci.yml/badge.svg"></a>
@@ -13,24 +13,23 @@
   <img alt="iOS 26+" src="https://img.shields.io/badge/iOS-26%2B-9fd0b2.svg">
 </p>
 
-Remember is a private, self-hostable Personal Life OS. It combines the knowledge that shapes you with goals, an adaptive task engine, calendar, files, health, and money in one calm command center. Save a source, choose a direction, do one concrete move, and keep the rest of life visible without handing it to an advertising platform.
+Remember is a private, self-hostable home for the links, plans, and personal information you want to keep close. Save a source, return to the ideas that mattered, plan what comes next, and keep the rest of life visible without handing it to an advertising platform.
 
-The product is dark-first, responsive, accessible, and available as a web app/PWA, Chromium extension, and native SwiftUI iPhone app with a Share Extension.
+The product follows the device appearance, is responsive and accessible, and is available as a web app/PWA, Chromium extension, and native SwiftUI iPhone app with a Share Extension.
 
 > There is no public hosted demo. Clone this repository to run your own archive.
 
-## Seven apps, one private system
+## Five places, one private system
 
-- **Today** is the command center: one active move, today’s commitments, goal direction, health, net worth, and private files.
-- **Remember** captures YouTube, TikTok, X, and web sources, produces validated analysis, answers with citations, and resurfaces patterns over time.
-- **Goals** turn observable outcomes into concrete next moves instead of disconnected wish lists.
-- **Tasks** use the RESET execution model: exactly one active move, a focus timer, automatic next-action selection, blocker-aware shrinking, and a daily Life Floor.
-- **Calendar** combines synced Apple events, manual events, and scheduled moves without turning every task into calendar clutter.
-- **Health** imports user-approved Apple Health measurements and also supports private manual logging.
-- **Money** keeps balances and transactions in a calm ledger ready for manual, CSV, or provider-backed sync.
-- **Files** stores private documents in R2 with user-owned metadata, search, download, and account-deletion cleanup.
+- **Today** brings back one saved idea that fits the current task, next event, goal, or recent question, explains why it matters now, and can carry one sourced action into Plan.
+- **Plan** brings Tasks, Calendar, and Goals together without crowding the main navigation.
+- **Library** stores YouTube, TikTok, X, and web saves, produces validated analysis, and shows source-backed patterns over time.
+- **Ask** answers from saved material and links every answer back to its sources.
+- **Life** keeps optional Health, Money, and Files tools in one quieter place.
 
-All modules share one authenticated, ownership-scoped data model, with a resilient device cache and an honest local-only fallback when no API is configured. Portable JSON and Markdown exports include both saved knowledge and Life OS data.
+All areas share one authenticated, ownership-scoped data model, with a resilient device cache and an honest local-only fallback when no API is configured. Portable JSON and Markdown exports include both saved knowledge and personal data.
+
+Today includes **Your next steps**: Jev through OpenRouter ranks tasks using your goals, preferences, saved thoughts, principles, and recent outcomes. Remember fits them around your calendar, starts confident next tasks, and recreates recurring chores after completion. The plan updates after changes and in the background. See [Jev setup and scope](docs/JEV.md).
 
 ## Repository
 
@@ -103,9 +102,11 @@ The extension requests access only to the configured API origin. Private access 
 
 ```sh
 pnpm --filter @remember/api exec wrangler d1 migrations apply remember-db-production --remote --env production
-pnpm --filter @remember/api exec wrangler deploy --dry-run --env production
-pnpm --filter @remember/api exec wrangler deploy --env production
+pnpm deploy:production:dry-run
+pnpm deploy:production
 ```
+
+The root deployment commands always create a fresh production web build before Wrangler packages the Worker, so ignored or stale `dist` files cannot be published accidentally.
 
 Production login uses a signed seven-day `HttpOnly`, `Secure`, `SameSite=Strict` session cookie. Every repository query enforces ownership, authenticated API responses are `private, no-store`, and the PWA never caches private API data.
 

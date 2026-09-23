@@ -1,16 +1,16 @@
 {
   "name": "Remember",
   "short_name": "Remember",
-  "description": "Your private Personal Life OS for knowledge, goals, tasks, calendar, health, money, and files.",
+  "description": "Save links, organize plans, and keep health, money, and files in one private space.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#090d0b",
-  "theme_color": "#090d0b",
+  "background_color": "#0c100e",
+  "theme_color": "#0c100e",
   "shortcuts": [
     { "name": "Today", "short_name": "Today", "url": "/#/home" },
-    { "name": "Next move", "short_name": "Tasks", "url": "/#/tasks" },
+    { "name": "Tasks", "short_name": "Tasks", "url": "/#/tasks" },
     { "name": "Calendar", "short_name": "Calendar", "url": "/#/calendar" },
-    { "name": "Remember", "short_name": "Memory", "url": "/#/library" }
+    { "name": "Saved items", "short_name": "Saved", "url": "/#/library" }
   ],
   "icons": [
     { "src": "/remember-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

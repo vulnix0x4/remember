@@ -1,20 +1,45 @@
 import Foundation
 
 enum AppConfiguration {
+    private static var initialRoute: String? {
+        ProcessInfo.processInfo.environment["REMEMBER_INITIAL_TAB"]?.lowercased()
+    }
+
     static var initialTab: AppTab {
-        switch ProcessInfo.processInfo.environment["REMEMBER_INITIAL_TAB"] {
-        case "tasks": .tasks
-        case "calendar": .calendar
-        case "health": .health
-        case "goals": .goals
-        case "money": .money
-        case "files": .files
-        case "library": .library
+        switch initialRoute {
+        case "tasks", "calendar", "goals", "plan": .plan
+        case "health", "money", "files", "life": .life
+        case "library", "evolution", "patterns": .library
         case "ask": .ask
-        case "evolution": .evolution
-        case "settings": .settings
         default: .home
         }
+    }
+
+    static var initialPlanSection: PlanSection {
+        switch initialRoute {
+        case "calendar": .calendar
+        case "goals": .goals
+        default: .tasks
+        }
+    }
+
+    static var initialLifeSection: LifeSection {
+        switch initialRoute {
+        case "money": .money
+        case "files": .files
+        default: .health
+        }
+    }
+
+    static var initialLibrarySection: LibrarySection {
+        switch initialRoute {
+        case "evolution", "patterns": .patterns
+        default: .saved
+        }
+    }
+
+    static var presentsSettingsOnLaunch: Bool {
+        initialRoute == "settings"
     }
 
     static var apiURL: URL {

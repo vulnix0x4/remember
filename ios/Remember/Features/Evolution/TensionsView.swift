@@ -7,30 +7,28 @@ struct TensionsView: View {
     var body: some View {
         if tensions.isEmpty {
             ContentUnavailableView(
-                "No possible tension yet",
+                "No useful contrasts yet",
                 systemImage: "arrow.left.arrow.right",
-                description: Text("Remember suggests a tension when two analyzed sources appear to pull in different directions. You decide whether the comparison is useful.")
+                description: Text("Contrasts appear when two saves approach the same idea differently.")
             )
         } else {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                SectionHeader(eyebrow: "Across two sources", title: "Tensions")
+            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+                Text("Different ways to see it")
+                    .font(.title2)
+                    .bold()
                 ForEach(tensions) { tension in
                     VStack(alignment: .leading, spacing: RememberDesign.spacing) {
                         Text(tension.explanation)
-                            .font(.title3)
-                        HStack {
+                            .font(.body)
+                            .fontWeight(.semibold)
+                        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                             EvolutionSourceLink(itemID: tension.fromItemId, imprints: imprints)
-                            Spacer()
-                            Image(systemName: "arrow.left.arrow.right")
-                                .foregroundStyle(RememberDesign.accent)
-                                .accessibilityHidden(true)
-                            Spacer()
                             EvolutionSourceLink(itemID: tension.toItemId, imprints: imprints)
                         }
                         .font(.subheadline)
                     }
-                    .padding(RememberDesign.spacing)
-                    .background(.background, in: .rect(cornerRadius: 14))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .rememberSurface()
                 }
             }
         }

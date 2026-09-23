@@ -15,6 +15,7 @@ struct AskFailureView: View {
                 .foregroundStyle(RememberDesign.secondaryText)
             Button("Try again", systemImage: "arrow.clockwise", action: retry)
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(RememberDesign.accentInk)
                 .controlSize(.large)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

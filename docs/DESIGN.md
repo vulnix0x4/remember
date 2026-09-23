@@ -1,56 +1,76 @@
 # Remember design direction
 
+## Product promise
+
+Remember is a quiet, private place to save what matters and find it when it becomes useful. It should feel immediately understandable, with one obvious action on each screen and no product jargon to learn.
+
+## Information architecture
+
+The iPhone app and website share five destinations:
+
+- **Today:** the current task, next calendar event, daily basics, one resurfaced save, and recent saves.
+- **Plan:** Tasks, Calendar, and Goals in one planning area.
+- **Library:** saved items and source-backed Patterns.
+- **Ask:** a focused conversation where answers link back to saved sources.
+- **Life:** Health, Money, and Files without dashboard clutter.
+
+Settings belongs behind the profile control. Save is always available as a global action. Secondary sections use local segmented navigation instead of adding more primary tabs.
+
 ## Visual thesis
 
-Remember should feel like a private, living operating system: mineral-black depth, soft off-white type, a restrained archival-jade signal, and enough space for either an idea or one next action to feel important. Dark is the default expression; light remains a fully tested user choice.
+Remember should feel like a calm, private companion: mineral black and warm off-white, a restrained jade accent for action and selection, semantic typography, and generous space. It follows the device appearance by default and supports both light and dark modes equally.
 
-The product is content-first. Chrome recedes, typography establishes hierarchy, and cards appear only when an Imprint itself is the interaction.
-
-## Product composition
-
-- **Today:** one active move and compact, honest state from calendar, goals, health, money, and files; the remembered source feed follows beneath it.
-- **Tasks:** one large active move, one first physical action, focus timing, blocker adaptation, a deliberate queue, and the daily Life Floor.
-- **Goals:** result-oriented direction with progress and a direct path to making the next move.
-- **Calendar:** a seven-day strip and one-day agenda combining events with scheduled moves.
-- **Health:** movement and recovery context, manual logging, and clear Apple Health permission state without moralized scores.
-- **Money:** net worth, monthly flow, accounts, and transactions in a calm ledger rather than a trading dashboard.
-- **Files:** a searchable private vault for the documents that belong beside decisions and plans.
-- **Home memory feed:** one resurfaced memory, then the newest Imprints and a quiet signal of recent themes.
-- **Library:** fast search and scan with progressive disclosure for analysis status and source metadata.
-- **Imprint:** source context first, then essence, key moments, ideas, personal hypotheses, and connected material.
-- **Ask:** a focused conversation surface where every conclusion returns to a source or timestamp.
-- **Evolution:** themes, candidate principles, tensions, timeline, and an optional map arranged as interpretations rather than analytics widgets.
-- **Capture:** immediate success with optional reflection after the item is already safe.
+Content leads. Source artwork is used when it adds meaning; decoration never competes with it. Cards group real objects, not arbitrary sections. Lightning bolts, sparkles, fake analytics, ornamental arcs, all-caps labels, and generic AI imagery do not belong in the product.
 
 ## Interaction thesis
 
-1. Capture acknowledges immediately, then changes from saved to processing without blocking dismissal.
-2. Imprints expand and route with a shared spatial transition so the source feels continuous between library and detail.
-3. Evolution uses restrained reveals to clarify relationships and time, while reduced-motion mode makes every transition immediate.
-4. A blocker is treated as information about the action, never as a failure by the user; the interface immediately changes the move.
-5. Health and Calendar permission prompts follow an explicit Sync action and explain what will happen before the system prompt.
+1. Each screen has one clear primary action and familiar native or web controls.
+2. Saving acknowledges success immediately while analysis continues in the background.
+3. Forms keep the user's input when a request fails and explain how to recover.
+4. Empty, loading, offline, partial, denied, and error states are honest and useful.
+5. Secondary detail appears progressively, without hiding common actions behind a More destination.
+6. Motion explains continuity and feedback, stays brief, and respects reduced-motion preferences.
+
+## Control hierarchy
+
+Remember uses direct manipulation before disclosure. A user should see the available choices whenever the set is small enough to understand at a glance.
+
+- Two to five choices use a visible segmented control or labeled choice buttons. They never use a dropdown.
+- Six to twelve short choices use a wrapping choice grid or a horizontally scrollable chip row when scanning is faster than searching.
+- Long lists such as currencies use a searchable sheet with a checkmark on the current value, keyboard and VoiceOver support, and one-tap selection.
+- Related records such as finance accounts appear as readable rows with their useful context, not as opaque identifiers in a menu.
+- Dates and times use the platform date controls. Quantities use a number field or stepper appropriate to the range.
+- Common actions are visible buttons or row actions. Ellipsis and More menus are reserved for genuinely rare secondary actions, never core navigation or form completion.
+- Selection state is communicated with a checkmark, shape, and text treatment in addition to color. Every choice target is at least 44 points tall on iPhone and 44 CSS pixels on touch web layouts.
+
+## Surface principles
+
+- **Today:** concise orientation, not a dashboard of every metric.
+- **Tasks:** a persistent focus timer, clear pause and resume, a small queue, and straightforward daily basics.
+- **Calendar:** a compact date selector and a readable agenda with honest permission states.
+- **Goals:** outcomes, progress, and an explicit path to create a related task.
+- **Library:** fast search, simple filters, recognizable source art, and quiet processing states.
+- **Saved item:** source context first, then key ideas, moments, takeaways, relevance, and related saves when available.
+- **Patterns:** topics, takeaways, contrasts, and history presented as source-backed observations rather than certainty.
+- **Ask:** short prompts, readable answers, and citations that reopen the supporting save or timestamp.
+- **Health:** useful movement and recovery context without moralized scores or invented zero values.
+- **Money:** currency-correct accounts and activity without fake totals across unlike currencies.
+- **Files:** upload, search, download, export, and delete controls that work on both platforms.
+- **Settings:** appearance, privacy, permissions, portable export, version, and sign-out in familiar groups.
 
 ## System
 
-- One jade accent for action, connection, and positive state.
-- Cool neutral surfaces in both light and dark appearances.
-- Self-hosted Manrope provides precise interface text on web. Newsreader is reserved for memory, reflection, and page-level editorial hierarchy; native iOS keeps semantic San Francisco styles.
-- Controls use compact radii; Imprints use a single larger radius; tags are not used as decoration.
-- Borders separate dense information. Shadows are reserved for overlays and selected depth.
-- Icons come from Phosphor on web and SF Symbols on iOS.
-- Motion communicates save feedback, route continuity, processing, relationship changes, and the slow return of an Imprint only.
-
-## Original brand asset
-
-The shared raster mark was generated specifically for Remember and then adapted into PWA, browser-extension, iOS, and Share Extension sizes. Source: `assets/brand/remember-icon.png`.
-
-Generation prompt: “A refined abstract app icon for a personal memory product: an imprint made from a subtle ripple and folded thread, off-black and mineral white with a restrained deep-jade accent, tactile depth, editorial calm, centered composition, no text, no brain symbol, no bookmark symbol.”
+- One jade accent for action and selection; status uses semantic colors and plain language.
+- Semantic system colors and type on iOS; equivalent accessible tokens on the web.
+- Self-hosted Manrope for web interface text and Newsreader only for restrained editorial moments; native iOS uses San Francisco through semantic text styles.
+- Compact corner radii and borders for structure; shadows only for overlays or meaningful elevation.
+- Phosphor icons on web and SF Symbols on iOS, each paired with an accessible name.
+- Source media is preferred to generated decoration. The existing Remember mark remains the shared app and browser identity.
 
 ## Accessibility contract
 
-- WCAG AA contrast at minimum.
-- Keyboard access and visible focus across every web flow.
-- At least 44 by 44 point touch targets on iOS and comparable web hit areas.
-- Dynamic Type, VoiceOver labels, safe areas, Reduce Motion, and semantic system colors on iOS.
-- No meaning communicated only through color.
-- Loading, empty, partial, offline, denied, and error states are first-class designs.
+- WCAG AA contrast at minimum and no meaning communicated only through color.
+- Keyboard access, visible focus, predictable Back behavior, and focus-managed dialogs on web.
+- At least 44 by 44 point touch targets, Dynamic Type, VoiceOver labels, safe areas, Reduce Motion, and semantic system colors on iOS.
+- Layouts remain usable at narrow phone widths, large browser zoom, and XXXL Dynamic Type.
+- Every actionable icon has a clear label; every error is announced and leaves a recovery path.

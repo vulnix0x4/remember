@@ -2,54 +2,67 @@ import SwiftUI
 
 struct EvolutionView: View {
     @Environment(AppStore.self) private var store
-    @State private var section: EvolutionSection = .themes
+    @Binding private var librarySection: LibrarySection
+    @State private var section: EvolutionSection = .compass
+
+    init(librarySection: Binding<LibrarySection> = .constant(.patterns)) {
+        _librarySection = librarySection
+    }
 
     private var analyzedSourceCount: Int {
         store.imprints.count(where: { $0.state == .ready })
     }
 
+    private var livingThreads: [LivingThread] {
+        LivingThreadBuilder.build(from: store.imprints, reflections: store.evolutionOverview.reflections)
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                WarmBackground()
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                            Text("ONLY WHAT YOUR SOURCES SUPPORT")
-                                .font(.subheadline)
-                                .bold()
-                                .foregroundStyle(RememberDesign.accent)
-                            Text("Patterns in what you’ve saved")
-                                .font(.largeTitle)
-                                .bold()
-                            Text("\(CountLabelFormatter.text(analyzedSourceCount, singular: "analyzed source")). Counts describe your current library, not a psychological profile or a trend.")
-                                .foregroundStyle(RememberDesign.secondaryText)
-                        }
+            VStack(spacing: 0) {
+                AdaptiveSectionControl(
+                    selection: $librarySection,
+                    choices: LibrarySection.allCases,
+                    accessibilityIdentifier: "remember.section.library",
+                    title: { $0.rawValue }
+                )
+                ZStack {
+                    WarmBackground()
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: RememberDesign.spacing) {
                         if store.isLoadingEvolution {
-                            ProgressView("Reading your analyzed sources…")
+                            ProgressView("Checking your saves…")
                                 .frame(maxWidth: .infinity, minHeight: 240)
                         } else if store.evolutionLoadFailed {
                             ContentUnavailableView {
                                 Label("Patterns unavailable", systemImage: "wifi.exclamationmark")
                             } description: {
-                                Text("Your library is still safe. Remember couldn’t load its evidence-backed overview just now.")
+                                Text("Your saves are safe. Remember couldn’t load their shared patterns just now.")
                             } actions: {
                                 Button("Try again", systemImage: "arrow.clockwise", action: reload)
                             }
-                        } else if analyzedSourceCount == 0 || store.evolutionOverview.isEmpty {
+                        } else if analyzedSourceCount == 0 || (store.evolutionOverview.isEmpty && livingThreads.isEmpty) {
                             ContentUnavailableView(
-                                "Not enough evidence yet",
-                                systemImage: "chart.dots.scatter",
-                                description: Text("Evolution appears only when analyzed sources provide themes, principles, tensions, or history. Nothing is filled in with demo data.")
+                                analyzedSourceCount == 0 ? "Patterns will appear here" : "No recurring patterns yet",
+                                systemImage: "square.stack.3d.up",
+                                description: Text(analyzedSourceCount == 0
+                                    ? "Save a few links and recurring topics and useful connections will appear here."
+                                    : "There is not enough overlap between your saves to show a useful pattern yet.")
                             )
                         } else {
-                            Picker("Evolution view", selection: $section) {
-                                ForEach(EvolutionSection.allCases) { Text($0.rawValue).tag($0) }
-                            }
-                            .pickerStyle(.segmented)
+                            PatternSectionControl(selection: $section)
+
                             Group {
                                 switch section {
-                                case .themes: ThemesView(themes: store.evolutionOverview.themes)
+                                case .compass:
+                                    PersonalCompassView(
+                                        compass: PersonalCompassBuilder.build(
+                                            overview: store.evolutionOverview,
+                                            life: store.lifeSnapshot,
+                                            imprints: store.imprints
+                                        )
+                                    )
+                                case .themes: LivingThreadsView(imprints: store.imprints, reflections: store.evolutionOverview.reflections)
                                 case .principles: PrinciplesView(principles: store.evolutionOverview.principles, imprints: store.imprints)
                                 case .tensions: TensionsView(tensions: store.evolutionOverview.tensions, imprints: store.imprints)
                                 case .timeline: TimelineView(entries: store.evolutionOverview.timeline)
@@ -57,13 +70,17 @@ struct EvolutionView: View {
                             }
                         }
                     }
-                    .padding(RememberDesign.spacing)
-                    .padding(.bottom, 96)
+                        .padding(RememberDesign.spacing)
+                        .padding(.bottom, RememberDesign.spacingXLarge)
+                    }
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Patterns")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: LivingThread.self) { LivingThreadDetailView(thread: $0) }
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
             .refreshable { await store.loadDerivedData() }
+            .rememberPrimaryActions()
         }
     }
 

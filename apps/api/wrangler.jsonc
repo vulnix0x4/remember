@@ -11,7 +11,7 @@
     "DEFAULT_USER_ID": "00000000-0000-4000-8000-000000000001",
     "ANALYSIS_PROVIDER": "mock",
     "PROCESSING_MODE": "workflow",
-    "OPENROUTER_MODEL": "stealth/ox-alpha",
+    "OPENROUTER_MODEL": "z-ai/glm-5.3-flash",
     "OPENROUTER_SITE_URL": "http://localhost:5173",
     "ACCESS_TEAM_DOMAIN": "https://local.cloudflareaccess.com",
     "ACCESS_AUD": "local-development",
@@ -49,7 +49,7 @@
     }
   ],
   "triggers": {
-    "crons": ["0 15 * * *"]
+    "crons": ["0 15 * * *", "*/15 * * * *"]
   },
   "observability": {
     "enabled": true,
@@ -61,9 +61,8 @@
       "name": "remember-api-production",
       "workers_dev": false,
       "preview_urls": false,
-      "routes": [
-        { "pattern": "remember.example.com", "custom_domain": true }
-      ],
+      // The real domain is private: `pnpm deploy:production` attaches it and overrides the two URL vars
+      // below from the git-ignored apps/api/.env.deploy (see .env.deploy.example).
       "assets": {
         "directory": "../web/dist",
         "not_found_handling": "single-page-application",
@@ -76,7 +75,7 @@
         "DEFAULT_USER_ID": "00000000-0000-4000-8000-000000000001",
         "ANALYSIS_PROVIDER": "openrouter",
         "PROCESSING_MODE": "workflow",
-        "OPENROUTER_MODEL": "stealth/ox-alpha",
+        "OPENROUTER_MODEL": "z-ai/glm-5.3-flash",
         "OPENROUTER_SITE_URL": "https://remember.example.com",
         "ACCESS_TEAM_DOMAIN": "https://local.cloudflareaccess.com",
         "ACCESS_AUD": "password-auth-not-used",
@@ -89,7 +88,7 @@
         {
           "binding": "DB",
           "database_name": "remember-db-production",
-          "database_id": "00000000-0000-0000-0000-000000000002",
+          "database_id": "3895e49d-0da1-498e-a74e-32c7660fbbea",
           "migrations_dir": "migrations"
         }
       ],

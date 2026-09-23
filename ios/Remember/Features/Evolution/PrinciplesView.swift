@@ -7,22 +7,23 @@ struct PrinciplesView: View {
     var body: some View {
         if principles.isEmpty {
             ContentUnavailableView(
-                "No principles yet",
-                systemImage: "compass.drawing",
-                description: Text("Candidate principles appear only when an analyzed source explicitly supports one.")
+                "No takeaways yet",
+                systemImage: "quote.bubble",
+                description: Text("Useful takeaways appear when a save clearly supports one.")
             )
         } else {
             VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                Text("Ideas from your sources")
+                Text("Takeaways worth revisiting")
                     .font(.title2)
                     .bold()
-                Text("Each candidate below comes from one analyzed source. It is not presented as a repeated belief unless multiple sources support it.")
+                Text("Each takeaway comes directly from a saved source.")
                     .font(.subheadline)
                     .foregroundStyle(RememberDesign.secondaryText)
                 ForEach(principles) { principle in
                     VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                        Label(principle.text, systemImage: "compass.drawing")
-                            .font(.headline)
+                        Text(principle.text)
+                            .font(.body)
+                            .fontWeight(.semibold)
                         if let rationale = principle.rationale, !rationale.isEmpty {
                             Text(rationale)
                                 .font(.subheadline)
@@ -33,11 +34,11 @@ struct PrinciplesView: View {
                                 Label(imprint.title, systemImage: "bookmark")
                                     .font(.footnote)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(RememberDesign.spacing)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.background, in: .rect(cornerRadius: 14))
+                    .rememberSurface()
                 }
             }
         }

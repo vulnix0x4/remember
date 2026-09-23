@@ -20,6 +20,25 @@ enum LifeArea: String, Codable, CaseIterable, Hashable, Sendable {
 enum LifeTaskStatus: String, Codable, Hashable, Sendable { case inbox, queued, active, waiting, done, removed }
 enum LifeTaskPriority: String, Codable, CaseIterable, Hashable, Sendable { case low, normal, high, must }
 enum LifeTaskEnergy: String, Codable, CaseIterable, Hashable, Sendable { case low, medium, high, any }
+enum PracticeOutcome: String, Codable, CaseIterable, Hashable, Sendable {
+    case helped, mixed, notForMe = "not_for_me"
+
+    var label: String {
+        switch self {
+        case .helped: "It helped"
+        case .mixed: "Somewhat"
+        case .notForMe: "Not for me"
+        }
+    }
+
+    var meaning: String {
+        switch self {
+        case .helped: "I want to carry this forward"
+        case .mixed: "Part of it worked"
+        case .notForMe: "Trying it helped me let it go"
+        }
+    }
+}
 enum LifeBlockerReason: String, Codable, CaseIterable, Hashable, Sendable {
     case big, unclear, time, place, irrelevant, different
     var label: String {
@@ -62,9 +81,15 @@ struct LifeTask: Codable, Identifiable, Hashable, Sendable {
     var scheduledStart: Date?
     var scheduledEnd: Date?
     var source: String
+    var sourceItemId: UUID? = nil
+    var practiceOutcome: PracticeOutcome? = nil
+    var practiceReflection: String? = nil
+    var reflectedAt: Date? = nil
     var completedAt: Date?
     var createdAt: Date
     var updatedAt: Date
+    var repeatEveryDays: Int? = nil
+    var notBefore: Date? = nil
 }
 
 struct LifeBlockerEvent: Codable, Identifiable, Hashable, Sendable {
@@ -185,6 +210,13 @@ struct CreateLifeTaskRequest: Encodable, Sendable {
     let durationMinutes: Int
     let goalId: UUID?
     let source: String
+    let sourceItemId: UUID?
+    var repeatEveryDays: Int? = nil
+}
+
+struct PracticeResult: Codable, Hashable, Sendable {
+    let outcome: PracticeOutcome
+    let reflection: String
 }
 
 struct CreateLifeGoalRequest: Encodable, Sendable {

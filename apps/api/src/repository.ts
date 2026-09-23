@@ -33,6 +33,11 @@ function parseAnalysis(value: string | null): ImprintAnalysis | null {
   return parsed.success ? parsed.data : null;
 }
 
+function thoughtTitle(value: string): string {
+  const firstLine = value.split(/\n+/).map((line) => line.trim()).find(Boolean) ?? "A thought worth remembering";
+  return firstLine.length > 96 ? `${firstLine.slice(0, 93).trimEnd()}…` : firstLine;
+}
+
 interface ItemCursor {
   savedAt: string;
   id: string | null;
@@ -80,8 +85,11 @@ export function publicItem(row: ItemRow) {
     try { return new URL(row.canonical_url).hostname.replace(/^www\./, ""); }
     catch { return ""; }
   })();
+  const isThought = row.memory_kind === "thought";
   const analysisScope = row.status === "pending" || row.status === "processing"
     ? "pending"
+    : isThought
+      ? "thought"
     : row.source_type === "youtube"
       ? "transcript"
       : host === "tiktok.com" || host.endsWith(".tiktok.com") || contentSource === "tiktok_public_caption"
@@ -91,7 +99,7 @@ export function publicItem(row: ItemRow) {
           : "article";
   return {
     id: row.id,
-    sourceType: sourceTypeSchema.parse(row.source_type),
+    sourceType: isThought ? "note" : sourceTypeSchema.parse(row.source_type),
     originalUrl: row.original_url,
     canonicalUrl: row.canonical_url,
     externalId: row.external_id,
@@ -102,6 +110,9 @@ export function publicItem(row: ItemRow) {
     status: itemStatusSchema.parse(row.status),
     savedAt: row.saved_at,
     personalReaction: row.personal_reaction,
+    noteText: isThought ? row.note_text : null,
+    returnCue: row.return_cue,
+    returnAt: row.return_at ? new Date(row.return_at).toISOString() : null,
     capturedTimestampSeconds: row.captured_timestamp_seconds,
     processingError: row.processing_error,
     analysisScope,
@@ -121,8 +132,11 @@ export class Repository {
     personalReaction: string | null,
     savedAt: string,
     idempotencyKey: string | null,
+    returnCue: "stuck" | "focus" | "decision" | "date" | null = null,
+    returnAt: string | null = null,
   ): Promise<{ row: ItemRow; created: boolean }> {
-    const requestHash = await sha256(JSON.stringify({ url: source.canonicalUrl, personalReaction }));
+    const requestHash = await sha256(JSON.stringify({ url: source.canonicalUrl, personalReaction, returnCue, returnAt }));
+    returnAt = returnAt ? new Date(returnAt).toISOString() : null;
     if (idempotencyKey) {
       const prior = await this.db
         .prepare(
@@ -161,9 +175,9 @@ export class Repository {
         .prepare(
           `INSERT INTO items (
              id, user_id, source_id, original_url, canonical_url, status, personal_reaction,
-             captured_timestamp_seconds, saved_at, created_at, updated_at
+             captured_timestamp_seconds, saved_at, return_cue, return_at, created_at, updated_at
            )
-           SELECT ?1, ?2, id, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?8
+           SELECT ?1, ?2, id, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?10
            FROM sources WHERE canonical_url = ?4`,
         )
         .bind(
@@ -174,6 +188,8 @@ export class Repository {
           personalReaction,
           source.timestampSeconds,
           savedAt,
+          returnCue,
+          returnAt,
           now,
         ),
       this.db
@@ -206,6 +222,91 @@ export class Repository {
     return { row: await this.requireItem(userId, itemId), created: true };
   }
 
+  async captureThought(
+    userId: string,
+    thought: string,
+    savedAt: string,
+    idempotencyKey: string | null,
+    returnCue: "stuck" | "focus" | "decision" | "date" | null = null,
+    returnAt: string | null = null,
+  ): Promise<{ row: ItemRow; created: boolean }> {
+    const normalizedThought = thought.trim();
+    const requestHash = await sha256(JSON.stringify({ thought: normalizedThought, returnCue, returnAt }));
+    returnAt = returnAt ? new Date(returnAt).toISOString() : null;
+    if (idempotencyKey) {
+      const prior = await this.db
+        .prepare(
+          `SELECT k.request_hash, ${ITEM_SELECT.replace(/^\s*SELECT\s+/i, "")}
+           JOIN idempotency_keys k ON k.item_id = i.id
+           WHERE k.user_id = ?1 AND k.key = ?2`,
+        )
+        .bind(userId, idempotencyKey)
+        .first<ItemRow & { request_hash: string }>();
+      if (prior) {
+        if (prior.request_hash !== requestHash) {
+          throw new ApiError(409, "idempotency_conflict", "This idempotency key was already used for another request.");
+        }
+        return { row: prior, created: false };
+      }
+    }
+
+    const itemId = crypto.randomUUID();
+    const sourceId = crypto.randomUUID();
+    const canonicalUrl = `remember://thought/${itemId}`;
+    const now = nowIso();
+    const metadata = JSON.stringify({ contentSource: "personal_thought", transcript: normalizedThought });
+    const statements = [
+      this.db
+        .prepare(
+          `INSERT INTO sources (
+             id, type, canonical_url, title, author, metadata_json, created_at, updated_at
+           ) VALUES (?1, 'web', ?2, ?3, 'You', ?4, ?5, ?5)`,
+        )
+        .bind(sourceId, canonicalUrl, thoughtTitle(normalizedThought), metadata, now),
+      this.db
+        .prepare(
+          `INSERT INTO items (
+             id, user_id, source_id, original_url, canonical_url, status, personal_reaction,
+             captured_timestamp_seconds, saved_at, return_cue, return_at, memory_kind, note_text,
+             created_at, updated_at
+           ) VALUES (?1, ?2, ?3, ?4, ?4, 'pending', NULL, NULL, ?5, ?6, ?7, 'thought', ?8, ?9, ?9)`,
+        )
+        .bind(itemId, userId, sourceId, canonicalUrl, savedAt, returnCue, returnAt, normalizedThought, now),
+      this.db
+        .prepare(
+          `INSERT INTO ingestion_jobs (item_id, status, created_at, updated_at)
+           VALUES (?1, 'pending', ?2, ?2)`,
+        )
+        .bind(itemId, now),
+    ];
+    if (idempotencyKey) {
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO idempotency_keys (user_id, key, request_hash, item_id, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)`,
+          )
+          .bind(userId, idempotencyKey, requestHash, itemId, now),
+      );
+    }
+    await this.db.batch(statements);
+    return { row: await this.requireItem(userId, itemId), created: true };
+  }
+
+  async updateReturnCue(
+    userId: string,
+    itemId: string,
+    returnCue: "stuck" | "focus" | "decision" | "date" | null,
+    returnAt: string | null,
+  ): Promise<ItemRow> {
+    await this.requireItem(userId, itemId);
+    await this.db
+      .prepare("UPDATE items SET return_cue = ?3, return_at = ?4, updated_at = ?5 WHERE user_id = ?1 AND id = ?2")
+      .bind(userId, itemId, returnCue, returnAt ? new Date(returnAt).toISOString() : null, nowIso())
+      .run();
+    return this.requireItem(userId, itemId);
+  }
+
   async recordWorkflow(itemId: string, instanceId: string): Promise<void> {
     await this.db
       .prepare("UPDATE ingestion_jobs SET workflow_instance_id = ?2, updated_at = ?3 WHERE item_id = ?1")
@@ -216,7 +317,7 @@ export class Repository {
   async queueRetry(userId: string, itemId: string): Promise<ItemRow> {
     const item = await this.requireItem(userId, itemId);
     if (item.status !== "failed" && item.status !== "partial") {
-      throw new ApiError(409, "retry_not_allowed", "Only failed or partial Imprints can be retried.");
+      throw new ApiError(409, "retry_not_allowed", "Only saves with missing details can be tried again.");
     }
     const now = nowIso();
     await this.db.batch([
@@ -261,7 +362,7 @@ export class Repository {
       .prepare(`${ITEM_SELECT} WHERE i.user_id = ?1 AND i.id = ?2`)
       .bind(userId, itemId)
       .first<ItemRow>();
-    if (!row) throw new ApiError(404, "item_not_found", "Imprint not found.");
+    if (!row) throw new ApiError(404, "item_not_found", "Saved item not found.");
     return row;
   }
 
@@ -448,7 +549,7 @@ export class Repository {
             row,
             candidate.id,
             "same_theme",
-            `Both Imprints return to ${shared.slice(0, 3).join(", ")}.`,
+            `Both saved items return to ${shared.slice(0, 3).join(", ")}.`,
             Math.min(0.95, 0.55 + shared.length * 0.1),
           ),
         );
@@ -468,8 +569,8 @@ export class Repository {
               confidence,
               explanation:
                 type === "supports"
-                  ? "These Imprints make closely aligned claims."
-                  : "These Imprints make similar claims with opposing polarity; review the sources to resolve the tension.",
+                  ? "These saved items make closely aligned claims."
+                  : "These saved items make similar claims in different directions; review the sources to compare them.",
             };
           }
         }
@@ -552,7 +653,7 @@ export class Repository {
   ): Promise<void> {
     connectionTypeSchema.parse(type);
     await Promise.all([this.requireItem(userId, fromItemId), this.requireItem(userId, toItemId)]);
-    if (fromItemId === toItemId) throw new ApiError(422, "self_connection", "An Imprint cannot connect to itself.");
+    if (fromItemId === toItemId) throw new ApiError(422, "self_connection", "A saved item cannot connect to itself.");
     await this.db
       .prepare(
         `INSERT INTO connections (id, user_id, from_item_id, to_item_id, type, explanation, confidence, provenance, created_at)

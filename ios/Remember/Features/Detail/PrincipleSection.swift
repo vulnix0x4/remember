@@ -10,18 +10,13 @@ struct PrincipleSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "Optional", title: "Carry something forward")
+            SectionHeader(eyebrow: "", title: "Takeaway")
             if let principle = imprint.candidatePrinciples.first {
                 Label(principle, systemImage: "compass.drawing")
                     .font(.headline)
             }
-            if let experiment = imprint.experiments.first {
-                Text(experiment)
-                    .font(.body)
-                    .foregroundStyle(RememberDesign.secondaryText)
-            }
             if imprint.principleID != nil {
-                Button(isKept ? "Kept in your active principles" : "Keep this principle", systemImage: isKept ? "checkmark" : "arrow.forward") {
+                Button(isKept ? "Remove takeaway" : "Keep takeaway", systemImage: isKept ? "minus" : "plus") {
                     update()
                 }
                 .buttonStyle(.bordered)
@@ -35,7 +30,7 @@ struct PrincipleSection: View {
             }
         }
         .padding(RememberDesign.spacing)
-        .background(RememberDesign.accent.opacity(0.1), in: .rect(cornerRadius: RememberDesign.cornerRadius))
+        .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
     }
 
     private func update() {
@@ -46,7 +41,7 @@ struct PrincipleSection: View {
             do {
                 try await store.setPrincipleStatus(for: imprint, status: isKept ? "candidate" : "active")
             } catch {
-                updateError = "This principle could not be updated."
+                updateError = "This takeaway could not be updated. Try again."
             }
             isUpdating = false
         }

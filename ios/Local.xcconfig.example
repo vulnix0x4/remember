@@ -2,3 +2,9 @@
 REMEMBER_BUNDLE_ID = com.example.remember
 REMEMBER_APP_GROUP = group.com.example.remember.shared
 REMEMBER_DEVELOPMENT_TEAM = YOUR_TEAM_ID
+REMEMBER_API_URL = https:/$()/remember.example.com
+
+// Optional when Xcode cannot manage profiles automatically.
+// REMEMBER_APP_CODE_SIGN_STYLE = Manual
+// REMEMBER_APP_PROFILE_SPECIFIER = Remember Development
+// REMEMBER_SHARE_CODE_SIGN_STYLE = Automatic

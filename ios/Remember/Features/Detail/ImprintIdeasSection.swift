@@ -5,7 +5,7 @@ struct ImprintIdeasSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "Distilled", title: "Ideas worth keeping")
+            SectionHeader(eyebrow: "", title: "Key ideas")
             ForEach(ideas, id: \.self) { idea in
                 Label {
                     Text(idea).font(.body)

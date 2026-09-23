@@ -6,15 +6,15 @@ struct PersonalMeaningSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "Interpretation", title: "Why this may have mattered")
+            SectionHeader(eyebrow: "", title: "Possible relevance")
             ForEach(hypotheses, id: \.self) { possibility in
                 Text(possibility).font(.body)
             }
-            Label("These are possibilities, not facts about you.", systemImage: "info.circle")
+            Label("A possibility, not a fact about you.", systemImage: "info.circle")
                 .font(.footnote)
                 .foregroundStyle(RememberDesign.secondaryText)
             ForEach(uncertainties, id: \.self) { uncertainty in
-                DisclosureGroup("What Remember is uncertain about") {
+                DisclosureGroup("What is uncertain") {
                     Text(uncertainty).font(.subheadline).foregroundStyle(RememberDesign.secondaryText)
                 }
             }

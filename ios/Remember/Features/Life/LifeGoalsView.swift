@@ -2,90 +2,94 @@ import SwiftUI
 
 struct LifeGoalsView: View {
     @Environment(AppStore.self) private var store
+    @Binding private var planSection: PlanSection
     @State private var addIsPresented = false
+    @State private var taskGoal: LifeGoal?
 
-    private var goals: [LifeGoal] { store.lifeSnapshot.goals.filter { $0.status != "archived" } }
+    init(planSection: Binding<PlanSection> = .constant(.goals)) {
+        _planSection = planSection
+    }
+
+    private var goals: [LifeGoal] {
+        store.lifeSnapshot.goals.filter { $0.status != "archived" }
+    }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                WarmBackground()
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                        HStack(alignment: .bottom) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("DIRECTION").font(.caption2.bold()).foregroundStyle(RememberDesign.accent)
-                                Text("Goals with a job to do.").font(.largeTitle.bold())
-                                Text("Goals create a path. Tasks create evidence.").font(.subheadline).foregroundStyle(RememberDesign.secondaryText)
-                            }
-                            Spacer()
-                            Button("Add", systemImage: "plus") { addIsPresented = true }
-                                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
-                                .tint(RememberDesign.accent).foregroundStyle(RememberDesign.accentInk)
+            VStack(spacing: 0) {
+                AdaptiveSectionControl(
+                    selection: $planSection,
+                    choices: PlanSection.allCases,
+                    accessibilityIdentifier: "remember.section.plan",
+                    title: { $0.rawValue }
+                )
+                Group {
+                    if goals.isEmpty {
+                        ContentUnavailableView {
+                            Label("No goals yet", systemImage: "scope")
+                        } description: {
+                            Text("Choose one result you want to move toward.")
                         }
-                        if goals.isEmpty {
-                            ContentUnavailableView("Choose one direction", systemImage: "scope", description: Text("A useful goal describes an observable result."))
-                                .frame(maxWidth: .infinity, minHeight: 320)
-                                .background(RememberDesign.surface, in: RoundedRectangle(cornerRadius: RememberDesign.cornerRadius))
-                        } else {
-                            ForEach(goals) { goal in
-                                VStack(alignment: .leading, spacing: 18) {
-                                    Label(goal.area.label.uppercased(), systemImage: goal.area.symbol)
-                                        .font(.caption2.bold()).foregroundStyle(RememberDesign.accent)
-                                    Text(goal.title).font(.title.bold())
-                                    if !goal.why.isEmpty { Text(goal.why).font(.subheadline).foregroundStyle(RememberDesign.secondaryText) }
-                                    ProgressView(value: Double(goal.progress), total: 100).tint(RememberDesign.accent)
-                                    HStack {
-                                        Text("\(goal.progress)% complete").font(.caption).foregroundStyle(RememberDesign.secondaryText)
-                                        Spacer()
-                                        Button("Create next move", systemImage: "plus") {
-                                            Task {
-                                                await store.createLifeTask(title: "Move \(goal.title) forward", firstStep: "Choose the smallest visible action that produces evidence today.", area: goal.area, duration: 15, goalId: goal.id, source: "goal")
-                                                store.selectedTab = .tasks
-                                            }
-                                        }
-                                        .font(.caption.bold())
-                                    }
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: RememberDesign.spacing) {
+                                ForEach(goals) { goal in
+                                    goalCard(goal)
                                 }
-                                .padding(22)
-                                .background(RememberDesign.surface, in: RoundedRectangle(cornerRadius: RememberDesign.cornerRadius))
                             }
+                            .padding(RememberDesign.spacing)
+                            .padding(.bottom, RememberDesign.spacingXLarge)
                         }
+                        .refreshable { await store.loadLife() }
                     }
-                    .padding(RememberDesign.spacing)
-                    .padding(.bottom, 96)
                 }
-                .refreshable { await store.loadLife() }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Goals")
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                QuickAddBar(title: "Add a goal", systemImage: "plus") {
+                    addIsPresented = true
+                }
+            }
             .sheet(isPresented: $addIsPresented) { GoalComposerView() }
+            .sheet(item: $taskGoal) { goal in
+                LifeTaskComposerView(goal: goal)
+            }
+            .rememberPrimaryActions()
         }
     }
-}
 
-private struct GoalComposerView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(AppStore.self) private var store
-    @State private var title = ""
-    @State private var why = ""
-    @State private var area = LifeArea.direction
+    private func goalCard(_ goal: LifeGoal) -> some View {
+        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+            HStack {
+                Label(goal.area.label, systemImage: goal.area.symbol)
+                    .font(.subheadline)
+                    .foregroundStyle(RememberDesign.secondaryText)
+                Spacer()
+                Text("\(goal.progress)%")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(RememberDesign.secondaryText)
+            }
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                SwiftUI.Section("Result") { TextField("What will be observably different?", text: $title, axis: .vertical) }
-                SwiftUI.Section("Why now") { TextField("This matters because…", text: $why, axis: .vertical) }
-                SwiftUI.Section("Life area") { Picker("Area", selection: $area) { ForEach(LifeArea.allCases, id: \.self) { Text($0.label).tag($0) } } }
+            Text(goal.title)
+                .font(.title3.bold())
+
+            if !goal.why.isEmpty {
+                Text(goal.why)
+                    .font(.subheadline)
+                    .foregroundStyle(RememberDesign.secondaryText)
             }
-            .navigationTitle("New goal")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: dismiss.callAsFunction) }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") { Task { await store.createLifeGoal(title: title, area: area, why: why); dismiss() } }
-                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+
+            ProgressView(value: Double(goal.progress), total: 100)
+                .tint(RememberDesign.accent)
+
+            Button("Add task for this goal", systemImage: "plus") {
+                taskGoal = goal
             }
+            .font(.subheadline.weight(.semibold))
+            .frame(minHeight: 44)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rememberSurface()
     }
 }

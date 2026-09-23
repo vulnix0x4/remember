@@ -9,13 +9,21 @@ final class ShareViewController: UIViewController {
     }
 
     private func loadSharedURL() {
-        guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
-              let provider = item.attachments?.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.url.identifier) }) else {
+        let providers = extensionContext?.inputItems
+            .compactMap { $0 as? NSExtensionItem }
+            .flatMap { $0.attachments ?? [] } ?? []
+        let supportedTypes: [UTType] = [.url, .plainText, .text]
+        let sharedInput = supportedTypes.lazy.compactMap { type in
+            providers.first(where: { $0.hasItemConformingToTypeIdentifier(type.identifier) })
+                .map { (provider: $0, typeIdentifier: type.identifier) }
+        }.first
+
+        guard let sharedInput else {
             finish(error: ShareError.missingURL)
             return
         }
 
-        provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { [weak self] item, error in
+        sharedInput.provider.loadItem(forTypeIdentifier: sharedInput.typeIdentifier, options: nil) { [weak self] item, error in
             let result: Result<URL, ShareError>
             if error == nil, let url = Self.url(from: item), Self.isSafeWebURL(url) {
                 result = .success(url)
@@ -36,8 +44,12 @@ final class ShareViewController: UIViewController {
 
     nonisolated private static func url(from item: NSSecureCoding?) -> URL? {
         if let url = item as? URL { return url }
-        if let string = item as? String { return URL(string: string) }
-        return nil
+        guard let string = item as? String else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let directURL = URL(string: trimmed), isSafeWebURL(directURL) { return directURL }
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        let range = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        return detector.firstMatch(in: trimmed, options: [], range: range)?.url
     }
 
     nonisolated private static func isSafeWebURL(_ url: URL) -> Bool {

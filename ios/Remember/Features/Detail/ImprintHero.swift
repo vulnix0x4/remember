@@ -2,54 +2,63 @@ import SwiftUI
 
 struct ImprintHero: View {
     let imprint: Imprint
-    @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            Button(action: openOriginal) {
-                ArchiveArtwork(imprint: imprint, height: 238)
-                    .overlay(alignment: .bottomLeading) {
-                        Label(imprint.isVideoSource ? "Watch original" : "Read original", systemImage: "arrow.up.right")
-                            .font(.subheadline)
-                            .bold()
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, RememberDesign.spacing)
-                            .frame(minHeight: 44)
-                            .background(.black.opacity(0.7), in: .rect(cornerRadius: 12))
-                            .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.2)) }
-                            .padding(RememberDesign.spacing)
-                    }
+            if imprint.sourceType != .note {
+                ArchiveArtwork(imprint: imprint, height: dynamicTypeSize.isAccessibilitySize ? 152 : 238)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open original source: \(imprint.title)")
-            .accessibilityHint("Opens in your browser")
-            Label("\(imprint.sourceLabel) · \(imprint.creator)", systemImage: imprint.isVideoSource ? "play.rectangle.fill" : "safari")
+            Label("\(imprint.sourceLabel) · \(imprint.creator)", systemImage: sourceSymbol)
                 .font(.caption)
-                .bold()
-                .tracking(0.9)
-                .foregroundStyle(RememberDesign.accent)
+                .foregroundStyle(RememberDesign.secondaryText)
             if let scope = imprint.analysisScopeLabel {
                 Label(scope, systemImage: "checkmark.shield")
                     .font(.caption)
                     .bold()
                     .foregroundStyle(RememberDesign.accent)
             }
-            Text(imprint.title)
-                .font(.largeTitle)
-                .bold()
-                .tracking(-1.1)
+            if imprint.sourceType == .note, let noteText = imprint.noteText {
+                Text("Your words")
+                    .font(.caption.bold())
+                    .foregroundStyle(RememberDesign.accent)
+                    .textCase(.uppercase)
+                Text(noteText)
+                    .font(.title2.weight(.semibold))
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+            } else {
+                Text(imprint.title)
+                    .font(.title)
+                    .bold()
+            }
+            if imprint.sourceType == .note {
+                Text("Remember’s reflection")
+                    .font(.caption.bold())
+                    .foregroundStyle(RememberDesign.secondaryText)
+                    .textCase(.uppercase)
+            }
             Text(imprint.essence)
                 .font(.title3)
-                .bold()
+                .fontWeight(.semibold)
                 .lineSpacing(4)
-            HStack {
-                Label(imprint.lifePeriod, systemImage: "calendar")
-                Spacer()
-                ProcessingBadge(state: imprint.state)
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                        Label(imprint.lifePeriod, systemImage: "calendar")
+                        ProcessingBadge(state: imprint.state)
+                    }
+                } else {
+                    HStack {
+                        Label(imprint.lifePeriod, systemImage: "calendar")
+                        Spacer()
+                        ProcessingBadge(state: imprint.state)
+                    }
+                }
             }
             .font(.footnote)
             if !imprint.summary.isEmpty {
-                Divider().overlay(RememberDesign.line)
+                Divider().overlay { RememberDesign.line }
                 Text(imprint.summary)
                     .font(.body)
                     .foregroundStyle(RememberDesign.secondaryText)
@@ -64,7 +73,9 @@ struct ImprintHero: View {
         }
     }
 
-    private func openOriginal() {
-        openURL(imprint.url)
+    private var sourceSymbol: String {
+        if imprint.sourceType == .note { return "quote.bubble" }
+        return imprint.isVideoSource ? "play.rectangle.fill" : "safari"
     }
+
 }

@@ -6,28 +6,27 @@ struct ThemesView: View {
     var body: some View {
         if themes.isEmpty {
             ContentUnavailableView(
-                "No themes yet",
+                "No recurring topics yet",
                 systemImage: "tag",
-                description: Text("Themes appear here only when they exist in an analyzed source.")
+                description: Text("Topics appear after they show up in more than one save.")
             )
         } else {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                SectionHeader(eyebrow: "From your analyses", title: "Themes")
+            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                Text("Topics you return to")
+                    .font(.title2)
+                    .bold()
                 ForEach(themes) { theme in
-                VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                     HStack {
-                        Text(theme.name).font(.title3).bold()
+                        Text(theme.name)
+                            .font(.body)
+                            .fontWeight(.semibold)
                         Spacer()
                         Text(CountLabelFormatter.text(theme.count, singular: "source"))
                             .font(.subheadline)
                             .foregroundStyle(RememberDesign.secondaryText)
                     }
-                    Label("Present in your analyzed library", systemImage: "checkmark.seal")
-                        .font(.subheadline)
-                        .foregroundStyle(RememberDesign.accent)
-                }
-                .padding(RememberDesign.spacing)
-                .background(.background, in: .rect(cornerRadius: 14))
+                    .rememberSurface()
+                    .accessibilityElement(children: .combine)
                 }
             }
         }

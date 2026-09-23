@@ -18,6 +18,10 @@ enum LibraryExporter {
         case .markdown:
             let memories = imprints.map { imprint in
                 let ideas = bullets(imprint.keyIdeas)
+                let sourceLine = imprint.sourceType == .note
+                    ? "- Kind: Personal thought"
+                    : "- Source: \(imprint.url.absoluteString)\n- Source type: `\(imprint.sourceType.rawValue)`"
+                let originalWords = imprint.noteText.map { "## Your words\n\($0)\n" } ?? ""
                 let moments = imprint.moments.map { moment in
                     "- [\(moment.timestamp)](\(timestampURL(for: imprint.url, seconds: moment.seconds).absoluteString)): **\(moment.title)**: \(moment.detail)"
                 }.joined(separator: "\n")
@@ -28,15 +32,16 @@ enum LibraryExporter {
                 # \(imprint.title)
 
                 - ID: `\(imprint.id.uuidString)`
-                - Source: \(imprint.url.absoluteString)
-                - Source type: `\(imprint.sourceType.rawValue)`
+                \(sourceLine)
                 - Creator: \(imprint.creator)
                 - Saved: \(imprint.savedAt.formatted(.iso8601))
                 - Life period: \(imprint.lifePeriod)
                 - Processing state: `\(imprint.state.rawValue)`
                 - Personal reaction: \(imprint.reaction ?? "None recorded")
 
-                ## Essence
+                \(originalWords)
+
+                ## Key takeaway
                 \(imprint.essence)
 
                 ## Summary
@@ -48,16 +53,16 @@ enum LibraryExporter {
                 ## Key moments
                 \(moments)
 
-                ## Themes
+                ## Topics
                 \(bullets(imprint.themes))
 
                 ## Claims
                 \(bullets(imprint.claims))
 
-                ## Candidate principles
+                ## Takeaways
                 \(bullets(imprint.candidatePrinciples))
 
-                ## Actionable experiments
+                ## Things to try
                 \(bullets(imprint.experiments))
 
                 ## Possible personal relevance
@@ -67,7 +72,7 @@ enum LibraryExporter {
                 ## Uncertainties
                 \(bullets(imprint.uncertainties))
 
-                ## Typed connections
+                ## Related saves
                 \(connections)
                 """
             }.joined(separator: "\n\n---\n\n")
@@ -80,9 +85,9 @@ enum LibraryExporter {
 
             ---
 
-            # Personal Life OS data
+            # Remember data
 
-            Vault file contents are downloaded separately; their private metadata is included below.
+            Attached file contents are downloaded separately; their metadata is included below.
 
             ```json
             \(lifeJSON)

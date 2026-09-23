@@ -2,19 +2,21 @@ import Foundation
 
 enum LibraryFilter: String, CaseIterable, Identifiable {
     case all = "All"
-    case ready = "Ready"
-    case processing = "Processing"
-    case partial = "Partial"
-    case failed = "Attention"
+    case thoughts = "Thoughts"
+    case ready = "Analyzed"
+    case processing = "Analyzing"
+    case partial = "Some details"
+    case failed = "Couldn’t analyze"
     var id: Self { self }
 
-    func matches(_ state: ProcessingState) -> Bool {
+    func matches(_ imprint: Imprint) -> Bool {
         switch self {
         case .all: true
-        case .ready: state == .ready
-        case .processing: state == .processing
-        case .partial: state == .partial
-        case .failed: state == .failed
+        case .thoughts: imprint.sourceType == .note
+        case .ready: imprint.state == .ready
+        case .processing: imprint.state == .processing
+        case .partial: imprint.state == .partial
+        case .failed: imprint.state == .failed
         }
     }
 }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiConfig, askLibrary, authHeaders, loadEvolution, loadImprint, loadImprints, loadResurfacedMemory, login, logout, mapApiItem, respondToResurfacing, saveImprint, saveImprintToApi, searchImprints, type ApiItem } from "./api";
+import { ASK_TIMEOUT_MS, apiConfig, askLibrary, authHeaders, loadEvolution, loadImprint, loadImprints, loadResurfacedMemory, login, logout, mapApiItem, rateContextualReturn, reflectOnMemory, respondToResurfacing, saveImprint, saveImprintToApi, searchImprints, thinkThroughDecision, type ApiItem } from "./api";
 import { imprints } from "../fixtures";
 
 describe("fixture-backed API boundary", () => {
@@ -88,6 +88,7 @@ describe("fixture-backed API boundary", () => {
         keyMoments: [{ seconds: 92, label: "A clear distinction", context: "The source separates memory from storage." }],
         themes: ["Identity"],
         candidatePrinciples: [{ text: "Return to what changes you." }],
+        actionableExperiments: [{ text: "Protect ten minutes for deliberate attention.", duration: "10 minutes" }],
         personalRelevanceHypotheses: [{ text: "This may connect to a period of change." }],
         uncertainties: [{ text: "No transcript was available." }],
       },
@@ -99,6 +100,7 @@ describe("fixture-backed API boundary", () => {
     expect(mapped.thumbnailUrl).toBe(apiItem.thumbnailUrl);
     expect(mapped.keyIdeas).toEqual(["Attention shapes memory."]);
     expect(mapped.moments[0]).toMatchObject({ time: "1:32", seconds: 92, title: "A clear distinction" });
+    expect(mapped.experiments).toEqual([{ text: "Protect ten minutes for deliberate attention.", duration: "10 minutes" }]);
     expect(mapped.personalReaction).toBe(apiItem.personalReaction);
   });
 
@@ -123,8 +125,37 @@ describe("fixture-backed API boundary", () => {
     expect(result.item.sourceType).toBe("Article");
     expect(result.item.status).toBe("processing");
     const init = fetcher.mock.calls[1][1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ url: local.url, personalReaction: "The raw note", sourceText: transcript });
+    expect(JSON.parse(String(init.body))).toEqual({
+      url: local.url,
+      personalReaction: "The raw note",
+      sourceText: transcript,
+      returnCue: "stuck",
+    });
     expect(init.credentials).toBe("include");
+  });
+
+  it("sends a personal thought as its own capture subject", async () => {
+    const thought = {
+      ...imprints[0],
+      id: "thought-draft",
+      sourceType: "Thought" as const,
+      url: "remember://thought/thought-draft",
+      title: "The first quiet hour matters",
+      creator: "You",
+      noteText: "The first quiet hour matters because it belongs to me before the day starts asking things.",
+    };
+    const item: ApiItem = { id: "saved-thought", sourceType: "note", originalUrl: "remember://thought/saved-thought", canonicalUrl: "remember://thought/saved-thought", title: thought.title, noteText: thought.noteText, status: "pending", savedAt: "2026-09-07T18:00:00Z", analysis: null };
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({ item, deduplicated: false }), {
+      status: 202,
+      headers: { "content-type": "application/json" },
+    }));
+
+    await saveImprintToApi(thought, "https://api.remember.test/", fetcher);
+
+    const init = fetcher.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toMatchObject({ thought: thought.noteText });
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("url");
+    expect(new Headers(init.headers).get("idempotency-key")).toBeTruthy();
   });
 
   it("loads an individual Imprint from local persistence without an API", async () => {
@@ -192,8 +223,65 @@ describe("fixture-backed API boundary", () => {
     expect(answer?.threadId).toBe("thread-id");
   });
 
+  it("maps a grounded decision brief without exposing source numbers", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
+      decision: "Should I protect more creative time?",
+      perspective: "Your saves repeatedly favor making before consuming.",
+      whatMatters: "Protecting attention matters more than maximizing output.",
+      pullToward: "A small daily window has helped before.",
+      pullAgainst: "Unstructured time also appears valuable.",
+      smallTest: "Make for fifteen minutes before opening a feed tomorrow.",
+      nextQuestion: "What would this time need to protect?",
+      grounded: true,
+      limitations: [],
+      citations: [{ itemId: "creative-life", title: "The shape of a creative life", url: "https://example.com/creative" }],
+    }), { status: 200 }));
+
+    const brief = await thinkThroughDecision("Should I protect more creative time?", "I keep consuming.", undefined, "https://remember.example.test", fetcher);
+
+    expect(brief).toMatchObject({ grounded: true, smallTest: "Make for fifteen minutes before opening a feed tomorrow." });
+    expect(brief?.citations[0]).toEqual({ imprintId: "creative-life", label: "The shape of a creative life", url: "https://example.com/creative" });
+  });
+
+  it("preserves the backend Ask error code, message, status, and request ID", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
+      error: { code: "thread_not_found", message: "Conversation not found." },
+      requestId: "request-123",
+    }), { status: 404, headers: { "content-type": "application/json" } }));
+
+    const failure = askLibrary("What keeps returning?", undefined, "https://remember.example.test", fetcher, "stale-thread");
+
+    await expect(failure).rejects.toMatchObject({
+      name: "AskAPIError",
+      status: 404,
+      code: "thread_not_found",
+      message: "Conversation not found.",
+      requestId: "request-123",
+    });
+  });
+
+  it("aborts an Ask request after 45 seconds with a typed timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn<typeof fetch>().mockImplementation((_input, init) => new Promise<Response>((_resolve, reject) => {
+        const requestSignal = init?.signal;
+        if (!requestSignal) return;
+        requestSignal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
+      }));
+      const request = askLibrary("What keeps returning?", undefined, "https://remember.example.test", fetcher);
+      const failure = expect(request).rejects.toMatchObject({ status: 408, code: "timeout" });
+
+      await vi.advanceTimersByTimeAsync(ASK_TIMEOUT_MS);
+
+      await failure;
+      expect(fetcher).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("loads exact evolution counts without deriving client-side trends", async () => {
-    const overview = { themes: [{ name: "Discipline", count: 2, lastSeenAt: "2026-08-22T12:00:00Z" }], principles: [], tensions: [], timeline: [{ month: "2026-08", theme: "Discipline", count: 2 }] };
+    const overview = { themes: [{ name: "Discipline", count: 2, lastSeenAt: "2026-08-22T12:00:00Z" }], principles: [], tensions: [], timeline: [{ month: "2026-08", theme: "Discipline", count: 2 }], reflections: [], returnFeedback: [], recentQuestion: null };
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(overview));
     expect(await loadEvolution(undefined, "http://127.0.0.1:8787", fetcher)).toEqual(overview);
     expect(fetcher.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/evolution");
@@ -207,6 +295,20 @@ describe("fixture-backed API boundary", () => {
     expect(await loadResurfacedMemory(undefined, "http://127.0.0.1:8787", fetcher)).toEqual(memory);
     expect(await respondToResurfacing("event-id", "still_true", "http://127.0.0.1:8787", fetcher)).toBe(true);
     expect(JSON.parse(String((fetcher.mock.calls[1][1] as RequestInit).body))).toEqual({ response: "still_true" });
+  });
+
+  it("records a check-in for any memory, not only a scheduled resurfacing event", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ recorded: true }));
+    expect(await reflectOnMemory("item-id", "no_longer_relevant", "http://127.0.0.1:8787", fetcher)).toBe(true);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("http://127.0.0.1:8787/api/items/item-id/reflect");
+    expect(JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ response: "no_longer_relevant" });
+  });
+
+  it("records contextual return feedback without changing the memory itself", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ recorded: true }));
+    expect(await rateContextualReturn("item-id", "not_today", "http://127.0.0.1:8787", fetcher)).toBe(true);
+    expect(fetcher.mock.calls[0]?.[0]).toBe("http://127.0.0.1:8787/api/items/item-id/contextual-return-feedback");
+    expect(JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ response: "not_today" });
   });
 
   it("uses cookie credentials for login and logout without storing the password", async () => {

@@ -6,7 +6,7 @@ struct KeyMomentsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "Source grounded", title: "Key moments")
+            SectionHeader(eyebrow: "", title: "Key moments")
             ForEach(imprint.moments) { moment in
                 Button { openURL(timestampURL(seconds: moment.seconds)) } label: {
                     HStack(alignment: .top, spacing: RememberDesign.spacing) {

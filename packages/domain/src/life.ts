@@ -14,7 +14,8 @@ export const goalStatusSchema = z.enum(["active", "paused", "completed", "archiv
 export const taskStatusSchema = z.enum(["inbox", "queued", "active", "waiting", "done", "removed"]);
 export const taskPrioritySchema = z.enum(["low", "normal", "high", "must"]);
 export const taskEnergySchema = z.enum(["low", "medium", "high", "any"]);
-export const taskSourceSchema = z.enum(["manual", "goal", "mission", "practice", "calendar", "health", "floor"]);
+export const taskSourceSchema = z.enum(["manual", "goal", "mission", "practice", "decision", "calendar", "health", "floor"]);
+export const practiceOutcomeSchema = z.enum(["helped", "mixed", "not_for_me"]);
 export const blockerReasonSchema = z.enum(["big", "unclear", "time", "place", "irrelevant", "different"]);
 
 const optionalDateTime = z.iso.datetime({ offset: true }).nullable().optional();
@@ -58,9 +59,15 @@ export const taskSchema = z.object({
   scheduledStart: z.iso.datetime({ offset: true }).nullable(),
   scheduledEnd: z.iso.datetime({ offset: true }).nullable(),
   source: taskSourceSchema,
+  sourceItemId: z.uuid().nullable(),
+  practiceOutcome: practiceOutcomeSchema.nullable(),
+  practiceReflection: z.string().trim().max(2_000),
+  reflectedAt: z.iso.datetime({ offset: true }).nullable(),
   completedAt: z.iso.datetime({ offset: true }).nullable(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
+  repeatEveryDays: z.number().int().min(1).max(365).nullable().optional(),
+  notBefore: z.iso.datetime({ offset: true }).nullable().optional(),
 });
 
 export const createTaskSchema = taskSchema.pick({ title: true }).extend({
@@ -76,6 +83,9 @@ export const createTaskSchema = taskSchema.pick({ title: true }).extend({
   scheduledStart: optionalDateTime,
   scheduledEnd: optionalDateTime,
   source: taskSourceSchema.default("manual"),
+  sourceItemId: z.uuid().nullable().optional(),
+  repeatEveryDays: z.number().int().min(1).max(365).nullable().optional(),
+  notBefore: optionalDateTime,
 });
 
 export const updateTaskSchema = createTaskSchema.partial().extend({

@@ -1,12 +1,17 @@
 import {
   askRequestSchema,
+  autopilotRequestSchema,
+  brainSettingsSchema,
   blockerReasonSchema,
   captureRequestSchema,
   connectionTypeSchema,
+  decisionRequestSchema,
   createGoalSchema,
   createLifeFloorItemSchema,
   createTaskSchema,
   itemStatusSchema,
+  practiceOutcomeSchema,
+  returnCueUpdateSchema,
   updateGoalSchema,
   updateTaskSchema,
   upsertCalendarEventSchema,
@@ -17,10 +22,13 @@ import {
 import { Hono } from "hono";
 import { z } from "zod";
 import { authenticate, clearedSessionCookie, createPasswordSession, ensureUser, passwordSessionToken, revokePasswordSession, sessionCookie, timingSafeEqual, verifyPassword } from "./auth";
+import { DeletionService } from "./deletion";
 import { EvolutionService } from "./evolution";
 import { ExportService, exportRequestSchema } from "./exports";
 import { ApiError, jsonError, readJson, safeErrorMessage } from "./http";
 import { LifeRepository } from "./life-repository";
+import { buildAutopilotOptions, decideNextMove } from "./autopilot";
+import { BrainService } from "./brain";
 import { runIngestion } from "./processing";
 import { encodeItemCursor, publicItem, Repository } from "./repository";
 import { parseSearch, SearchService } from "./search";
@@ -39,13 +47,21 @@ const connectionRequestSchema = z.object({
 const resurfacingResponseSchema = z.object({
   response: z.enum(["still_true", "changed_mind", "not_sure", "no_longer_relevant"]),
 });
+const contextualReturnResponseSchema = z.object({ response: z.enum(["useful", "not_today"]) });
 const retryRequestSchema = z.object({ sourceText: z.string().trim().min(1).max(160_000).optional() });
 const principleStatusSchema = z.object({ status: z.enum(["candidate", "active", "dismissed"]) });
 const loginRequestSchema = z.object({
   email: z.email().max(320),
   password: z.string().min(1).max(1_024),
 });
-const completeTaskSchema = z.object({ minutesSpent: z.number().int().min(0).max(1_440).default(0) });
+const practiceResultSchema = z.object({
+  outcome: practiceOutcomeSchema,
+  reflection: z.string().trim().max(2_000).default(""),
+});
+const completeTaskSchema = z.object({
+  minutesSpent: z.number().int().min(0).max(1_440).default(0),
+  result: practiceResultSchema.optional(),
+});
 const blockTaskSchema = z.object({ reason: blockerReasonSchema });
 const floorToggleSchema = z.object({ date: z.iso.datetime({ offset: true }) });
 const calendarSyncSchema = z.object({ events: z.array(upsertCalendarEventSchema).max(2_000) });
@@ -126,6 +142,31 @@ app.post("/api/auth/logout", async (context) => {
 
 api.use("*", authenticate);
 
+api.use("*", async (context, next) => {
+  await next();
+  if (!["POST", "PATCH", "DELETE"].includes(context.req.method) || context.res.status >= 400
+    || /\/life\/(brain|autopilot)/.test(context.req.path)) return;
+  if (!/\/api\/(life|items|principles)/.test(context.req.path)) return;
+  const work = new BrainService(context.env).run(context.get("user").id).catch(() => undefined);
+  try { context.executionCtx.waitUntil(work); } catch { await work; }
+});
+
+api.get("/life/brain", async (context) => context.json({ brain: await new BrainService(context.env).read(context.get("user").id) }));
+api.post("/life/brain/sync", async (context) => {
+  const body = await readJson(context.req.raw, z.object({ timeZone: brainSettingsSchema.shape.timeZone }));
+  const userId = context.get("user").id;
+  await new Repository(context.env.DB).rateLimit(userId, "brain_sync", 120, 60);
+  const brain = new BrainService(context.env);
+  await brain.initialize(userId, body.timeZone);
+  return context.json({ brain: await brain.run(userId) });
+});
+api.patch("/life/brain", async (context) => {
+  const settings = await readJson(context.req.raw, brainSettingsSchema);
+  const brain = new BrainService(context.env);
+  await brain.updateSettings(context.get("user").id, settings);
+  return context.json({ brain: await brain.run(context.get("user").id) });
+});
+
 api.get("/session", (context) => {
   const user = context.get("user");
   if (!user) return context.json({ user: null });
@@ -137,36 +178,59 @@ api.post("/items", async (context) => {
   const repository = new Repository(context.env.DB);
   await repository.rateLimit(userId, "capture", 120, 3_600);
   const body = await readJson(context.req.raw, captureRequestSchema, 196_608);
-  let source;
-  try {
-    source = canonicalizeSourceUrl(body.url);
-  } catch (error) {
-    if (error instanceof UnsafeUrlError) throw new ApiError(422, error.code, error.message);
-    throw error;
-  }
-  if (context.env.ENVIRONMENT === "production" && source.canonicalUrl.startsWith("http:")) {
-    throw new ApiError(422, "https_required", "Remember only saves secure HTTPS links in production.");
-  }
   const idempotencyKey = context.req.header("idempotency-key") ?? null;
   if (idempotencyKey && (!/^[A-Za-z0-9._:-]{1,200}$/.test(idempotencyKey) || idempotencyKey.length > 200)) {
     throw new ApiError(422, "invalid_idempotency_key", "Idempotency-Key contains unsupported characters or is too long.");
   }
   const savedAt = body.savedAt ?? new Date().toISOString();
-  const result = await repository.capture(userId, source, body.personalReaction ?? null, savedAt, idempotencyKey);
+  let result;
+  let sourceText: string | undefined;
+  if (body.thought) {
+    result = await repository.captureThought(
+      userId,
+      body.thought,
+      savedAt,
+      idempotencyKey,
+      body.returnCue ?? null,
+      body.returnAt ?? null,
+    );
+    sourceText = body.thought;
+  } else {
+    let source;
+    try {
+      source = canonicalizeSourceUrl(body.url!);
+    } catch (error) {
+      if (error instanceof UnsafeUrlError) throw new ApiError(422, error.code, error.message);
+      throw error;
+    }
+    if (context.env.ENVIRONMENT === "production" && source.canonicalUrl.startsWith("http:")) {
+      throw new ApiError(422, "https_required", "Remember only saves secure HTTPS links in production.");
+    }
+    result = await repository.capture(
+      userId,
+      source,
+      body.personalReaction ?? null,
+      savedAt,
+      idempotencyKey,
+      body.returnCue ?? null,
+      body.returnAt ?? null,
+    );
+    sourceText = body.sourceText;
+  }
   if (result.created) {
     if (String(context.env.PROCESSING_MODE) === "direct") {
-      await runIngestion(context.env, { itemId: result.row.id, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) });
+      await runIngestion(context.env, { itemId: result.row.id, userId, ...(sourceText ? { sourceText } : {}) });
     } else {
       try {
         const workflow = await context.env.INGESTION_WORKFLOW.create({
           id: `ingest-${result.row.id}`,
-          params: { itemId: result.row.id, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) },
+          params: { itemId: result.row.id, userId, ...(sourceText ? { sourceText } : {}) },
         });
         await repository.recordWorkflow(result.row.id, workflow.id);
       } catch (error) {
         if (context.env.ENVIRONMENT === "development") {
           console.error(JSON.stringify({ message: "workflow unavailable; using local request context fallback", error: safeErrorMessage(error) }));
-          context.executionCtx.waitUntil(runIngestion(context.env, { itemId: result.row.id, userId, ...(body.sourceText ? { sourceText: body.sourceText } : {}) }));
+          context.executionCtx.waitUntil(runIngestion(context.env, { itemId: result.row.id, userId, ...(sourceText ? { sourceText } : {}) }));
         } else {
           await markWorkflowStartFailure(repository, result.row.id, error);
         }
@@ -178,6 +242,18 @@ api.post("/items", async (context) => {
     { item: publicItem(currentRow), deduplicated: !result.created, duplicate: !result.created },
     result.created ? 202 : 200,
   );
+});
+
+api.patch("/items/:id/return-cue", async (context) => {
+  const itemId = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, returnCueUpdateSchema);
+  const item = await new Repository(context.env.DB).updateReturnCue(
+    context.get("user").id,
+    itemId,
+    body.returnCue,
+    body.returnAt,
+  );
+  return context.json({ item: publicItem(item) });
 });
 
 api.get("/items", async (context) => {
@@ -241,6 +317,14 @@ api.post("/ask", async (context) => {
   return context.json(await new SearchService(context.env).ask(userId, request.question, request.threadId));
 });
 
+api.post("/decisions", async (context) => {
+  const userId = context.get("user").id;
+  const repository = new Repository(context.env.DB);
+  await repository.rateLimit(userId, "decision", 30, 60);
+  const request = await readJson(context.req.raw, decisionRequestSchema, 32_768);
+  return context.json(await new SearchService(context.env).decide(userId, request.decision, request.context));
+});
+
 api.get("/connections", async (context) => {
   const itemId = context.req.query("itemId");
   if (itemId) uuidParamSchema.parse(itemId);
@@ -269,10 +353,41 @@ api.post("/resurfacing/:id/respond", async (context) => {
   await new EvolutionService(context.env.DB).respond(context.get("user").id, eventId, body.response);
   return context.json({ recorded: true });
 });
+api.post("/items/:id/reflect", async (context) => {
+  const itemId = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, resurfacingResponseSchema);
+  const reflection = await new EvolutionService(context.env.DB).reflect(context.get("user").id, itemId, body.response);
+  return context.json({ recorded: true, reflection });
+});
+api.post("/items/:id/contextual-return-feedback", async (context) => {
+  const itemId = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, contextualReturnResponseSchema);
+  const feedback = await new EvolutionService(context.env.DB).rateContextualReturn(context.get("user").id, itemId, body.response);
+  return context.json({ recorded: true, feedback });
+});
 
 api.get("/life", async (context) =>
   context.json(await new LifeRepository(context.env.DB).snapshot(context.get("user").id)),
 );
+
+api.post("/life/autopilot", async (context) => {
+  const userId = context.get("user").id;
+  await new Repository(context.env.DB).rateLimit(userId, "autopilot", 30, 60);
+  const input = await readJson(context.req.raw, autopilotRequestSchema);
+  const repository = new LifeRepository(context.env.DB);
+  const snapshot = await repository.snapshot(userId);
+  const decision = await decideNextMove(snapshot, input, context.env.OPENROUTER_API_KEY);
+  if (input.startFocus && decision.disposition === "decided" && decision.selected.kind === "task") {
+    const task = snapshot.tasks.find((task) => task.id === decision.selected.id)!;
+    const fresh = await repository.snapshot(userId);
+    if (!buildAutopilotOptions(fresh, input).options.some((option) => option.id === task.id)) {
+      throw new ApiError(409, "plan_changed", "Your available time or plan changed. Ask Jev to choose again.");
+    }
+    await repository.startAutopilotFocus(userId, task.id, task.updatedAt, snapshot.tasks.find((task) => task.status === "active")?.id ?? null);
+    decision.focusStarted = true;
+  }
+  return context.json(decision);
+});
 
 api.post("/life/goals", async (context) => {
   const body = await readJson(context.req.raw, createGoalSchema);
@@ -299,7 +414,13 @@ api.patch("/life/tasks/:id", async (context) => {
 api.post("/life/tasks/:id/complete", async (context) => {
   const id = uuidParamSchema.parse(context.req.param("id"));
   const body = await readJson(context.req.raw, completeTaskSchema);
-  return context.json(await new LifeRepository(context.env.DB).completeTask(context.get("user").id, id, body.minutesSpent));
+  return context.json(await new LifeRepository(context.env.DB).completeTask(context.get("user").id, id, body.minutesSpent, body.result));
+});
+
+api.post("/life/tasks/:id/reflect", async (context) => {
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, practiceResultSchema);
+  return context.json({ task: await new LifeRepository(context.env.DB).reflectOnPractice(context.get("user").id, id, body) });
 });
 
 api.post("/life/tasks/:id/block", async (context) => {
@@ -389,8 +510,9 @@ api.get("/life/files/:id/download", async (context) => {
 });
 
 api.delete("/life/files/:id", async (context) => {
-  const file = await new LifeRepository(context.env.DB).deleteFile(context.get("user").id, uuidParamSchema.parse(context.req.param("id")));
-  await context.env.MEDIA.delete(file.objectKey);
+  const deletion = new DeletionService(context.env);
+  const job = await deletion.stageVaultFile(context.get("user").id, uuidParamSchema.parse(context.req.param("id")));
+  if (job) await deletion.tryProcess(job);
   return context.body(null, 204);
 });
 
@@ -407,26 +529,9 @@ api.delete("/account/data", async (context) => {
     throw new ApiError(422, "confirmation_required", "Set X-Confirm-Delete to DELETE MY DATA to confirm.");
   }
   const userId = context.get("user").id;
-  const vectorRows = await context.env.DB.prepare("SELECT id FROM items WHERE user_id = ?1").bind(userId).all<{ id: string }>();
-  if (vectorRows.results.length && String(context.env.ANALYSIS_PROVIDER) !== "mock") {
-    await context.env.VECTOR_INDEX.deleteByIds(vectorRows.results.map((row) => row.id));
-  }
-  let cursor: string | undefined;
-  do {
-    const listed = await context.env.MEDIA.list({ prefix: `exports/${userId}/`, ...(cursor ? { cursor } : {}) });
-    if (listed.objects.length) await context.env.MEDIA.delete(listed.objects.map((object) => object.key));
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
-  cursor = undefined;
-  do {
-    const listed = await context.env.MEDIA.list({ prefix: `vault/${userId}/`, ...(cursor ? { cursor } : {}) });
-    if (listed.objects.length) await context.env.MEDIA.delete(listed.objects.map((object) => object.key));
-    cursor = listed.truncated ? listed.cursor : undefined;
-  } while (cursor);
-  await context.env.DB.batch([
-    context.env.DB.prepare("DELETE FROM users WHERE id = ?1").bind(userId),
-    context.env.DB.prepare("DELETE FROM sources WHERE NOT EXISTS (SELECT 1 FROM items WHERE items.source_id = sources.id)"),
-  ]);
+  const deletion = new DeletionService(context.env);
+  const job = await deletion.stageAccount(userId);
+  await deletion.tryProcess(job);
   return context.body(null, 204);
 });
 

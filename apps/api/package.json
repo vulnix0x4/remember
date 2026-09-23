@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "deploy:production": "sh scripts/deploy-production.sh",
     "build": "wrangler deploy --dry-run --env= --outdir dist",
     "dev": "wrangler dev --local",
     "db:migrate": "wrangler d1 migrations apply remember-db --local",
