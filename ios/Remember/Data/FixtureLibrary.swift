@@ -34,7 +34,8 @@ enum FixtureLibrary {
                 Connection(id: UUID(), itemID: uuid("10000000-0000-0000-0000-000000000002"), type: .supports, title: "The courage to be disliked", explanation: "Both distinguish choosing your response from controlling what happened.")
             ],
             state: .ready,
-            reaction: nil
+            reaction: nil,
+            returnCue: .stuck
         ),
         Imprint(
             id: uuid("10000000-0000-0000-0000-000000000002"),
@@ -57,7 +58,8 @@ enum FixtureLibrary {
             uncertainties: ["The source simplifies a broad psychological framework."],
             connections: [],
             state: .ready,
-            reaction: "I want to remember the difference between being kind and being controlled."
+            reaction: "I want to remember the difference between being kind and being controlled.",
+            returnCue: .decision
         ),
         Imprint(
             id: uuid("10000000-0000-0000-0000-000000000003"),
@@ -80,7 +82,8 @@ enum FixtureLibrary {
             uncertainties: [],
             connections: [Connection(id: UUID(), itemID: uuid("10000000-0000-0000-0000-000000000004"), type: .contradicts, title: "Stay open to unexpected paths", explanation: "One argues for aggressive exclusion; the other sees unplanned exploration as essential.")],
             state: .ready,
-            reaction: nil
+            reaction: nil,
+            returnCue: .focus
         ),
         Imprint(
             id: uuid("10000000-0000-0000-0000-000000000004"),
@@ -114,7 +117,7 @@ enum FixtureLibrary {
             creator: "Creative Process",
             savedAt: now.addingTimeInterval(-60 * 60 * 3),
             lifePeriod: "Now",
-            essence: "Understanding the source and identifying the ideas that might stay with you.",
+            essence: "Saved safely. Analysis is still in progress.",
             summary: "Processing is still underway.",
             keyIdeas: [], moments: [], themes: ["Building"], claims: [], candidatePrinciples: [], experiments: [], personalHypotheses: [], uncertainties: [], connections: [], state: .processing, reaction: nil
         ),
@@ -128,10 +131,137 @@ enum FixtureLibrary {
             savedAt: now.addingTimeInterval(-60 * 25),
             lifePeriod: "Now",
             essence: "This source could not be analyzed yet, but the original link is safe.",
-            summary: "Remember will preserve the source even when understanding fails.",
+            summary: "The original link stays safe even when analysis fails.",
             keyIdeas: [], moments: [], themes: [], claims: [], candidatePrinciples: [], experiments: [], personalHypotheses: [], uncertainties: ["The source did not respond during analysis."], connections: [], state: .failed, reaction: nil
+        ),
+        Imprint(
+            id: uuid("10000000-0000-0000-0000-000000000007"),
+            url: url("remember://thought/10000000-0000-0000-0000-000000000007"),
+            thumbnailURL: nil,
+            sourceType: .note,
+            title: "The first quiet hour is where I can hear myself think",
+            creator: "You",
+            savedAt: now.addingTimeInterval(-60 * 60 * 8),
+            lifePeriod: "Noticing how my days begin",
+            essence: "Protecting the first quiet hour may be less about productivity and more about choosing whether the day begins from intention or reaction.",
+            summary: "This thought connects the shape of the morning to the shape of attention. It suggests that early messages do not merely consume time—they set a reactive posture that can continue for the rest of the day.",
+            keyIdeas: [
+                "The first hour creates the emotional posture of the day.",
+                "Giving quiet away early can make the rest of the day feel reactive."
+            ],
+            moments: [],
+            themes: ["Attention", "Focus", "Intentionality"],
+            claims: ["Early inputs can set a reactive pattern for the rest of the day."],
+            candidatePrinciples: ["Let the day begin with your attention before borrowing someone else’s urgency."],
+            experiments: ["Keep messages closed for the first quiet hour tomorrow and notice what becomes easier to hear."],
+            personalHypotheses: ["You may be noticing that the quality of your attention depends on how deliberately the day begins."],
+            uncertainties: ["One thought is a signal, not proof that every morning works the same way."],
+            connections: [
+                Connection(
+                    id: UUID(),
+                    itemID: uuid("10000000-0000-0000-0000-000000000003"),
+                    type: .supports,
+                    title: "Protect your attention like a resource",
+                    explanation: "Your own observation gives the saved idea a concrete place in daily life."
+                )
+            ],
+            state: .ready,
+            reaction: nil,
+            analysisScope: "thought",
+            returnCue: .focus,
+            noteText: "The first quiet hour is where I can hear myself think. If I give it away to messages, I spend the rest of the day reacting."
         )
     ]
+
+    static let evolutionOverview = EvolutionOverview(
+        themes: [],
+        principles: [
+            EvolutionPrinciple(
+                id: "30000000-0000-0000-0000-000000000001",
+                itemId: "10000000-0000-0000-0000-000000000003",
+                text: "Treat attention as evidence of what you value.",
+                rationale: "This idea has stayed connected to how you want to build.",
+                status: "active",
+                createdAt: "2026-08-22T12:00:00Z"
+            ),
+            EvolutionPrinciple(
+                id: "30000000-0000-0000-0000-000000000002",
+                itemId: "10000000-0000-0000-0000-000000000001",
+                text: "Let hard periods inform you without letting them define you.",
+                rationale: "Remember noticed this idea in a save about rebuilding.",
+                status: "candidate",
+                createdAt: "2026-08-23T12:00:00Z"
+            ),
+        ],
+        tensions: [
+            EvolutionTension(
+                id: "40000000-0000-0000-0000-000000000001",
+                fromItemId: "10000000-0000-0000-0000-000000000003",
+                toItemId: "10000000-0000-0000-0000-000000000004",
+                explanation: "Protecting your focus and staying open to an unexpected path can both matter. The unresolved question is when each one deserves to lead.",
+                confidence: 0.88
+            )
+        ],
+        timeline: [],
+        reflections: [
+            EvolutionReflection(
+                id: "50000000-0000-0000-0000-000000000001",
+                itemId: "10000000-0000-0000-0000-000000000002",
+                response: "not_sure",
+                occurredAt: "2026-08-29T12:00:00Z"
+            )
+        ],
+        returnFeedback: [],
+        recentQuestion: nil
+    )
+
+    static let lifeSnapshot: LifeSnapshot = {
+        let queued = LifeTask(
+            id: uuid("60000000-0000-0000-0000-000000000001"),
+            goalId: nil,
+            title: "Remove one recurring input that does not deserve a place in your week",
+            firstStep: "Choose the first input to remove.",
+            notes: CarryForwardPlan.notes(for: imprints[2]),
+            area: .growth,
+            status: .queued,
+            priority: .normal,
+            energy: .any,
+            durationMinutes: 15,
+            dueAt: nil,
+            scheduledStart: nil,
+            scheduledEnd: nil,
+            source: "practice",
+            completedAt: nil,
+            createdAt: now.addingTimeInterval(-86_400),
+            updatedAt: now.addingTimeInterval(-86_400)
+        )
+        let completed = LifeTask(
+            id: uuid("60000000-0000-0000-0000-000000000002"),
+            goalId: nil,
+            title: "Name one thing this season clarified",
+            firstStep: "Write one honest sentence.",
+            notes: CarryForwardPlan.notes(for: imprints[0]),
+            area: .growth,
+            status: .done,
+            priority: .normal,
+            energy: .any,
+            durationMinutes: 15,
+            dueAt: nil,
+            scheduledStart: nil,
+            scheduledEnd: nil,
+            source: "practice",
+            sourceItemId: imprints[0].id,
+            practiceOutcome: .helped,
+            practiceReflection: "Writing it down made the next step feel obvious.",
+            reflectedAt: now.addingTimeInterval(-172_800),
+            completedAt: now.addingTimeInterval(-172_800),
+            createdAt: now.addingTimeInterval(-259_200),
+            updatedAt: now.addingTimeInterval(-172_800)
+        )
+        var snapshot = LifeSnapshot.empty
+        snapshot.tasks = [queued, completed]
+        return snapshot
+    }()
 
     private static func uuid(_ value: String) -> UUID {
         guard let uuid = UUID(uuidString: value) else { fatalError("Invalid fixture UUID: \(value)") }

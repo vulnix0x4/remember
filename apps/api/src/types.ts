@@ -21,6 +21,10 @@ export interface ItemRow {
   canonical_url: string;
   status: string;
   personal_reaction: string | null;
+  memory_kind: string;
+  note_text: string | null;
+  return_cue: string | null;
+  return_at: string | null;
   captured_timestamp_seconds: number | null;
   saved_at: string;
   processing_started_at: string | null;

@@ -21,7 +21,7 @@ function seriousAccessibilityViolations(container: HTMLElement): string[] {
   container.querySelectorAll<HTMLElement>('[aria-hidden="true"]:not([inert])').forEach((element) => {
     if (element.querySelector("button, a[href], input, textarea, select, [tabindex]")) violations.push("Focusable content is exposed inside aria-hidden content");
   });
-  container.querySelectorAll<HTMLElement>('[role="dialog"]').forEach((dialog) => {
+  container.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]').forEach((dialog) => {
     if (dialog.getAttribute("aria-modal") !== "true") violations.push("Dialog is missing aria-modal");
     const labelledBy = dialog.getAttribute("aria-labelledby");
     if (!labelledBy || !container.querySelector(`#${labelledBy}`)) violations.push("Dialog is missing a valid accessible label");
@@ -48,24 +48,44 @@ async function expectAccessible(container: HTMLElement, view: string): Promise<v
 
 describe("automated serious accessibility gate", () => {
   afterEach(cleanup);
-  beforeEach(() => { localStorage.clear(); window.location.hash = ""; });
+  beforeEach(() => { localStorage.clear(); sessionStorage.clear(); window.location.hash = ""; });
 
   it("finds no serious semantic violations across core views and capture", async () => {
     const user = userEvent.setup();
     const { container } = render(<App />);
     await expectAccessible(container, "Home");
 
-    for (const page of ["Tasks", "Goals", "Calendar", "Health", "Money", "Files", "Library", "Ask", "Evolution", "Settings"]) {
-      await user.click(screen.getAllByRole("button", { name: page })[0]);
+    await user.click(screen.getAllByRole("button", { name: "Plan" })[0]);
+    await expectAccessible(container, "Tasks");
+    for (const page of ["Goals", "Calendar"]) {
+      await user.click(screen.getByRole("button", { name: page }));
       await expectAccessible(container, page);
     }
+
+    await user.click(screen.getAllByRole("button", { name: "Life" })[0]);
+    await expectAccessible(container, "Health");
+    for (const page of ["Money", "Files"]) {
+      await user.click(screen.getByRole("button", { name: page }));
+      await expectAccessible(container, page);
+    }
+    await user.click(screen.getAllByRole("button", { name: "Open settings" })[0]);
+    await expectAccessible(container, "Settings");
+    await user.click(screen.getByRole("button", { name: "Back" }));
+
+    await user.click(screen.getAllByRole("button", { name: "Library" })[0]);
+    await expectAccessible(container, "Library");
+    await user.click(screen.getByRole("button", { name: "Patterns" }));
+    await expectAccessible(container, "Patterns");
+
+    await user.click(screen.getAllByRole("button", { name: "Ask" })[0]);
+    await expectAccessible(container, "Ask");
 
     await user.click(screen.getAllByRole("button", { name: "Library" })[0]);
     await user.click(screen.getByRole("button", { name: /Your worst years can shape your best life/i }));
     await expectAccessible(container, "Imprint detail");
 
     await user.click(screen.getAllByRole("button", { name: "Today" })[0]);
-    await user.click(screen.getByRole("button", { name: /Save something/i }));
+    await user.click(screen.getAllByRole("button", { name: "Save" })[0]);
     expect(screen.getByRole("dialog")).toBeTruthy();
     await expectAccessible(container, "Capture");
   });

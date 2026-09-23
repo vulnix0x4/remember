@@ -8,15 +8,18 @@ struct FailedDetailState: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("Understanding paused", systemImage: "exclamationmark.triangle")
+            Label("Couldn’t analyze this save", systemImage: "exclamationmark.triangle")
         } description: {
             Text(imprint.uncertainties.first ?? "The original link remains safe. Try processing again later.")
         } actions: {
             Button(isRetrying ? "Trying again…" : "Try again", systemImage: "arrow.clockwise", action: retry)
                 .buttonStyle(.borderedProminent)
+                .foregroundStyle(RememberDesign.accentInk)
                 .disabled(isRetrying)
-            Button("Open original", systemImage: "arrow.up.right.square", action: openOriginal)
-                .buttonStyle(.bordered)
+            if imprint.sourceType != .note {
+                Button("Open original", systemImage: "arrow.up.right.square", action: openOriginal)
+                    .buttonStyle(.bordered)
+            }
         }
     }
 

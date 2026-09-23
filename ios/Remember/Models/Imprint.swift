@@ -1,5 +1,50 @@
 import Foundation
 
+enum MemoryReflection: String, Codable, CaseIterable, Identifiable, Sendable {
+    case stillTrue = "still_true"
+    case changedMind = "changed_mind"
+    case notSure = "not_sure"
+    case noLongerRelevant = "no_longer_relevant"
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .stillTrue: "Still true"
+        case .changedMind: "I see it differently"
+        case .notSure: "Not sure yet"
+        case .noLongerRelevant: "Let it go"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .stillTrue: "checkmark"
+        case .changedMind: "arrow.triangle.2.circlepath"
+        case .notSure: "ellipsis"
+        case .noLongerRelevant: "leaf"
+        }
+    }
+
+    var insightTitle: String {
+        switch self {
+        case .stillTrue: "Kept as part of your compass."
+        case .changedMind: "Your change of mind is part of the story."
+        case .notSure: "Left open without forcing an answer."
+        case .noLongerRelevant: "Released from your current guidance."
+        }
+    }
+
+    var insightBody: String {
+        switch self {
+        case .stillTrue: "Remember will treat this as something that still feels true now."
+        case .changedMind: "Remember will use this as evidence of how your thinking has evolved."
+        case .notSure: "Remember will hold this lightly until new context can help."
+        case .noLongerRelevant: "Remember will stop bringing this back as something you should follow."
+        }
+    }
+}
+
 struct Imprint: Identifiable, Codable, Hashable, Sendable {
     let id: UUID
     let url: URL
@@ -25,6 +70,9 @@ struct Imprint: Identifiable, Codable, Hashable, Sendable {
     var principleID: UUID? = nil
     var principleStatus: String? = nil
     var analysisScope: String? = nil
+    var returnCue: ReturnCue? = nil
+    var returnAt: Date? = nil
+    var noteText: String? = nil
 
     var isVideoSource: Bool {
         sourceType == .youtube
@@ -45,6 +93,7 @@ struct Imprint: Identifiable, Codable, Hashable, Sendable {
         case "caption": "Caption analyzed"
         case "post": "Post text analyzed"
         case "article": "Article analyzed"
+        case "thought": "Your thought reflected"
         default: nil
         }
     }

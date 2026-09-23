@@ -2,90 +2,125 @@ import SwiftUI
 
 struct LibraryView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.openURL) private var openURL
+    @Binding private var librarySection: LibrarySection
     @State private var searchText = ""
     @State private var filter: LibraryFilter = .all
+    @State private var newestFirst = true
+
+    init(librarySection: Binding<LibrarySection> = .constant(.saved)) {
+        _librarySection = librarySection
+    }
 
     private var filteredImprints: [Imprint] {
-        store.imprints.filter { imprint in
-            let matchesFilter = filter.matches(imprint.state)
-            let matchesSearch = searchText.isEmpty || [imprint.title, imprint.essence, imprint.themes.joined(separator: " ")]
+        let matches = store.imprints.filter { imprint in
+            let matchesFilter = filter.matches(imprint)
+            let matchesSearch = searchText.isEmpty || [imprint.title, imprint.noteText ?? "", imprint.essence, imprint.themes.joined(separator: " ")]
                 .contains(where: { $0.localizedStandardContains(searchText) })
             return matchesFilter && matchesSearch
         }
+        return matches.sorted { newestFirst ? $0.savedAt > $1.savedAt : $0.savedAt < $1.savedAt }
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                WarmBackground()
-                VStack(spacing: RememberDesign.spacing) {
-                    HStack {
-                        Text("Library")
-                            .font(.largeTitle)
-                            .bold()
-                        Spacer()
-                        SaveSomethingButton(action: showCapture)
+            List {
+                Section {
+                    VStack(spacing: 0) {
+                        AdaptiveSectionControl(
+                            selection: $librarySection,
+                            choices: LibrarySection.allCases,
+                            accessibilityIdentifier: "remember.section.library",
+                            title: { $0.rawValue }
+                        )
+                        if !store.imprints.isEmpty {
+                            LibraryFilterBar(filter: $filter, newestFirst: $newestFirst)
+                        }
                     }
-                    .padding(.horizontal, RememberDesign.spacing)
-                    LibrarySearchField(text: $searchText)
-                        .padding(.horizontal, RememberDesign.spacing)
-                    Group {
-                        if !searchText.isEmpty && filteredImprints.isEmpty {
-                            ContentUnavailableView.search
-                        } else if !store.imprints.isEmpty && filteredImprints.isEmpty {
-                            ContentUnavailableView(
-                                "No \(filter.rawValue.lowercased()) items",
-                                systemImage: "line.3.horizontal.decrease.circle",
-                                description: Text("Choose another status to see more of your library.")
-                            )
-                        } else if store.imprints.isEmpty && !store.isLoading {
-                            ContentUnavailableView("Nothing saved yet", systemImage: "books.vertical", description: Text("Save a link to begin your personal archive."))
-                        } else {
-                            ScrollView {
-                                LazyVStack(spacing: RememberDesign.spacing) {
-                                    ScrollView(.horizontal) {
-                                        HStack(spacing: RememberDesign.spacingSmall) {
-                                            ForEach(LibraryFilter.allCases) { option in
-                                                Button {
-                                                    filter = option
-                                                } label: {
-                                                    Text(option.rawValue)
-                                                        .font(.subheadline.weight(.semibold))
-                                                        .padding(.horizontal, 16)
-                                                        .frame(minHeight: 44)
-                                                        .foregroundStyle(option == filter ? RememberDesign.accent : .primary)
-                                                        .background(option == filter ? RememberDesign.accent.opacity(0.14) : .clear, in: Capsule())
-                                                        .overlay {
-                                                            Capsule()
-                                                                .stroke(RememberDesign.secondaryText.opacity(option == filter ? 0 : 0.32))
-                                                        }
-                                                }
-                                                .buttonStyle(.plain)
-                                                .accessibilityAddTraits(option == filter ? .isSelected : [])
-                                            }
-                                        }
-                                    }
-                                    .scrollIndicators(.hidden)
-                                    .accessibilityLabel("Processing status")
-                                    .padding(.bottom, RememberDesign.spacingSmall)
-                                    ForEach(filteredImprints) { imprint in
-                                        NavigationLink(value: imprint) { ImprintCard(imprint: imprint) }
-                                            .buttonStyle(.plain)
-                                    }
+                }
+                .listRowInsets(.init())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+
+                if store.isLoading && store.imprints.isEmpty {
+                    ForEach(0..<5, id: \.self) { _ in
+                        ImprintCard(imprint: FixtureLibrary.imprints[0])
+                    }
+                    .redacted(reason: .placeholder)
+                    .allowsHitTesting(false)
+                } else if !searchText.isEmpty && filteredImprints.isEmpty {
+                    ContentUnavailableView.search
+                        .listRowSeparator(.hidden)
+                } else if !store.imprints.isEmpty && filteredImprints.isEmpty {
+                    ContentUnavailableView(
+                        "No matching saves",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("Choose another status above to see more of your library.")
+                    )
+                    .listRowSeparator(.hidden)
+                } else if store.imprints.isEmpty {
+                    ContentUnavailableView {
+                        Label("Nothing saved yet", systemImage: "books.vertical")
+                    } description: {
+                        Text("Use the bar below to keep a link or one of your own thoughts.")
+                    }
+                    .listRowSeparator(.hidden)
+                } else {
+                    ForEach(filteredImprints) { imprint in
+                        NavigationLink(value: imprint) {
+                            ImprintCard(imprint: imprint)
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            if imprint.sourceType != .note {
+                                Button("Open", systemImage: "arrow.up.right.square") {
+                                    openURL(imprint.url)
                                 }
-                                .padding(.horizontal, RememberDesign.spacing)
-                                .padding(.bottom, 96)
+                                .tint(RememberDesign.accent)
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if imprint.sourceType != .note {
+                                ShareLink(item: imprint.url) {
+                                    Label("Share", systemImage: "square.and.arrow.up")
+                                }
+                                .tint(RememberDesign.secondaryText)
+                            }
+                            if imprint.state == .failed {
+                                Button("Try analysis again", systemImage: "arrow.clockwise") {
+                                    Task { await store.retry(imprint) }
+                                }
+                                .tint(RememberDesign.accent)
+                            }
+                        }
+                        .contextMenu {
+                            if imprint.sourceType != .note {
+                                Button("Open original", systemImage: "arrow.up.right.square") {
+                                    openURL(imprint.url)
+                                }
+                                ShareLink(item: imprint.url)
+                            }
+                            if imprint.state == .failed {
+                                Button("Try analysis again", systemImage: "arrow.clockwise") {
+                                    Task { await store.retry(imprint) }
+                                }
                             }
                         }
                     }
                 }
-                .padding(.top, RememberDesign.spacingSmall)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .listStyle(.plain)
+            .navigationTitle("Library")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Search saves")
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
             .refreshable { await store.load() }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                QuickAddBar(title: "Save a link or thought", systemImage: "plus") {
+                    store.captureIsPresented = true
+                }
+            }
+            .rememberPrimaryActions()
         }
     }
 
-    private func showCapture() { store.captureIsPresented = true }
 }

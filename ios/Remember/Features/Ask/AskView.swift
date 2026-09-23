@@ -10,35 +10,58 @@ struct AskView: View {
             ZStack {
                 WarmBackground()
                 VStack(spacing: 0) {
-                    if model.messages.isEmpty {
+                    if model.messages.isEmpty && model.failureTitle == nil {
                         AskEmptyState(selectPrompt: selectPrompt)
                     } else {
-                        ScrollView {
-                            LazyVStack(spacing: RememberDesign.spacing) {
-                                ForEach(model.messages) { message in
-                                    AskMessageView(message: message, imprints: store.imprints)
-                                }
-                                if model.isResponding {
-                                    Label("Reading your library…", systemImage: "sparkles")
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                LazyVStack(spacing: RememberDesign.spacing) {
+                                    ForEach(model.messages) { message in
+                                        AskMessageView(message: message, imprints: store.imprints)
+                                    }
+                                    if model.isResponding {
+                                        HStack(spacing: RememberDesign.spacingSmall) {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .accessibilityHidden(true)
+                                            Text("Checking your saves…")
+                                        }
                                         .font(.subheadline)
                                         .foregroundStyle(RememberDesign.secondaryText)
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                if let title = model.failureTitle, let message = model.failureMessage {
-                                    AskFailureView(title: title, message: message) {
-                                        Task { await model.retry(using: store) }
+                                        .accessibilityElement(children: .combine)
                                     }
+                                    if let title = model.failureTitle, let message = model.failureMessage {
+                                        AskFailureView(title: title, message: message) {
+                                            Task { await model.retry(using: store) }
+                                        }
+                                    }
+                                    Color.clear.frame(height: 1).id("ask-bottom")
                                 }
+                                .padding(RememberDesign.spacing)
                             }
-                            .padding(RememberDesign.spacing)
+                            .onChange(of: model.messages.count) { scrollToBottom(proxy) }
+                            .onChange(of: model.isResponding) { scrollToBottom(proxy) }
+                            .onChange(of: model.failureMessage) { scrollToBottom(proxy) }
                         }
                     }
                     AskComposer(input: $model.input, isResponding: model.isResponding, submit: submit)
                         .focused($inputFocused)
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Ask")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
+            .toolbar {
+                if !model.messages.isEmpty || model.failureTitle != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("New conversation", systemImage: "square.and.pencil", action: startNewConversation)
+                    }
+                }
+            }
+            .rememberPrimaryActions()
+            .onAppear(perform: performAskHandoff)
+            .onChange(of: store.askDraft) { performAskHandoff() }
         }
     }
 
@@ -49,5 +72,20 @@ struct AskView: View {
 
     private func submit() {
         Task { await model.ask(using: store) }
+    }
+
+    private func startNewConversation() {
+        Task { await model.startNewConversation(using: store) }
+    }
+
+    private func performAskHandoff() {
+        guard let draft = store.askDraft else { return }
+        model.input = draft
+        store.askDraft = nil
+        inputFocused = true
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        proxy.scrollTo("ask-bottom", anchor: .bottom)
     }
 }

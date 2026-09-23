@@ -22,6 +22,7 @@ describe("portable exports", () => {
     expect(output).toContain("## Connections");
     expect(output).toContain("- Status: ready");
     expect(output).toContain("- Life period: A season of rebuilding");
-    expect(output).toContain("# Personal Life OS data");
+    expect(output).toContain("# Remember data");
+    expect(output).toContain("Saved items and personal records");
   });
 });

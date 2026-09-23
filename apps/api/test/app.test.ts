@@ -59,6 +59,22 @@ describe("HTTP API", () => {
     expect(await response.json()).toMatchObject({ grounded: false, citations: [] });
   });
 
+  it("returns an honest decision brief when the library has no supporting material", async () => {
+    const response = await request("/api/decisions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user-id": userId },
+      body: JSON.stringify({ decision: "Should I change how I spend my mornings?" }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      decision: "Should I change how I spend my mornings?",
+      grounded: false,
+      citations: [],
+      smallTest: expect.any(String),
+      nextQuestion: expect.any(String),
+    });
+  });
+
   it("keeps the capture duplicate aliases compatible", async () => {
     const headers = { "content-type": "application/json", "x-dev-user-id": userId };
     const body = JSON.stringify({ url: "https://example.com/contract-test" });
@@ -69,6 +85,151 @@ describe("HTTP API", () => {
     const second = await request("/api/items", { method: "POST", headers, body });
     expect(second.status).toBe(200);
     expect(await second.json()).toMatchObject({ deduplicated: true, duplicate: true });
+  });
+
+  it("captures the user’s own thought as a first-class memory", async () => {
+    const thoughtUser = "32000000-0000-4000-8000-000000000003";
+    const thought = "Protect the first quiet hour of the day before reacting to anyone else.";
+    const response = await request("/api/items", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-dev-user-id": thoughtUser,
+        "idempotency-key": "thought-contract-1",
+      },
+      body: JSON.stringify({ thought, returnCue: "focus" }),
+    });
+    expect(response.status).toBe(202);
+    const payload = await response.json() as {
+      item: { sourceType: string; noteText: string | null; title: string | null; canonicalUrl: string; returnCue: string | null };
+    };
+    expect(payload.item).toMatchObject({ sourceType: "note", noteText: thought, title: thought, returnCue: "focus" });
+    expect(payload.item.canonicalUrl).toMatch(/^remember:\/\/thought\/[0-9a-f-]+$/i);
+
+    const list = await request("/api/items", { headers: { "x-dev-user-id": thoughtUser } });
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject({ items: [{ sourceType: "note", noteText: thought }] });
+  });
+
+  it("normalizes offset return dates for captures, reads, and rescheduling", async () => {
+    const headers = { "content-type": "application/json", "x-dev-user-id": "31000000-0000-4000-8000-000000000013" };
+    for (const subject of [{ thought: "Protect a quiet morning." }, { url: "https://example.com/offset-return" }]) {
+      const capture = await request("/api/items", { method: "POST", headers, body: JSON.stringify({
+        ...subject, returnCue: "date", returnAt: "2026-09-12T00:00:00-06:00",
+      }) });
+      expect(capture.status).toBe(202);
+      const { item } = await capture.json() as { item: { id: string; returnAt: string } };
+      expect(item.returnAt).toBe("2026-09-12T06:00:00.000Z");
+      const updated = await request(`/api/items/${item.id}/return-cue`, { method: "PATCH", headers, body: JSON.stringify({
+        returnCue: "date", returnAt: "2026-09-13T00:00:00+09:00",
+      }) });
+      expect(updated.status).toBe(200);
+      expect(await updated.json()).toMatchObject({ item: { returnAt: "2026-09-12T15:00:00.000Z" } });
+      const detail = await request(`/api/items/${item.id}`, { headers });
+      expect(await detail.json()).toMatchObject({ item: { returnAt: "2026-09-12T15:00:00.000Z" } });
+    }
+  });
+
+  it("keeps and updates an intentional return cue", async () => {
+    const cueUser = "31000000-0000-4000-8000-000000000003";
+    const headers = { "content-type": "application/json", "x-dev-user-id": cueUser };
+    const capture = await request("/api/items", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        url: "https://example.com/return-cue-contract",
+        personalReaction: "This is the perspective I lose when I rush.",
+        returnCue: "focus",
+      }),
+    });
+    expect(capture.status).toBe(202);
+    const captured = await capture.json() as { item: { id: string; returnCue: string | null; returnAt: string | null } };
+    expect(captured.item).toMatchObject({ returnCue: "focus", returnAt: null });
+
+    const returnAt = "2026-09-12T15:00:00.000Z";
+    const updated = await request(`/api/items/${captured.item.id}/return-cue`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ returnCue: "date", returnAt }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({ item: { id: captured.item.id, returnCue: "date", returnAt } });
+  });
+
+  it("turns any returned memory check-in into personal evidence", async () => {
+    const reflectionUser = "33000000-0000-4000-8000-000000000003";
+    const headers = { "content-type": "application/json", "x-dev-user-id": reflectionUser };
+    const capture = await request("/api/items", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ thought: "Make before consuming when the day still feels like mine." }),
+    });
+    expect(capture.status).toBe(202);
+    const captured = await capture.json() as { item: { id: string } };
+    await env.DB.prepare("UPDATE items SET status = 'ready' WHERE id = ?1").bind(captured.item.id).run();
+
+    const reflected = await request(`/api/items/${captured.item.id}/reflect`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ response: "changed_mind" }),
+    });
+    expect(reflected.status).toBe(200);
+    expect(await reflected.json()).toMatchObject({
+      recorded: true,
+      reflection: { itemId: captured.item.id, response: "changed_mind" },
+    });
+
+    const evolution = await request("/api/evolution", { headers: { "x-dev-user-id": reflectionUser } });
+    expect(await evolution.json()).toMatchObject({
+      reflections: [expect.objectContaining({ itemId: captured.item.id, response: "changed_mind" })],
+    });
+
+    const otherUser = "34000000-0000-4000-8000-000000000003";
+    const forbidden = await request(`/api/items/${captured.item.id}/reflect`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user-id": otherUser },
+      body: JSON.stringify({ response: "still_true" }),
+    });
+    expect(forbidden.status).toBe(404);
+  });
+
+  it("remembers whether a contextual return was useful today", async () => {
+    const contextualUser = "35000000-0000-4000-8000-000000000003";
+    const headers = { "content-type": "application/json", "x-dev-user-id": contextualUser };
+    const capture = await request("/api/items", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ thought: "Protect a small window for making before consuming." }),
+    });
+    const captured = await capture.json() as { item: { id: string } };
+    await env.DB.prepare("UPDATE items SET status = 'ready' WHERE id = ?1").bind(captured.item.id).run();
+
+    const feedback = await request(`/api/items/${captured.item.id}/contextual-return-feedback`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ response: "not_today" }),
+    });
+    expect(feedback.status).toBe(200);
+    expect(await feedback.json()).toMatchObject({
+      recorded: true,
+      feedback: { itemId: captured.item.id, response: "not_today" },
+    });
+
+    const evolution = await request("/api/evolution", { headers: { "x-dev-user-id": contextualUser } });
+    expect(await evolution.json()).toMatchObject({
+      returnFeedback: [expect.objectContaining({ itemId: captured.item.id, response: "not_today" })],
+      recentQuestion: null,
+    });
+  });
+
+  it("requires a chosen day for a dated return cue", async () => {
+    const response = await request("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dev-user-id": userId },
+      body: JSON.stringify({ url: "https://example.com/missing-return-day", returnCue: "date" }),
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ error: { code: "validation_error" } });
   });
 
   it("never accepts the dev-session header on a live host", async () => {
@@ -188,6 +349,66 @@ describe("HTTP API", () => {
     expect(floorItem.completionDates).toEqual([floorDate]);
   });
 
+  it("keeps a task when the person chooses something else", async () => {
+    const lifeUser = "51000000-0000-4000-8000-000000000099";
+    const headers = { "x-dev-user-id": lifeUser, "content-type": "application/json" };
+    const create = async (title: string) => {
+      const response = await request("/api/life/tasks", {
+        method: "POST", headers,
+        body: JSON.stringify({ title, area: "work", status: "queued", priority: "normal", durationMinutes: 15 }),
+      });
+      expect(response.status).toBe(201);
+      return (await response.json() as { task: { id: string; status: string } }).task;
+    };
+    const first = await create("Write the update");
+    const second = await create("Review the notes");
+    expect(first.status).toBe("active");
+    expect(second.status).toBe("queued");
+
+    const response = await request("/api/life/tasks/" + first.id + "/block", {
+      method: "POST", headers, body: JSON.stringify({ reason: "different" }),
+    });
+    expect(response.status).toBe(200);
+    const result = await response.json() as {
+      task: { id: string; status: string; notBefore: string | null };
+      next: { id: string; status: string };
+    };
+    expect(result.task).toMatchObject({ id: first.id, status: "queued" });
+    expect(Date.parse(result.task.notBefore ?? "")).toBeGreaterThan(Date.now());
+    expect(result.next).toMatchObject({ id: second.id, status: "active" });
+  });
+
+  it("turns a completed saved-idea practice into lived evidence", async () => {
+    const lifeUser = "51000000-0000-4000-8000-000000000005";
+    const headers = { "content-type": "application/json", "x-dev-user-id": lifeUser };
+    const createdResponse = await request("/api/life/tasks", {
+      method: "POST", headers,
+      body: JSON.stringify({ title: "Make before consuming", firstStep: "Create for fifteen minutes", area: "work", source: "practice", status: "queued" }),
+    });
+    expect(createdResponse.status).toBe(201);
+    const created = await createdResponse.json() as { task: { id: string } };
+
+    const completedResponse = await request(`/api/life/tasks/${created.task.id}/complete`, {
+      method: "POST", headers,
+      body: JSON.stringify({ minutesSpent: 15, result: { outcome: "helped", reflection: "Starting before scrolling made the work feel like mine." } }),
+    });
+    expect(completedResponse.status).toBe(200);
+    expect(await completedResponse.json()).toMatchObject({
+      task: {
+        status: "done",
+        practiceOutcome: "helped",
+        practiceReflection: "Starting before scrolling made the work feel like mine.",
+      },
+    });
+
+    const reflectedResponse = await request(`/api/life/tasks/${created.task.id}/reflect`, {
+      method: "POST", headers,
+      body: JSON.stringify({ outcome: "mixed", reflection: "It worked when the phone was outside the room." }),
+    });
+    expect(reflectedResponse.status).toBe(200);
+    expect(await reflectedResponse.json()).toMatchObject({ task: { practiceOutcome: "mixed", practiceReflection: "It worked when the phone was outside the room." } });
+  });
+
   it("syncs calendar, health, and finance data into one private snapshot", async () => {
     const lifeUser = "60000000-0000-4000-8000-000000000006";
     const headers = { "content-type": "application/json", "x-dev-user-id": lifeUser };
@@ -203,6 +424,56 @@ describe("HTTP API", () => {
     expect((await request("/api/life/finance/transactions/sync", { method: "POST", headers, body: JSON.stringify({ transactions: [{ accountId: syncedAccount.id, externalId: "transaction-1", name: "Groceries", merchant: "Market", amount: -42.5, currency: "USD", category: "Food", occurredAt: startAt, status: "posted", notes: "" }] }) })).status).toBe(200);
     const snapshot = await request("/api/life", { headers: { "x-dev-user-id": lifeUser } });
     expect(await snapshot.json()).toMatchObject({ events: [{ title: "Flight" }], health: [{ type: "steps", value: 7_500 }], accounts: [{ name: "Checking", balance: 1250 }], transactions: [{ accountId: syncedAccount.id, amount: -42.5 }] });
+  });
+
+  it("keeps authoritative Health summaries beyond the recent-sample cap", async () => {
+    const lifeUser = "62000000-0000-4000-8000-000000000006";
+    const headers = { "content-type": "application/json", "x-dev-user-id": lifeUser };
+    const now = Date.now();
+    const rawMetrics = Array.from({ length: 2_001 }, (_, index) => {
+      const startAt = new Date(now - index * 1_000).toISOString();
+      return {
+        externalId: `raw-step-${index}`,
+        type: "steps",
+        value: 1,
+        unit: "count",
+        startAt,
+        endAt: new Date(Date.parse(startAt) + 500).toISOString(),
+        source: "Legacy Apple Health",
+        metadata: { bundleIdentifier: "legacy.watch" },
+      };
+    });
+    for (let start = 0; start < rawMetrics.length; start += 400) {
+      const response = await request("/api/life/health/sync", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ metrics: rawMetrics.slice(start, start + 400) }),
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const authoritativeStart = new Date(now - 30 * 86_400_000).toISOString();
+    const authoritative = {
+      externalId: "healthkit.steps.authoritative",
+      type: "steps",
+      value: 8_432,
+      unit: "count",
+      startAt: authoritativeStart,
+      endAt: new Date(Date.parse(authoritativeStart) + 86_400_000).toISOString(),
+      source: "Apple Health",
+      metadata: { aggregation: "healthkit_statistics" },
+    };
+    expect((await request("/api/life/health/sync", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ metrics: [authoritative] }),
+    })).status).toBe(200);
+
+    const snapshot = await request("/api/life", { headers: { "x-dev-user-id": lifeUser } });
+    expect(snapshot.status).toBe(200);
+    const body = await snapshot.json() as { health: Array<{ externalId: string | null; value: number }> };
+    expect(body.health).toHaveLength(2_001);
+    expect(body.health).toContainEqual(expect.objectContaining({ externalId: authoritative.externalId, value: 8_432 }));
   });
 
   it("uploads and downloads a private vault file", async () => {

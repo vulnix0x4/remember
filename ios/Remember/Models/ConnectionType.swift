@@ -12,9 +12,9 @@ enum ConnectionType: String, Codable, Sendable {
         switch self {
         case .relatedTo: "Related to"
         case .supports: "Supports"
-        case .contradicts: "In tension with"
+        case .contradicts: "Contrasts with"
         case .extends: "Extends"
-        case .sameTheme: "Shares a theme"
+        case .sameTheme: "Shares a topic"
         case .changedInto: "Changed into"
         }
     }

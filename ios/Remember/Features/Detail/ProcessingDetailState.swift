@@ -3,9 +3,9 @@ import SwiftUI
 struct ProcessingDetailState: View {
     var body: some View {
         ContentUnavailableView {
-            Label("Understanding this source", systemImage: "sparkles")
+            Label("Getting this save ready", systemImage: "clock")
         } description: {
-            Text("The link is already safe. Ideas, moments, and connections will arrive here when processing finishes.")
+            Text("The link is safe. Key ideas, moments, and related saves will appear here when they’re ready.")
         }
     }
 }

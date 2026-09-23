@@ -18,7 +18,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
       <main className="fatal-state" role="alert">
         <span><Warning size={25} /></span>
         <h1>Remember could not open this view</h1>
-        <p>Your saved data is safe. Reload the app to return to your memory.</p>
+        <p>Your saved data is safe. Reload the app to return to Remember.</p>
         <button className="button primary" type="button" onClick={() => window.location.reload()}><ArrowClockwise size={17} /> Reload app</button>
       </main>
     );

@@ -7,13 +7,20 @@ enum APIItemMapper {
         principle: APIItemDetailResponse.PrincipleDTO? = nil
     ) throws -> Imprint {
         guard let id = UUID(uuidString: dto.id) else { throw APIError.invalidResponse }
+        let sourceType: SourceType = switch dto.sourceType {
+        case "youtube": .youtube
+        case "note": .note
+        default: .web
+        }
         guard let url = URL(string: dto.canonicalUrl.isEmpty ? dto.originalUrl : dto.canonicalUrl),
-              URLValidator.validatedWebURL(from: url.absoluteString) != nil else { throw APIError.invalidResponse }
+              sourceType == .note || URLValidator.validatedWebURL(from: url.absoluteString) != nil else {
+            throw APIError.invalidResponse
+        }
         guard let savedAt = try? Date(dto.savedAt, strategy: .iso8601) else { throw APIError.invalidResponse }
         let analysis = dto.analysis
         let state = state(from: dto.status)
-        let fallbackEssence = state == .failed ? "This source could not be analyzed yet." : "Understanding what made this worth keeping."
-        let host = url.host()?.replacing(/^www\./, with: "") ?? "Saved source"
+        let fallbackEssence = state == .failed ? "This source could not be analyzed yet." : "Saved safely. Analysis is still in progress."
+        let host = sourceType == .note ? "Your thought" : (url.host()?.replacing(/^www\./, with: "") ?? "Saved source")
         var uncertainties = analysis?.uncertainties.map(\.text) ?? []
         if state == .failed {
             uncertainties.append(failureMessage(for: dto.processingError))
@@ -39,9 +46,9 @@ enum APIItemMapper {
             id: id,
             url: url,
             thumbnailURL: dto.thumbnailUrl.flatMap(URL.init(string:)),
-            sourceType: dto.sourceType == "youtube" ? .youtube : .web,
+            sourceType: sourceType,
             title: dto.title ?? analysis?.essence ?? host,
-            creator: dto.author ?? host,
+            creator: dto.author ?? (sourceType == .note ? "You" : host),
             savedAt: savedAt,
             lifePeriod: "Saved in \(savedAt.formatted(.dateTime.month(.wide).year()))",
             essence: analysis?.essence ?? fallbackEssence,
@@ -61,7 +68,10 @@ enum APIItemMapper {
             reaction: dto.personalReaction,
             principleID: principle.flatMap { UUID(uuidString: $0.id) },
             principleStatus: principle?.status,
-            analysisScope: dto.analysisScope
+            analysisScope: dto.analysisScope,
+            returnCue: dto.returnCue.flatMap(ReturnCue.init(rawValue:)),
+            returnAt: dto.returnAt.flatMap { try? Date($0, strategy: .iso8601) },
+            noteText: dto.noteText
         )
     }
 

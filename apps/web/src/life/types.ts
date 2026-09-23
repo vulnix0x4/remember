@@ -2,6 +2,8 @@ export type LifeArea = "health" | "work" | "relationships" | "environment" | "mo
 export type TaskStatus = "inbox" | "queued" | "active" | "waiting" | "done" | "removed";
 export type TaskPriority = "low" | "normal" | "high" | "must";
 export type BlockerReason = "big" | "unclear" | "time" | "place" | "irrelevant" | "different";
+export type PracticeOutcome = "helped" | "mixed" | "not_for_me";
+export interface PracticeResult { outcome: PracticeOutcome; reflection: string }
 
 export interface Goal {
   id: string; title: string; area: LifeArea; vision: string; why: string;
@@ -13,8 +15,11 @@ export interface LifeTask {
   id: string; goalId: string | null; title: string; firstStep: string; notes: string; area: LifeArea;
   status: TaskStatus; priority: TaskPriority; energy: "low" | "medium" | "high" | "any";
   durationMinutes: number; dueAt: string | null; scheduledStart: string | null; scheduledEnd: string | null;
-  source: "manual" | "goal" | "mission" | "practice" | "calendar" | "health" | "floor";
+  source: "manual" | "goal" | "mission" | "practice" | "decision" | "calendar" | "health" | "floor";
+  sourceItemId?: string | null; practiceOutcome?: PracticeOutcome | null;
+  practiceReflection?: string; reflectedAt?: string | null;
   completedAt: string | null; createdAt: string; updatedAt: string;
+  repeatEveryDays?: number | null; notBefore?: string | null;
 }
 
 export interface BlockerEvent {

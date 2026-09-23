@@ -2,46 +2,46 @@ import SwiftUI
 
 struct ResurfacedCard: View {
     let imprint: Imprint
-    @State private var showsMeaning = false
+    var onReflectionSaved: () -> Void = {}
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 0) {
-            ArchiveArtwork(imprint: imprint, height: 214)
-            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                Label {
-                    Text("Saved \(imprint.savedAt, format: .relative(presentation: .named))")
-                } icon: {
-                    Image(systemName: "clock.arrow.circlepath")
+            ArchiveArtwork(imprint: imprint, height: dynamicTypeSize.isAccessibilitySize ? 120 : 172)
+            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        Label("Saved \(imprint.savedAt, format: .relative(presentation: .named))", systemImage: "clock")
+                    } else {
+                        HStack {
+                            Text("Saved \(imprint.savedAt, format: .relative(presentation: .named))")
+                            Spacer()
+                            Image(systemName: "arrow.right")
+                        }
+                    }
                 }
-                    .font(.subheadline)
-                    .bold()
-                    .foregroundStyle(RememberDesign.accent)
+                .font(.caption)
+                .foregroundStyle(RememberDesign.secondaryText)
                 Text(imprint.essence)
-                    .font(.title2)
-                    .bold()
-                    .tracking(-0.45)
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(imprint.title)
                     .font(.subheadline)
                     .foregroundStyle(RememberDesign.secondaryText)
-                Divider().overlay(RememberDesign.line)
-                DisclosureGroup("Why it may have mattered", isExpanded: $showsMeaning) {
-                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                        Text(imprint.personalHypotheses.first ?? "You saved this during \(imprint.lifePeriod.lowercased()).")
-                            .font(.body)
-                            .foregroundStyle(RememberDesign.secondaryText)
-                        Text("A possibility based only on your saved material")
-                            .font(.footnote)
-                            .foregroundStyle(RememberDesign.tertiaryText)
-                    }
-                    .padding(.top, RememberDesign.spacingSmall)
+                    .lineLimit(2)
+                MemoryCheckIn(imprint: imprint, onSaved: onReflectionSaved)
+                NavigationLink(value: imprint) {
+                    Label("Open saved item", systemImage: "arrow.right")
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .font(.headline)
+                .buttonStyle(.borderedProminent)
+                .tint(RememberDesign.accent)
+                .foregroundStyle(RememberDesign.accentInk)
+                .padding(.top, RememberDesign.spacingSmall)
             }
-            .padding(RememberDesign.spacingLarge)
+            .padding(RememberDesign.spacing)
         }
         .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
-        .overlay { RoundedRectangle(cornerRadius: RememberDesign.cornerRadius).stroke(RememberDesign.line) }
-        .shadow(color: .black.opacity(0.24), radius: 30, y: 18)
+        .clipShape(.rect(cornerRadius: RememberDesign.cornerRadius))
     }
 }

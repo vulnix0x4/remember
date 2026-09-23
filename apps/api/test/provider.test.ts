@@ -21,7 +21,7 @@ describe("OpenRouter analysis provider", () => {
     expect(OPENROUTER_ANALYSIS_TIMEOUT_MS).toBe(300_000);
   });
 
-  it("sends Ox Alpha a private, transcript-grounded JSON request", async () => {
+  it("sends GLM 5.3 Flash a private, transcript-grounded JSON request with a fallback", async () => {
     const analysis = analysisSchema.parse({
       essence: "A grounded idea worth returning to.",
       summary: "A concise summary grounded in the supplied video.",
@@ -39,7 +39,7 @@ describe("OpenRouter analysis provider", () => {
       requests.push(new Request(input, init));
       return Response.json({ choices: [{ message: { content: JSON.stringify(analysis) } }] });
     };
-    const provider = new OpenRouterProvider("stealth/ox-alpha", "test-secret", "https://remember.example.com", fetcher);
+    const provider = new OpenRouterProvider("z-ai/glm-5.3-flash", "test-secret", "https://remember.example.com", fetcher);
 
     await expect(provider.analyze({
       canonicalUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -55,11 +55,11 @@ describe("OpenRouter analysis provider", () => {
     expect(request?.headers.get("authorization")).toBe("Bearer test-secret");
     expect(request?.headers.get("http-referer")).toBe("https://remember.example.com");
     const body = await request?.json() as {
-      model: string;
+      models: string[];
       messages: Array<{ content: unknown }>;
       provider: { require_parameters: boolean; data_collection: string };
     };
-    expect(body.model).toBe("stealth/ox-alpha");
+    expect(body.models).toEqual(["z-ai/glm-5.3-flash", "openai/gpt-5-mini"]);
     expect(body.messages[1]?.content).toContain("[0:42] A useful distinction.");
     expect(body.messages[1]?.content).toContain("Return only valid JSON");
     expect(body).not.toHaveProperty("response_format");
@@ -84,7 +84,7 @@ describe("OpenRouter analysis provider", () => {
       body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
       return Response.json({ choices: [{ message: { content: JSON.stringify(analysis) } }] });
     };
-    const provider = new OpenRouterProvider("stealth/ox-alpha", "test-secret", "https://remember.example.com", fetcher);
+    const provider = new OpenRouterProvider("z-ai/glm-5.3-flash", "test-secret", "https://remember.example.com", fetcher);
 
     await expect(provider.analyze({
       canonicalUrl: "https://x.com/jack/status/20",
@@ -118,7 +118,7 @@ describe("OpenRouter analysis provider", () => {
       body = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
       return Response.json({ choices: [{ message: { content: JSON.stringify(analysis) } }] });
     };
-    const provider = new OpenRouterProvider("stealth/ox-alpha", "test-secret", "https://remember.example.com", fetcher);
+    const provider = new OpenRouterProvider("z-ai/glm-5.3-flash", "test-secret", "https://remember.example.com", fetcher);
 
     await expect(provider.analyze({
       canonicalUrl: "https://www.tiktok.com/@creator/video/1234567890123456789",

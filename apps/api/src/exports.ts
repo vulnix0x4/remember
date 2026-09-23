@@ -2,7 +2,8 @@ import { z } from "zod";
 import { ApiError } from "./http";
 import { ITEM_SELECT, publicItem } from "./repository";
 import { LifeRepository } from "./life-repository";
-import type { LifeSnapshot } from "@remember/domain";
+import { BrainService } from "./brain";
+import type { BrainState, LifeSnapshot } from "@remember/domain";
 import type { ItemRow } from "./types";
 
 export const exportRequestSchema = z.object({ format: z.enum(["json", "markdown"]) });
@@ -33,6 +34,7 @@ interface ExportDataset {
   chatThreads: Record<string, unknown>[];
   chatMessages: Record<string, unknown>[];
   life: LifeSnapshot;
+  brain: BrainState | null;
 }
 
 function markdownFor(dataset: ExportDataset): string {
@@ -57,7 +59,7 @@ function markdownFor(dataset: ExportDataset): string {
     const hypotheses =
       analysis?.personalRelevanceHypotheses.map(
         (hypothesis) =>
-          `- **Hypothesis** (confidence: ${hypothesis.confidence}): ${markdownText(hypothesis.text)}\n  Evidence: ${hypothesis.evidence.length ? hypothesis.evidence.map(markdownText).join("; ") : "None supplied"}`,
+          `- **Possibility** (confidence: ${hypothesis.confidence}): ${markdownText(hypothesis.text)}\n  Evidence: ${hypothesis.evidence.length ? hypothesis.evidence.map(markdownText).join("; ") : "None supplied"}`,
       ) ?? [];
     const uncertainties =
       analysis?.uncertainties.map(
@@ -80,9 +82,9 @@ function markdownFor(dataset: ExportDataset): string {
       `provenance: ${JSON.stringify(item.provenance)}`,
       "---",
       "",
-      `# ${markdownText(item.title ?? analysis?.essence ?? "Untitled Imprint")}`,
+      `# ${markdownText(item.title ?? analysis?.essence ?? "Untitled save")}`,
       "",
-      "## Essence",
+      "## Takeaway",
       "",
       markdownText(analysis?.essence ?? "This source has not been analyzed."),
       "",
@@ -98,7 +100,7 @@ function markdownFor(dataset: ExportDataset): string {
       "",
       moments.length ? moments.join("\n") : "_None._",
       "",
-      "## Themes",
+      "## Topics",
       "",
       markdownList(analysis?.themes ?? []),
       "",
@@ -106,19 +108,19 @@ function markdownFor(dataset: ExportDataset): string {
       "",
       claims.length ? claims.join("\n") : "_None._",
       "",
-      "## Candidate principles",
+      "## Possible takeaways",
       "",
       principles.length ? principles.join("\n") : "_None._",
       "",
-      "## Actionable experiments",
+      "## Things to try",
       "",
       experiments.length ? experiments.join("\n") : "_None._",
       "",
-      "## Personal-relevance hypotheses",
+      "## Possible relevance",
       "",
       hypotheses.length ? hypotheses.join("\n") : "_None._",
       "",
-      "## Uncertainties",
+      "## What is uncertain",
       "",
       uncertainties.length ? uncertainties.join("\n") : "_None._",
       "",
@@ -126,7 +128,7 @@ function markdownFor(dataset: ExportDataset): string {
       "",
       item.personalReaction ? markdownText(item.personalReaction) : "_None recorded._",
       "",
-      "## Processing provenance",
+      "## Analysis details",
       "",
       `\`\`\`json\n${JSON.stringify(item.provenance, null, 2)}\n\`\`\``,
     ]
@@ -138,20 +140,21 @@ function markdownFor(dataset: ExportDataset): string {
     "# Remember export",
     `Generated ${dataset.exportedAt}`,
     sections.join("\n\n"),
-    "# Personal evolution data",
+    "# Patterns and history",
     recordList("Connections", dataset.connections),
     recordList("Personal signals", dataset.personalSignals),
-    recordList("Candidate principles", dataset.candidatePrinciples),
+    recordList("Possible takeaways", dataset.candidatePrinciples),
     recordList("Resurfacing history", dataset.resurfacingEvents),
     recordList("Ask conversations", [...dataset.chatThreads, ...dataset.chatMessages]),
-    "# Personal Life OS data",
+    "# Plans and personal records",
+    recordList("Automatic planning", dataset.brain ? [dataset.brain] : []),
     recordList("Goals", dataset.life.goals),
-    recordList("Tasks and blocker history", [...dataset.life.tasks, ...dataset.life.blockers]),
-    recordList("Life Floor", dataset.life.floor),
+    recordList("Tasks and adjustments", [...dataset.life.tasks, ...dataset.life.blockers]),
+    recordList("Daily basics", dataset.life.floor),
     recordList("Calendar", dataset.life.events),
     recordList("Health", dataset.life.health),
     recordList("Finances", [...dataset.life.accounts, ...dataset.life.transactions]),
-    recordList("Private vault metadata", dataset.life.files),
+    recordList("File metadata", dataset.life.files),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -168,7 +171,7 @@ export class ExportService {
   }
 
   private async dataset(userId: string, exportedAt: string): Promise<ExportDataset> {
-    const [items, connections, personalSignals, candidatePrinciples, resurfacingEvents, chatThreads, chatMessages, life] = await Promise.all([
+    const [items, connections, personalSignals, candidatePrinciples, resurfacingEvents, chatThreads, chatMessages, life, brain] = await Promise.all([
       this.allItems(userId),
       this.env.DB.prepare("SELECT * FROM connections WHERE user_id = ?1 ORDER BY created_at").bind(userId).all(),
       this.env.DB.prepare("SELECT * FROM personal_signals WHERE user_id = ?1 ORDER BY occurred_at").bind(userId).all(),
@@ -182,6 +185,7 @@ export class ExportService {
         .bind(userId)
         .all(),
       new LifeRepository(this.env.DB).snapshot(userId, { allHistory: true }),
+      new BrainService(this.env).read(userId),
     ]);
     return {
       schemaVersion: 2,
@@ -193,7 +197,7 @@ export class ExportService {
       resurfacingEvents: resurfacingEvents.results,
       chatThreads: chatThreads.results,
       chatMessages: chatMessages.results,
-      life,
+      life, brain,
     };
   }
 

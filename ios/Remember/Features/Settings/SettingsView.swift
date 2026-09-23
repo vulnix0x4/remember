@@ -3,51 +3,58 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dismiss) private var dismiss
     @State private var exportFormat: ExportFormat = .markdown
     @State private var exportDocument = ExportDocument(data: Data())
     @State private var exportIsPresented = false
     @State private var exportError: String?
     @State private var exportErrorIsPresented = false
+    @State private var signOutIsPresented = false
+    @State private var isSigningOut = false
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Settings")
-                    .font(.largeTitle)
-                    .bold()
-                    .padding(.horizontal, RememberDesign.spacing)
-                    .padding(.top, RememberDesign.spacingSmall)
-                Form {
-                    Section("Account") {
-                        LabeledContent("Sync", value: "Private cloud")
-                        LabeledContent("Knowledge", value: CountLabelFormatter.text(store.imprints.count, singular: "imprint"))
-                        Text("Your iPhone and web Personal Life OS stay in sync.")
-                            .font(.footnote)
-                            .foregroundStyle(RememberDesign.secondaryText)
-                        Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right") {
-                            Task { await store.signOut() }
-                        }
+            Form {
+                Section("Account") {
+                    LabeledContent("Sync", value: "Private cloud")
+                    LabeledContent("Library", value: CountLabelFormatter.text(store.imprints.count, singular: "save"))
+                    Button("Sign out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                        signOutIsPresented = true
                     }
-                    Section("Data") {
-                        Picker("Export format", selection: $exportFormat) {
-                            ForEach(ExportFormat.allCases) { Text($0.rawValue.capitalized).tag($0) }
-                        }
-                        Button("Export my data", systemImage: "square.and.arrow.up", action: prepareExport)
+                    .disabled(isSigningOut)
+                }
+                Section("Your data") {
+                    Picker("Export format", selection: $exportFormat) {
+                        ForEach(ExportFormat.allCases) { Text($0.rawValue.capitalized).tag($0) }
                     }
-                    Section("Privacy") {
-                        Label("Personal-relevance guesses are labeled as hypotheses", systemImage: "checkmark.shield")
-                        Label("Original links are preserved", systemImage: "link")
-                        Label("Ask answers cite only your saved sources", systemImage: "lock")
-                        Label("Health and Calendar access is permission-controlled", systemImage: "heart.text.square")
-                    }
-                    Section("About") {
-                        LabeledContent("Version", value: versionLabel)
-                        Text("Remember, decide, act, and reset—with your life back in view.")
-                            .foregroundStyle(RememberDesign.secondaryText)
+                    .pickerStyle(.segmented)
+                    Button("Export data", systemImage: "square.and.arrow.up", action: prepareExport)
+                    Text("Exports are not encrypted after you save them outside Remember.")
+                        .font(.footnote)
+                        .foregroundStyle(RememberDesign.secondaryText)
+                }
+                Section("Privacy and permissions") {
+                    Label("Ask answers cite your saved sources", systemImage: "checkmark.shield")
+                    Label("Health and Calendar access is optional", systemImage: "heart.text.square")
+                    Button("Open system settings", systemImage: "gear") {
+                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                        openURL(url)
                     }
                 }
+                Section("About") {
+                    LabeledContent("Version", value: versionLabel)
+                    Text("Remember keeps your saves, plans, and personal data together.")
+                        .foregroundStyle(RememberDesign.secondaryText)
+                }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: dismiss.callAsFunction)
+                }
+            }
             .fileExporter(
                 isPresented: $exportIsPresented,
                 document: exportDocument,
@@ -61,6 +68,16 @@ struct SettingsView: View {
             }
             .alert("Export failed", isPresented: $exportErrorIsPresented) { } message: {
                 Text(exportError ?? "Please try again.")
+            }
+            .confirmationDialog("Sign out of Remember?", isPresented: $signOutIsPresented, titleVisibility: .visible) {
+                Button("Sign out", role: .destructive) {
+                    isSigningOut = true
+                    Task {
+                        await store.signOut()
+                        isSigningOut = false
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
             }
         }
     }

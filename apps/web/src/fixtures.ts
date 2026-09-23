@@ -22,9 +22,11 @@ export const imprints: Imprint[] = [
       { time: "03:18", seconds: 198, title: "Pain is not a lesson by default", note: "Meaning comes from what you make of it later." },
       { time: "08:42", seconds: 522, title: "The identity after", note: "A changed self can choose more deliberately." }
     ],
+    experiments: [{ text: "Write down one useful change this difficult season revealed, then choose one action that honors it.", duration: "15 minutes" }],
     principle: "During a hard period, notice what it is changing instead of treating the whole period as wasted.",
     hypothesis: "This may have mattered because you were trying to see rebuilding as movement, not failure.",
     uncertainty: "No personal reaction was recorded, so the reason this mattered is an inference.",
+    returnCue: "stuck",
     status: "ready",
     color: "sage",
     connectionIds: ["letting-go", "creative-life"]
@@ -43,6 +45,7 @@ export const imprints: Imprint[] = [
     themes: ["Relationships", "Acceptance", "Identity"],
     keyIdeas: ["Release can coexist with care.", "Closure is often a practice rather than a final conversation."],
     moments: [{ time: "21:05", seconds: 1265, title: "What acceptance changes", note: "Acceptance returns attention to the present." }],
+    experiments: [{ text: "Name one thing you can release without denying that it mattered.", duration: "10 minutes" }],
     principle: "Keep what was true without requiring the past to continue.",
     hypothesis: "You may have been looking for a way to move forward without making the relationship meaningless.",
     status: "ready",
@@ -63,7 +66,9 @@ export const imprints: Imprint[] = [
     themes: ["Building", "Purpose", "Independence"],
     keyIdeas: ["Taste is a practice of noticing.", "Consistency gives inspiration somewhere to land."],
     moments: [{ time: "Section 4", seconds: 0, title: "Detach the maker", note: "The work is information, not a verdict on you." }],
+    experiments: [{ text: "Make something for fifteen minutes before consuming anything tomorrow.", duration: "Tomorrow" }],
     principle: "Protect a small daily window for making before consuming.",
+    returnCue: "focus",
     status: "ready",
     color: "graphite",
     connectionIds: ["worst-years", "discipline"]
@@ -82,6 +87,7 @@ export const imprints: Imprint[] = [
     themes: ["Discipline", "Building"],
     keyIdeas: ["Motivation fails when the future feels abstract."],
     moments: [],
+    experiments: [],
     status: "processing",
     color: "amber",
     connectionIds: ["creative-life"]
@@ -100,9 +106,33 @@ export const imprints: Imprint[] = [
     themes: ["Uncertainty", "Identity", "Acceptance"],
     keyIdeas: ["Not knowing can be an active position.", "Certainty can protect an identity that needs to change."],
     moments: [],
+    experiments: [],
+    returnCue: "decision",
     status: "partial",
     color: "violet",
     connectionIds: ["letting-go"]
+  },
+  {
+    id: "quiet-hour-thought",
+    title: "The first quiet hour is where I can hear myself think",
+    creator: "You",
+    sourceType: "Thought",
+    url: "remember://thought/quiet-hour-thought",
+    savedAt: "August 28, 2026",
+    lifePeriod: "Building something of my own",
+    essence: "My clearest work begins before the day starts asking things from me.",
+    summary: "A personal observation that quiet, self-directed time is not a luxury; it is the condition that makes the most important work possible.",
+    themes: ["Attention", "Building", "Independence"],
+    keyIdeas: ["Protecting the beginning of the day protects the work that is easiest to postpone.", "Reaction can wait until something original has had room to form."],
+    moments: [],
+    experiments: [{ text: "Keep the first thirty minutes tomorrow free from messages and feeds, then notice what becomes easier to begin.", duration: "Tomorrow morning" }],
+    principle: "Create before reacting.",
+    hypothesis: "This may matter because uninterrupted attention feels connected to the life you are trying to build.",
+    noteText: "The first quiet hour is where I can hear myself think. If I give it away to messages, I spend the rest of the day reacting.",
+    status: "ready",
+    color: "violet",
+    connectionIds: ["creative-life", "discipline"],
+    analysisScope: "thought"
   }
 ];
 

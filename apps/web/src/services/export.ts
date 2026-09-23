@@ -41,5 +41,5 @@ export function exportImprintsMarkdown(imprints: Imprint[], life?: LifeSnapshot)
     section("Connections", item.connectionIds.map((id) => `- ${id}`)),
   ].filter(Boolean).join("\n\n")).join("\n\n---\n\n");
   if (!life) return memories;
-  return `${memories}\n\n---\n\n# Personal Life OS data\n\nVault file contents are downloaded separately; their private metadata is included below.\n\n\`\`\`json\n${JSON.stringify(life, null, 2)}\n\`\`\``;
+  return `${memories}\n\n---\n\n# Remember data\n\nSaved items and personal records are included below. File contents are downloaded separately; their metadata is included here.\n\n\`\`\`json\n${JSON.stringify(life, null, 2)}\n\`\`\``;
 }

@@ -1,5 +1,6 @@
 import { imprints as fixtures } from "../fixtures";
-import type { AskMessage, Imprint } from "../types";
+import type { AskMessage, DecisionBrief, Imprint, ReturnCue } from "../types";
+import { clearMemoryFeedback, retainMemoryFeedback, saveMemoryFeedback } from "./memoryFeedback";
 
 const STORAGE_KEY = "remember-imprints-v2";
 const LEGACY_STORAGE_KEY = "remember-imprints-v1";
@@ -69,7 +70,8 @@ export async function login(email: string, password: string, baseUrl = apiBase, 
 
 export async function logout(baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<void> {
   if (!baseUrl) return;
-  await fetcher(`${baseUrl}/api/auth/logout`, { method: "POST", credentials: "include" });
+  try { await fetcher(`${baseUrl}/api/auth/logout`, { method: "POST", credentials: "include" }); }
+  finally { clearMemoryFeedback(baseUrl); }
 }
 
 export interface ApiAnalysis {
@@ -79,13 +81,14 @@ export interface ApiAnalysis {
   keyMoments: Array<{ seconds: number; label: string; context?: string; sourceVerified?: boolean }>;
   themes: string[];
   candidatePrinciples: Array<{ text: string; rationale?: string }>;
+  actionableExperiments: Array<{ text: string; duration?: string }>;
   personalRelevanceHypotheses: Array<{ text: string; confidence?: number; label?: "hypothesis" }>;
   uncertainties: Array<{ text: string; field?: string }>;
 }
 
 export interface ApiItem {
   id: string;
-  sourceType: "youtube" | "web";
+  sourceType: "youtube" | "web" | "note";
   originalUrl: string;
   canonicalUrl: string;
   externalId?: string | null;
@@ -96,8 +99,11 @@ export interface ApiItem {
   status: "pending" | "processing" | "ready" | "partial" | "failed";
   savedAt: string;
   personalReaction?: string | null;
+  noteText?: string | null;
+  returnCue?: ReturnCue | null;
+  returnAt?: string | null;
   processingError?: string | null;
-  analysisScope?: "transcript" | "caption" | "post" | "article" | "pending";
+  analysisScope?: "transcript" | "caption" | "post" | "article" | "thought" | "pending";
   analysis: ApiAnalysis | null;
 }
 
@@ -144,11 +150,14 @@ export function mapApiItem(item: ApiItem): Imprint {
   const analysis = item.analysis;
   const url = item.canonicalUrl || item.originalUrl;
   const host = hostname(url);
+  const isThought = item.sourceType === "note";
   const isTikTok = host === "tiktok.com" || host.endsWith(".tiktok.com");
   const isX = host === "x.com" || host === "twitter.com";
-  const sourceType: Imprint["sourceType"] = item.sourceType === "youtube" ? "YouTube" : "Article";
+  const sourceType: Imprint["sourceType"] = item.sourceType === "youtube" ? "YouTube" : isThought ? "Thought" : "Article";
   const analysisScope: Imprint["analysisScope"] = item.analysisScope ?? (item.status === "pending" || item.status === "processing"
     ? "pending"
+    : isThought
+      ? "thought"
     : item.sourceType === "youtube"
       ? "transcript"
       : isTikTok
@@ -160,25 +169,29 @@ export function mapApiItem(item: ApiItem): Imprint {
   const hasValidSavedDate = !Number.isNaN(savedDate.getTime());
   return {
     id: item.id,
-    title: item.title || analysis?.essence || hostname(url),
-    creator: item.author || hostname(url),
+    title: item.title || analysis?.essence || (isThought ? "A thought worth remembering" : hostname(url)),
+    creator: item.author || (isThought ? "You" : hostname(url)),
     sourceType,
     url,
     thumbnailUrl: item.thumbnailUrl ?? undefined,
     savedAt: formatSavedAt(item.savedAt),
     lifePeriod: hasValidSavedDate ? `Saved in ${new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(savedDate)}` : "Saved recently",
     duration: formatDuration(item.durationSeconds),
-    essence: analysis?.essence || (item.status === "failed" ? "This source could not be analyzed yet." : "Understanding what made this worth keeping."),
-    summary: analysis?.summary || (item.status === "failed" ? failedAnalysisSummary() : "This source is queued for analysis."),
+    essence: analysis?.essence || (isThought ? item.noteText || "Your thought is saved." : item.status === "failed" ? "This source could not be analyzed yet." : "Understanding what made this worth keeping."),
+    summary: analysis?.summary || (isThought ? "Remember is connecting this thought to what you have saved and said before." : item.status === "failed" ? failedAnalysisSummary() : "This source is queued for analysis."),
     themes: analysis?.themes ?? [],
     keyIdeas: analysis?.keyIdeas.map((idea) => idea.text) ?? [],
     moments: analysis?.keyMoments.map((moment) => ({ time: formatMoment(moment.seconds), seconds: moment.seconds, title: moment.label, note: moment.context || "Open this moment in the source." })) ?? [],
+    experiments: analysis?.actionableExperiments ?? [],
     principle: analysis?.candidatePrinciples[0]?.text,
     hypothesis: analysis?.personalRelevanceHypotheses[0]?.text,
     personalReaction: item.personalReaction ?? undefined,
+    noteText: item.noteText ?? undefined,
+    returnCue: item.returnCue ?? undefined,
+    returnAt: item.returnAt ?? undefined,
     uncertainty: analysis?.uncertainties[0]?.text,
     status: statusForUi(item.status),
-    color: item.sourceType === "youtube" ? "sage" : "graphite",
+    color: item.sourceType === "youtube" ? "sage" : isThought ? "violet" : "graphite",
     connectionIds: [],
     analysisScope,
     processingError: item.processingError ?? undefined,
@@ -201,7 +214,10 @@ function readStored(key: string): Imprint[] {
     const stored = localStorage.getItem(key);
     if (!stored) return [];
     const parsed = JSON.parse(stored) as unknown;
-    return Array.isArray(parsed) ? parsed.filter(isStoredImprint).filter((item) => !isDevelopmentItem(item)) : [];
+    return Array.isArray(parsed) ? parsed
+      .filter(isStoredImprint)
+      .filter((item) => !isDevelopmentItem(item))
+      .map((item) => ({ ...item, experiments: Array.isArray(item.experiments) ? item.experiments : [] })) : [];
   } catch {
     return [];
   }
@@ -216,8 +232,12 @@ function uniqueByUrl(items: Imprint[]): Imprint[] {
   });
 }
 
+function readPersisted(): Imprint[] {
+  return uniqueByUrl([...readStored(STORAGE_KEY), ...readStored(LEGACY_STORAGE_KEY)]);
+}
+
 function readLocal(baseUrl = apiBase): Imprint[] {
-  const saved = uniqueByUrl([...readStored(STORAGE_KEY), ...readStored(LEGACY_STORAGE_KEY)]);
+  const saved = readPersisted();
   return saved.length ? saved : baseUrl ? [] : fixtures;
 }
 
@@ -240,8 +260,9 @@ function normalizeItems(payload: unknown): Imprint[] | null {
 
 export async function loadImprints(signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<{ items: Imprint[]; source: "api" | "local" }> {
   if (!baseUrl) return { items: readLocal(baseUrl), source: "local" };
-  const recoverable = uniqueByUrl([...readStored(LEGACY_STORAGE_KEY), ...readStored(STORAGE_KEY)]);
+  const cacheAtStart = new Map(readPersisted().map((item) => [item.id, JSON.stringify(item)]));
   try {
+    signal?.throwIfAborted();
     const remoteItems: Imprint[] = [];
     let cursor: string | null = null;
     const seenCursors = new Set<string>();
@@ -260,21 +281,38 @@ export async function loadImprints(signal?: AbortSignal, baseUrl = apiBase, fetc
       cursor = nextCursor;
     } while (cursor);
     const recovered: Imprint[] = [];
-    const remaining: Imprint[] = [];
+    // A synced cache entry missing from the server was removed elsewhere. Only
+    // drafts (including unmarked captures from older clients) need uploading.
+    const recoverable = readPersisted().filter((item) => item.syncState !== "synced");
     for (const legacyItem of recoverable) {
-      if (remoteItems.some((item) => item.url === legacyItem.url)) continue;
+      signal?.throwIfAborted();
+      const existing = remoteItems.find((item) => item.id === legacyItem.id || item.url === legacyItem.url);
+      if (existing) {
+        persistCaptureResult(legacyItem, existing);
+        continue;
+      }
       try {
-        const result = await saveImprintToApi(legacyItem, baseUrl, fetcher);
+        const result = await syncCapture(legacyItem, baseUrl, fetcher);
         recovered.push(result.item);
       } catch {
-        remaining.push(legacyItem);
+        // The durable draft stays available for the next reconnect.
       }
     }
-    const items = uniqueByUrl([...remoteItems, ...recovered, ...remaining]).filter((item) => !isDevelopmentItem(item));
+    signal?.throwIfAborted();
+    const currentCache = readPersisted();
+    const remaining = currentCache.filter((item) => item.syncState !== "synced");
+    // A capture may finish while this older GET is in flight. Preserve those
+    // writes instead of overwriting them with the earlier server snapshot.
+    const changedDuringLoad = currentCache.filter((item) => cacheAtStart.get(item.id) !== JSON.stringify(item)
+      && !recovered.some((saved) => saved.id === item.id)
+      && !remoteItems.some((saved) => saved.id === item.id && JSON.stringify(saved) === JSON.stringify(item)));
+    const items = uniqueByUrl([...changedDuringLoad, ...remoteItems, ...recovered, ...remaining]);
     writeLegacy(remaining);
     writeLocal(items);
+    try { retainMemoryFeedback(items.map((item) => item.id), baseUrl); } catch { /* A cache failure must not hide the loaded library. */ }
     return { items, source: "api" };
   } catch (error) {
+    signal?.throwIfAborted();
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     return { items: readLocal(baseUrl), source: "local" };
   }
@@ -319,30 +357,163 @@ export async function searchImprints(query: string, localItems: Imprint[], signa
   }
 }
 
+export const ASK_TIMEOUT_MS = 45_000;
+export const CAPTURE_TIMEOUT_MS = 30_000;
+
+export class AskAPIError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly requestId?: string,
+  ) {
+    super(message);
+    this.name = "AskAPIError";
+  }
+}
+
+interface AskErrorEnvelope {
+  error?: { code?: string; message?: string };
+  requestId?: string;
+}
+
+interface AskResponsePayload {
+  threadId?: string;
+  answer: string;
+  grounded: boolean;
+  limitations?: string[];
+  citations?: Array<{ itemId: string; title: string; timestampSeconds?: number; url?: string }>;
+}
+
+function timedRequestSignal(signal?: AbortSignal, timeoutMs = ASK_TIMEOUT_MS) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abortFromCaller();
+  else signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    didTimeOut: () => timedOut,
+    cleanup: () => {
+      globalThis.clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortFromCaller);
+    },
+  };
+}
+
 export async function askLibrary(question: string, signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch, threadId?: string): Promise<AskMessage | null> {
   if (!baseUrl) return null;
+  const requestSignal = timedRequestSignal(signal);
   try {
     const response = await fetcher(`${baseUrl}/api/ask`, {
       method: "POST",
       headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ question, ...(threadId ? { threadId } : {}) }),
-      signal,
+      signal: requestSignal.signal,
     });
-    if (!response.ok) throw new Error(`Ask request failed with ${response.status}`);
-    const payload = await response.json() as { threadId?: string; answer: string; grounded: boolean; limitations?: string[]; citations?: Array<{ itemId: string; title: string; timestampSeconds?: number; url?: string }> };
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as AskErrorEnvelope | null;
+      throw new AskAPIError(
+        response.status,
+        payload?.error?.code || "ask_failed",
+        payload?.error?.message || "Remember could not answer that question.",
+        payload?.requestId,
+      );
+    }
+    const payload = await response.json().catch(() => null) as AskResponsePayload | null;
+    if (!payload || typeof payload.answer !== "string" || typeof payload.grounded !== "boolean") {
+      throw new AskAPIError(502, "invalid_response", "Remember returned an unreadable answer.");
+    }
     return {
       id: crypto.randomUUID(),
       role: "assistant",
       text: payload.answer,
       grounded: payload.grounded,
-      limitations: payload.limitations ?? [],
-      citations: payload.citations?.map((citation) => ({ imprintId: citation.itemId, label: citation.title, seconds: citation.timestampSeconds, url: citation.url })),
+      limitations: Array.isArray(payload.limitations) ? payload.limitations : [],
+      citations: Array.isArray(payload.citations)
+        ? payload.citations.map((citation) => ({ imprintId: citation.itemId, label: citation.title, seconds: citation.timestampSeconds, url: citation.url }))
+        : [],
       threadId: payload.threadId,
     };
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") throw error;
-    return null;
+    if (requestSignal.didTimeOut()) {
+      throw new AskAPIError(408, "timeout", "Remember took too long to answer.");
+    }
+    if (signal?.aborted || error instanceof AskAPIError) throw error;
+    throw new AskAPIError(0, "network_error", "Remember could not reach your library.");
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
+interface DecisionResponsePayload {
+  decision: string;
+  perspective: string;
+  whatMatters: string;
+  pullToward: string;
+  pullAgainst: string;
+  smallTest: string;
+  nextQuestion: string;
+  grounded: boolean;
+  limitations?: string[];
+  citations?: Array<{ itemId: string; title: string; url?: string }>;
+}
+
+export async function thinkThroughDecision(
+  decision: string,
+  context?: string,
+  signal?: AbortSignal,
+  baseUrl = apiBase,
+  fetcher: typeof fetch = fetch,
+): Promise<DecisionBrief | null> {
+  if (!baseUrl) return null;
+  const requestSignal = timedRequestSignal(signal);
+  try {
+    const response = await fetcher(`${baseUrl}/api/decisions`, {
+      method: "POST",
+      headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ decision, ...(context?.trim() ? { context: context.trim() } : {}) }),
+      signal: requestSignal.signal,
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as AskErrorEnvelope | null;
+      throw new AskAPIError(
+        response.status,
+        payload?.error?.code || "decision_failed",
+        payload?.error?.message || "Remember could not think through that decision.",
+        payload?.requestId,
+      );
+    }
+    const payload = await response.json().catch(() => null) as DecisionResponsePayload | null;
+    if (!payload || typeof payload.perspective !== "string" || typeof payload.smallTest !== "string") {
+      throw new AskAPIError(502, "invalid_response", "Remember returned an unreadable decision brief.");
+    }
+    return {
+      decision: payload.decision,
+      perspective: payload.perspective,
+      whatMatters: payload.whatMatters,
+      pullToward: payload.pullToward,
+      pullAgainst: payload.pullAgainst,
+      smallTest: payload.smallTest,
+      nextQuestion: payload.nextQuestion,
+      grounded: payload.grounded,
+      limitations: Array.isArray(payload.limitations) ? payload.limitations : [],
+      citations: Array.isArray(payload.citations)
+        ? payload.citations.map((citation) => ({ imprintId: citation.itemId, label: citation.title, url: citation.url }))
+        : [],
+    };
+  } catch (error) {
+    if (requestSignal.didTimeOut()) throw new AskAPIError(408, "timeout", "Remember took too long to think this through.");
+    if (signal?.aborted || error instanceof AskAPIError) throw error;
+    throw new AskAPIError(0, "network_error", "Remember could not reach your library.");
+  } finally {
+    requestSignal.cleanup();
   }
 }
 
@@ -361,6 +532,9 @@ export interface EvolutionOverview {
   principles: Array<{ id: string; itemId: string; text: string; rationale?: string; status?: string; createdAt?: string }>;
   tensions: Array<{ id: string; fromItemId: string; toItemId: string; explanation: string; confidence?: number }>;
   timeline: Array<{ month: string; theme: string; count: number }>;
+  reflections: Array<{ id: string; itemId: string; response: "still_true" | "changed_mind" | "not_sure" | "no_longer_relevant"; occurredAt: string }>;
+  returnFeedback: Array<{ id: string; itemId: string; response: "useful" | "not_today"; occurredAt: string }>;
+  recentQuestion: { question: string; askedAt: string } | null;
 }
 
 export async function loadEvolution(signal?: AbortSignal, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<EvolutionOverview | null> {
@@ -368,7 +542,19 @@ export async function loadEvolution(signal?: AbortSignal, baseUrl = apiBase, fet
   try {
     const response = await fetcher(`${baseUrl}/api/evolution`, { headers: authHeaders(baseUrl), credentials: "include", signal });
     if (!response.ok) throw new Error(`Evolution request failed with ${response.status}`);
-    return await response.json() as EvolutionOverview;
+    const payload = await response.json() as Omit<EvolutionOverview, "reflections" | "returnFeedback" | "recentQuestion"> & {
+      reflections?: EvolutionOverview["reflections"];
+      returnFeedback?: EvolutionOverview["returnFeedback"];
+      recentQuestion?: EvolutionOverview["recentQuestion"];
+    };
+    const overview: EvolutionOverview = {
+      ...payload,
+      reflections: payload.reflections ?? [],
+      returnFeedback: payload.returnFeedback ?? [],
+      recentQuestion: payload.recentQuestion ?? null,
+    };
+    try { saveMemoryFeedback(overview, baseUrl); } catch { /* Server feedback remains usable without a device cache. */ }
+    return overview;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     return null;
@@ -401,13 +587,82 @@ export async function respondToResurfacing(eventId: string, responseValue: "stil
   } catch { return false; }
 }
 
-export async function saveImprint(imprint: Imprint): Promise<{ item: Imprint; synced: boolean; deduplicated: boolean }> {
-  const local = readLocal();
-  if (!local.some((item) => item.url === imprint.url)) writeLocal([imprint, ...local]);
-  if (!apiBase) return { item: { ...imprint, syncState: "local" }, synced: false, deduplicated: false };
-  try { return await saveImprintToApi(imprint, apiBase);
+export type MemoryReflectionResponse = "still_true" | "changed_mind" | "not_sure" | "no_longer_relevant";
+
+export async function reflectOnMemory(itemId: string, responseValue: MemoryReflectionResponse, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<boolean> {
+  const localReflection = { id: crypto.randomUUID(), itemId, response: responseValue, occurredAt: new Date().toISOString() };
+  if (!baseUrl) {
+    try { saveMemoryFeedback({ reflections: [localReflection] }); return true; }
+    catch { return false; }
+  }
+  try {
+    const response = await fetcher(`${baseUrl}/api/items/${encodeURIComponent(itemId)}/reflect`, {
+      method: "POST",
+      headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ response: responseValue }),
+    });
+    if (!response.ok) return false;
+    const payload = await response.json().catch(() => null) as { reflection?: EvolutionOverview["reflections"][number] } | null;
+    try { saveMemoryFeedback({ reflections: [payload?.reflection ?? localReflection] }, baseUrl); } catch { /* The server already acknowledged the response. */ }
+    return true;
+  } catch { return false; }
+}
+
+export type ContextualReturnFeedbackResponse = "useful" | "not_today";
+
+export async function rateContextualReturn(itemId: string, responseValue: ContextualReturnFeedbackResponse, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<boolean> {
+  const localFeedback = { id: crypto.randomUUID(), itemId, response: responseValue, occurredAt: new Date().toISOString() };
+  if (!baseUrl) {
+    try { saveMemoryFeedback({ returnFeedback: [localFeedback] }); return true; }
+    catch { return false; }
+  }
+  try {
+    const response = await fetcher(`${baseUrl}/api/items/${encodeURIComponent(itemId)}/contextual-return-feedback`, {
+      method: "POST",
+      headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ response: responseValue }),
+    });
+    if (!response.ok) return false;
+    const payload = await response.json().catch(() => null) as { feedback?: EvolutionOverview["returnFeedback"][number] } | null;
+    try { saveMemoryFeedback({ returnFeedback: [payload?.feedback ?? localFeedback] }, baseUrl); } catch { /* The server already acknowledged the response. */ }
+    return true;
+  } catch { return false; }
+}
+
+type CaptureResult = { item: Imprint; synced: true; deduplicated: boolean };
+const capturesInFlight = new Map<string, Promise<CaptureResult>>();
+
+function persistCaptureResult(draft: Imprint, saved: Imprint): void {
+  const keep = (item: Imprint) => item.id !== draft.id && item.url !== draft.url
+    && item.id !== saved.id && item.url !== saved.url;
+  writeLocal([saved, ...readPersisted().filter(keep)]);
+  writeLegacy(readStored(LEGACY_STORAGE_KEY).filter(keep));
+}
+
+function syncCapture(imprint: Imprint, baseUrl: string, fetcher: typeof fetch): Promise<CaptureResult> {
+  const key = `${baseUrl.replace(/\/$/, "")}:${imprint.id}`;
+  const existing = capturesInFlight.get(key);
+  if (existing) return existing;
+  const request = saveImprintToApi(imprint, baseUrl, fetcher).then((result) => {
+    persistCaptureResult(imprint, result.item);
+    return result;
+  }).finally(() => capturesInFlight.delete(key));
+  capturesInFlight.set(key, request);
+  return request;
+}
+
+export async function saveImprint(imprint: Imprint, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<{ item: Imprint; synced: boolean; deduplicated: boolean }> {
+  const local = readLocal(baseUrl);
+  const existing = local.find((item) => item.url === imprint.url);
+  if (existing?.syncState === "synced") return { item: existing, synced: true, deduplicated: true };
+  const draft: Imprint = { ...(existing ?? imprint), syncState: "local" };
+  writeLocal([draft, ...local.filter((item) => item.id !== draft.id && item.url !== draft.url)]);
+  if (!baseUrl) return { item: draft, synced: false, deduplicated: Boolean(existing) };
+  try { return await syncCapture(draft, baseUrl, fetcher);
   } catch {
-    return { item: { ...imprint, syncState: "local" }, synced: false, deduplicated: false };
+    return { item: draft, synced: false, deduplicated: Boolean(existing) };
   }
 }
 
@@ -431,16 +686,46 @@ async function clientYouTubeTranscript(urlValue: string, fetcher: typeof fetch):
 }
 
 export async function saveImprintToApi(imprint: Imprint, baseUrl: string, fetcher: typeof fetch = fetch): Promise<{ item: Imprint; synced: true; deduplicated: boolean }> {
-    const sourceText = imprint.sourceType === "YouTube" ? await clientYouTubeTranscript(imprint.url, fetcher) : undefined;
+  const sourceText = imprint.sourceType === "YouTube" ? await clientYouTubeTranscript(imprint.url, fetcher) : undefined;
+  const requestSignal = timedRequestSignal(undefined, CAPTURE_TIMEOUT_MS);
+  try {
+    const captureSubject = imprint.sourceType === "Thought"
+      ? { thought: imprint.noteText || imprint.essence }
+      : { url: imprint.url };
     const response = await fetcher(`${baseUrl.replace(/\/$/, "")}/api/items`, {
       method: "POST",
-      headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+      headers: { ...authHeaders(baseUrl), "content-type": "application/json", "idempotency-key": `capture-${imprint.id}` },
       credentials: "include",
-      body: JSON.stringify({ url: imprint.url, ...(imprint.personalReaction ? { personalReaction: imprint.personalReaction } : {}), ...(sourceText ? { sourceText } : {}) }),
+      signal: requestSignal.signal,
+      body: JSON.stringify({ ...captureSubject, ...(imprint.personalReaction ? { personalReaction: imprint.personalReaction } : {}), ...(imprint.returnCue ? { returnCue: imprint.returnCue } : {}), ...(imprint.returnAt ? { returnAt: imprint.returnAt } : {}), ...(sourceText ? { sourceText } : {}) }),
     });
     if (!response.ok) throw new Error(`Capture request failed with ${response.status}`);
     const payload = await response.json() as { item?: ApiItem; deduplicated?: boolean; duplicate?: boolean };
-    return { item: payload.item ? mapApiItem(payload.item) : imprint, synced: true, deduplicated: payload.deduplicated ?? payload.duplicate ?? false };
+    if (!payload.item?.id || !payload.item.canonicalUrl || !payload.item.status) throw new Error("The capture response was incomplete.");
+    return { item: mapApiItem(payload.item), synced: true, deduplicated: payload.deduplicated ?? payload.duplicate ?? false };
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
+export async function updateReturnCue(
+  imprint: Imprint,
+  returnCue?: ReturnCue,
+  returnAt?: string,
+  baseUrl = apiBase,
+  fetcher: typeof fetch = fetch,
+): Promise<Imprint> {
+  const local = { ...imprint, returnCue, returnAt };
+  if (!baseUrl) return local;
+  const response = await fetcher(`${baseUrl}/api/items/${encodeURIComponent(imprint.id)}/return-cue`, {
+    method: "PATCH",
+    headers: { ...authHeaders(baseUrl), "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ returnCue: returnCue ?? null, returnAt: returnAt ?? null }),
+  });
+  if (!response.ok) throw new Error("Remember could not save that return moment.");
+  const payload = await response.json() as { item?: ApiItem };
+  return payload.item ? mapApiItem(payload.item) : local;
 }
 
 export async function retryImprint(item: Imprint, baseUrl = apiBase, fetcher: typeof fetch = fetch): Promise<Imprint> {

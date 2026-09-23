@@ -15,7 +15,9 @@ type TaskRow = {
   id: string; goal_id: string | null; title: string; first_step: string; notes: string; area: string;
   status: string; priority: string; energy: string; duration_minutes: number; due_at: string | null;
   scheduled_start: string | null; scheduled_end: string | null; source: string; completed_at: string | null;
+  source_item_id: string | null; practice_outcome: string | null; practice_reflection: string; reflected_at: string | null;
   created_at: string; updated_at: string;
+  repeat_every_days: number | null; not_before: string | null;
 };
 
 type BlockerRow = {
@@ -73,7 +75,7 @@ function publicGoal(row: GoalRow) {
   return { id: row.id, title: row.title, area: row.area, vision: row.vision, why: row.why, status: row.status, progress: row.progress, targetDate: row.target_date, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function publicTask(row: TaskRow) {
-  return { id: row.id, goalId: row.goal_id, title: row.title, firstStep: row.first_step, notes: row.notes, area: row.area, status: row.status, priority: row.priority, energy: row.energy, durationMinutes: row.duration_minutes, dueAt: row.due_at, scheduledStart: row.scheduled_start, scheduledEnd: row.scheduled_end, source: row.source, completedAt: row.completed_at, createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, goalId: row.goal_id, title: row.title, firstStep: row.first_step, notes: row.notes, area: row.area, status: row.status, priority: row.priority, energy: row.energy, durationMinutes: row.duration_minutes, dueAt: row.due_at, scheduledStart: row.scheduled_start, scheduledEnd: row.scheduled_end, source: row.source, sourceItemId: row.source_item_id, practiceOutcome: row.practice_outcome, practiceReflection: row.practice_reflection, reflectedAt: row.reflected_at, completedAt: row.completed_at, createdAt: row.created_at, updatedAt: row.updated_at, repeatEveryDays: row.repeat_every_days ?? null, notBefore: row.not_before ?? null };
 }
 function publicBlocker(row: BlockerRow) {
   return { id: row.id, taskId: row.task_id, taskTitle: row.task_title, reason: row.reason, originalDuration: row.original_duration, createdAt: row.created_at };
@@ -104,6 +106,25 @@ async function requireChanged(result: D1Result, message: string): Promise<void> 
 export class LifeRepository {
   constructor(private readonly db: D1Database) {}
 
+  private async brainEnabled(userId: string) {
+    return Boolean(await this.db.prepare("SELECT user_id FROM life_brain WHERE user_id = ?1 AND json_extract(settings_json, '$.enabled') = 1").bind(userId).first());
+  }
+
+  async startAutopilotFocus(userId: string, taskId: string, expectedUpdatedAt: string, expectedActiveId: string | null) {
+    // One atomic statement: either the observed plan still matches and the focus
+    // changes, or no row changes. A stale model answer cannot resurrect a task.
+    const result = await this.db.prepare(`WITH eligible AS MATERIALIZED (
+      SELECT id FROM life_tasks WHERE user_id = ?1 AND id = ?2 AND updated_at = ?3
+        AND status IN ('inbox','queued','active')
+        AND COALESCE((SELECT id FROM life_tasks WHERE user_id = ?1 AND status = 'active' LIMIT 1), '') = COALESCE(?4, '')
+      ) UPDATE life_tasks
+      SET status = CASE WHEN id = ?2 THEN 'active' ELSE 'queued' END, updated_at = ?5
+      WHERE user_id = ?1 AND (id = ?2 OR status = 'active')
+        AND EXISTS (SELECT 1 FROM eligible)`)
+      .bind(userId, taskId, expectedUpdatedAt, expectedActiveId, isoNow()).run();
+    if ((result.meta.changes ?? 0) === 0) throw new ApiError(409, "plan_changed", "Your plan changed while Jev was deciding. Refresh and try again.");
+  }
+
   async snapshot(userId: string, options: { allHistory?: boolean } = {}): Promise<LifeSnapshot> {
     const allHistory = options.allHistory === true;
     const [goals, tasks, blockers, floor, events, health, accounts, transactions, files] = await Promise.all([
@@ -116,7 +137,22 @@ export class LifeRepository {
         : this.db.prepare("SELECT * FROM calendar_events WHERE user_id = ?1 AND end_at >= ?2 ORDER BY start_at LIMIT 500").bind(userId, new Date(Date.now() - 7 * 86_400_000).toISOString()).all<EventRow>(),
       allHistory
         ? this.db.prepare("SELECT * FROM health_metrics WHERE user_id = ?1 ORDER BY start_at DESC").bind(userId).all<HealthRow>()
-        : this.db.prepare("SELECT * FROM health_metrics WHERE user_id = ?1 AND start_at >= ?2 ORDER BY start_at DESC LIMIT 2000").bind(userId, new Date(Date.now() - 90 * 86_400_000).toISOString()).all<HealthRow>(),
+        : this.db.prepare(`
+            WITH recent AS (
+              SELECT * FROM health_metrics
+              WHERE user_id = ?1 AND start_at >= ?2
+              ORDER BY start_at DESC
+              LIMIT 2000
+            ), authoritative AS (
+              SELECT * FROM health_metrics
+              WHERE user_id = ?1 AND start_at >= ?2
+                AND json_extract(metadata_json, '$.aggregation') IN ('healthkit_statistics', 'healthkit_sleep_union')
+            )
+            SELECT * FROM recent
+            UNION
+            SELECT * FROM authoritative
+            ORDER BY start_at DESC
+          `).bind(userId, new Date(Date.now() - 90 * 86_400_000).toISOString()).all<HealthRow>(),
       this.db.prepare("SELECT * FROM finance_accounts WHERE user_id = ?1 ORDER BY updated_at DESC").bind(userId).all<AccountRow>(),
       this.db.prepare(`SELECT * FROM finance_transactions WHERE user_id = ?1 ORDER BY occurred_at DESC${allHistory ? "" : " LIMIT 2000"}`).bind(userId).all<TransactionRow>(),
       this.db.prepare(`SELECT * FROM vault_files WHERE user_id = ?1 ORDER BY created_at DESC${allHistory ? "" : " LIMIT 1000"}`).bind(userId).all<FileRow>(),
@@ -158,19 +194,19 @@ export class LifeRepository {
     if (status === "active") {
       await this.db.prepare("UPDATE life_tasks SET status = 'queued', updated_at = ?2 WHERE user_id = ?1 AND status = 'active'").bind(userId, now).run();
     }
-    if (status === "queued") {
+    if (status === "queued" && (!input.notBefore || input.notBefore <= now) && (!input.scheduledStart || input.scheduledStart <= now) && !await this.brainEnabled(userId)) {
       const active = await this.db.prepare("SELECT id FROM life_tasks WHERE user_id = ?1 AND status = 'active'").bind(userId).first();
       if (!active) status = "active";
     }
     await this.db.prepare(`INSERT INTO life_tasks
-      (id,user_id,goal_id,title,first_step,notes,area,status,priority,energy,duration_minutes,due_at,scheduled_start,scheduled_end,source,completed_at,created_at,updated_at)
-      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL,?16,?16)`)
-      .bind(id, userId, input.goalId ?? null, input.title, input.firstStep, input.notes, input.area, status, input.priority, input.energy, input.durationMinutes, input.dueAt ?? null, input.scheduledStart ?? null, input.scheduledEnd ?? null, input.source, now).run();
+      (id,user_id,goal_id,title,first_step,notes,area,status,priority,energy,duration_minutes,due_at,scheduled_start,scheduled_end,source,source_item_id,completed_at,created_at,updated_at,repeat_every_days,not_before)
+      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,NULL,?17,?17,?18,?19)`)
+      .bind(id, userId, input.goalId ?? null, input.title, input.firstStep, input.notes, input.area, status, input.priority, input.energy, input.durationMinutes, input.dueAt ?? null, input.scheduledStart ?? null, input.scheduledEnd ?? null, input.source, input.sourceItemId ?? null, now, input.repeatEveryDays ?? null, input.notBefore ?? null).run();
     return this.requireTask(userId, id);
   }
 
   async updateTask(userId: string, id: string, input: Record<string, unknown>) {
-    const columns: Record<string, string> = { goalId: "goal_id", title: "title", firstStep: "first_step", notes: "notes", area: "area", status: "status", priority: "priority", energy: "energy", durationMinutes: "duration_minutes", dueAt: "due_at", scheduledStart: "scheduled_start", scheduledEnd: "scheduled_end", source: "source" };
+    const columns: Record<string, string> = { goalId: "goal_id", title: "title", firstStep: "first_step", notes: "notes", area: "area", status: "status", priority: "priority", energy: "energy", durationMinutes: "duration_minutes", dueAt: "due_at", scheduledStart: "scheduled_start", scheduledEnd: "scheduled_end", source: "source", repeatEveryDays: "repeat_every_days", notBefore: "not_before" };
     if (input.status === "active") {
       await this.db.prepare("UPDATE life_tasks SET status = 'queued', updated_at = ?3 WHERE user_id = ?1 AND status = 'active' AND id <> ?2").bind(userId, id, isoNow()).run();
     }
@@ -183,31 +219,54 @@ export class LifeRepository {
     return this.requireTask(userId, id);
   }
 
-  async completeTask(userId: string, id: string, minutesSpent = 0) {
+  async completeTask(userId: string, id: string, minutesSpent = 0, result?: { outcome: "helped" | "mixed" | "not_for_me"; reflection: string }) {
     const task = await this.requireTask(userId, id);
+    if (task.status === "done") return { task, next: await this.activeTask(userId) };
+    if (result && task.source !== "practice") throw new ApiError(422, "not_a_practice", "Only a real-life experiment can record this kind of result.");
     const now = isoNow();
-    await this.db.prepare("UPDATE life_tasks SET status = 'done', completed_at = ?3, updated_at = ?3, notes = CASE WHEN ?4 > 0 THEN notes || CASE WHEN notes = '' THEN '' ELSE '\n' END || 'Completed in ' || ?4 || ' minutes.' ELSE notes END WHERE user_id = ?1 AND id = ?2")
-      .bind(userId, id, now, Math.max(0, Math.round(minutesSpent))).run();
-    if (task.status === "active") await this.activateBestTask(userId);
+    const completion = this.db.prepare("UPDATE life_tasks SET status = 'done', completed_at = ?3, updated_at = ?3, notes = CASE WHEN ?4 > 0 THEN notes || CASE WHEN notes = '' THEN '' ELSE '\n' END || 'Completed in ' || ?4 || ' minutes.' ELSE notes END, practice_outcome = COALESCE(?5, practice_outcome), practice_reflection = CASE WHEN ?5 IS NULL THEN practice_reflection ELSE ?6 END, reflected_at = CASE WHEN ?5 IS NULL THEN reflected_at ELSE ?3 END WHERE user_id = ?1 AND id = ?2")
+      .bind(userId, id, now, Math.max(0, Math.round(minutesSpent)), result?.outcome ?? null, result?.reflection ?? "");
+    if (task.repeatEveryDays) {
+      const notBefore = new Date(Date.parse(now) + task.repeatEveryDays * 86_400_000).toISOString();
+      const recurrence = this.db.prepare(`INSERT INTO life_tasks
+        (id,user_id,goal_id,title,first_step,notes,area,status,priority,energy,duration_minutes,due_at,source,source_item_id,created_at,updated_at,repeat_every_days,not_before,recurrence_parent_id)
+        SELECT ?3,user_id,goal_id,title,first_step,notes,area,'queued',priority,energy,duration_minutes,?5,source,source_item_id,?6,?6,repeat_every_days,?4,id
+        FROM life_tasks WHERE user_id = ?1 AND id = ?2 AND status = 'done'
+        ON CONFLICT(user_id,recurrence_parent_id) WHERE recurrence_parent_id IS NOT NULL DO NOTHING`)
+        .bind(userId, id, crypto.randomUUID(), notBefore, new Date(Date.parse(notBefore) + 86_400_000).toISOString(), now);
+      await this.db.batch([completion, recurrence]);
+    } else { await completion.run(); }
+    if (task.status === "active" && !await this.brainEnabled(userId)) await this.activateBestTask(userId);
     return { task: await this.requireTask(userId, id), next: await this.activeTask(userId) };
+  }
+
+  async reflectOnPractice(userId: string, id: string, result: { outcome: "helped" | "mixed" | "not_for_me"; reflection: string }) {
+    const task = await this.requireTask(userId, id);
+    if (task.source !== "practice") throw new ApiError(422, "not_a_practice", "Only a real-life experiment can record this kind of result.");
+    if (task.status !== "done") throw new ApiError(409, "practice_not_finished", "Finish the experiment before recording what happened.");
+    const now = isoNow();
+    await this.db.prepare("UPDATE life_tasks SET practice_outcome = ?3, practice_reflection = ?4, reflected_at = ?5, updated_at = ?5 WHERE user_id = ?1 AND id = ?2")
+      .bind(userId, id, result.outcome, result.reflection, now).run();
+    return this.requireTask(userId, id);
   }
 
   async blockTask(userId: string, id: string, reason: BlockerReason) {
     const task = await this.requireTask(userId, id); const now = isoNow();
     await this.db.prepare("INSERT INTO life_task_blockers (id,user_id,task_id,task_title,reason,original_duration,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)")
       .bind(crypto.randomUUID(), userId, id, task.title, reason, task.durationMinutes, now).run();
-    const adaptations: Record<BlockerReason, { title?: string; firstStep: string; duration: number; remove?: boolean }> = {
+    const adaptations: Record<BlockerReason, { title?: string; firstStep: string; duration: number; remove?: boolean; moveAside?: boolean }> = {
       big: { title: task.firstStep || task.title, firstStep: "Open what you need and begin for two minutes. Stopping after that still counts as starting.", duration: Math.max(2, Math.min(5, Math.ceil(task.durationMinutes / 3))) },
       unclear: { firstStep: "Write the first visible physical action in one sentence. Then do only that sentence.", duration: Math.min(5, task.durationMinutes) },
       time: { firstStep: "Set a five-minute boundary and finish the smallest useful piece before it ends.", duration: Math.min(5, task.durationMinutes) },
       place: { firstStep: "Choose the smallest version that works where you are now.", duration: Math.min(10, task.durationMinutes) },
       irrelevant: { firstStep: task.firstStep, duration: task.durationMinutes, remove: true },
-      different: { firstStep: task.firstStep, duration: task.durationMinutes, remove: true },
+      different: { firstStep: task.firstStep, duration: task.durationMinutes, moveAside: true },
     };
     const adaptation = adaptations[reason];
-    await this.db.prepare("UPDATE life_tasks SET title = ?3, first_step = ?4, duration_minutes = ?5, status = ?6, updated_at = ?7 WHERE user_id = ?1 AND id = ?2")
-      .bind(userId, id, adaptation.title ?? task.title, adaptation.firstStep, adaptation.duration, adaptation.remove ? "removed" : task.status, now).run();
-    if (adaptation.remove && task.status === "active") await this.activateBestTask(userId);
+    const deferredUntil = adaptation.moveAside ? new Date(Date.parse(now) + 60 * 60 * 1000).toISOString() : null;
+    await this.db.prepare("UPDATE life_tasks SET title = ?3, first_step = ?4, duration_minutes = ?5, status = ?6, not_before = CASE WHEN ?8 IS NULL OR not_before > ?8 THEN not_before ELSE ?8 END, updated_at = ?7 WHERE user_id = ?1 AND id = ?2")
+      .bind(userId, id, adaptation.title ?? task.title, adaptation.firstStep, adaptation.duration, adaptation.remove ? "removed" : adaptation.moveAside ? "queued" : task.status, now, deferredUntil).run();
+    if ((adaptation.remove || adaptation.moveAside) && task.status === "active" && !await this.brainEnabled(userId)) await this.activateBestTask(userId);
     return { task: await this.requireTask(userId, id), next: await this.activeTask(userId) };
   }
 
@@ -220,7 +279,7 @@ export class LifeRepository {
 
   async toggleFloor(userId: string, id: string, date: string) {
     const row = await this.db.prepare("SELECT * FROM life_floor_items WHERE user_id = ?1 AND id = ?2").bind(userId, id).first<FloorRow>();
-    if (!row) throw new ApiError(404, "not_found", "Life Floor item not found.");
+    if (!row) throw new ApiError(404, "not_found", "Daily basic not found.");
     const values = new Set(parseStringArray(row.completion_dates_json));
     if (values.has(date)) values.delete(date); else values.add(date);
     await this.db.prepare("UPDATE life_floor_items SET completion_dates_json = ?3, updated_at = ?4 WHERE user_id = ?1 AND id = ?2")
@@ -293,12 +352,6 @@ export class LifeRepository {
     return { record: publicFile(row), objectKey: row.object_key };
   }
 
-  async deleteFile(userId: string, id: string) {
-    const file = await this.requireFile(userId, id);
-    await this.db.prepare("DELETE FROM vault_files WHERE user_id = ?1 AND id = ?2").bind(userId, id).run();
-    return file;
-  }
-
   private async requireGoal(userId: string, id: string) {
     const row = await this.db.prepare("SELECT * FROM life_goals WHERE user_id = ?1 AND id = ?2").bind(userId, id).first<GoalRow>();
     if (!row) throw new ApiError(404, "not_found", "Goal not found.");
@@ -319,6 +372,8 @@ export class LifeRepository {
   private async activateBestTask(userId: string) {
     const now = isoNow();
     const next = await this.db.prepare(`SELECT id FROM life_tasks WHERE user_id = ?1 AND status IN ('queued','inbox')
+      AND (not_before IS NULL OR not_before <= ?2)
+      AND (scheduled_start IS NULL OR scheduled_start <= ?2)
       ORDER BY
         CASE WHEN scheduled_start IS NOT NULL AND scheduled_start <= ?2 AND (scheduled_end IS NULL OR scheduled_end >= ?2) THEN 0 ELSE 1 END,
         CASE priority WHEN 'must' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ConnectionRow: View {
     let connection: Connection
+    var opensConnectedSave = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
@@ -16,6 +17,6 @@ struct ConnectionRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 14))
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens the connected imprint")
+        .accessibilityHint(opensConnectedSave ? "Opens the connected save" : "")
     }
 }

@@ -8,19 +8,19 @@ enum ProcessingState: String, Codable, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .ready: "Ready"
-        case .processing: "Understanding"
-        case .partial: "Partially understood"
-        case .failed: "Needs attention"
+        case .ready: "Saved"
+        case .processing: "Analyzing"
+        case .partial: "Some details available"
+        case .failed: "Couldn’t analyze"
         }
     }
 
     var symbol: String {
         switch self {
         case .ready: "checkmark.circle.fill"
-        case .processing: "sparkles"
+        case .processing: "clock"
         case .partial: "circle.lefthalf.filled"
-        case .failed: "exclamationmark.triangle.fill"
+        case .failed: "exclamationmark.circle.fill"
         }
     }
 }

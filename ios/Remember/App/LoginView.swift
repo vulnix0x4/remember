@@ -5,6 +5,7 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @FocusState private var focusedField: Field?
+    @AccessibilityFocusState private var signInErrorIsFocused: Bool
 
     private enum Field: Hashable { case email, password }
 
@@ -12,50 +13,36 @@ struct LoginView: View {
         ZStack {
             WarmBackground()
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    brand
-                    Spacer(minLength: 62)
-                    story
-                    Spacer(minLength: 48)
+                VStack(alignment: .leading, spacing: RememberDesign.spacingXLarge) {
+                    HStack(spacing: 12) {
+                        RememberMark(size: 42)
+                        Text("Remember")
+                            .font(.headline)
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    Spacer(minLength: 52)
+
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                        Text("Welcome back")
+                            .font(.largeTitle.bold())
+                        Text("Sign in to continue to your saves and plans.")
+                            .font(.body)
+                            .foregroundStyle(RememberDesign.secondaryText)
+                    }
+
                     form
                 }
-                .frame(maxWidth: 520, minHeight: 720, alignment: .top)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 28)
+                .frame(maxWidth: 460, minHeight: 700, alignment: .top)
+                .padding(.horizontal, RememberDesign.spacingLarge)
+                .padding(.vertical, RememberDesign.spacingLarge)
             }
             .scrollDismissesKeyboard(.interactively)
         }
     }
 
-    private var brand: some View {
-        Label {
-            Text("Remember").font(.headline).bold()
-        } icon: {
-            RememberMark()
-        }
-    }
-
-    private var story: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("YOUR PRIVATE ARCHIVE")
-                .font(.caption)
-                .bold()
-                .tracking(1.5)
-                .foregroundStyle(RememberDesign.accent)
-            Text("What shaped you,\nkept close.")
-                .font(.largeTitle)
-                .bold()
-                .tracking(-1.4)
-            Text("Return to the ideas that mattered and notice what they are becoming.")
-                .font(.body)
-                .foregroundStyle(RememberDesign.secondaryText)
-                .lineSpacing(4)
-        }
-    }
-
     private var form: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Sign in").font(.title2).bold()
+        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
             TextField("Email", text: $email)
                 .keyboardType(.emailAddress)
                 .textContentType(.username)
@@ -64,22 +51,27 @@ struct LoginView: View {
                 .focused($focusedField, equals: .email)
                 .submitLabel(.next)
                 .onSubmit { focusedField = .password }
-                .archiveField()
+                .padding(.horizontal, RememberDesign.spacing)
+                .frame(minHeight: 54)
+                .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
             SecureField("Password", text: $password)
                 .textContentType(.password)
                 .focused($focusedField, equals: .password)
                 .submitLabel(.go)
                 .onSubmit(signIn)
-                .archiveField()
+                .padding(.horizontal, RememberDesign.spacing)
+                .frame(minHeight: 54)
+                .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
             if let error = store.signInError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
+                Label(error, systemImage: "exclamationmark.circle.fill")
                     .font(.footnote)
                     .foregroundStyle(RememberDesign.danger)
+                    .accessibilityFocused($signInErrorIsFocused)
             }
             Button(action: signIn) {
                 Group {
                     if store.isSigningIn { ProgressView().tint(RememberDesign.accentInk) }
-                    else { Label("Enter your archive", systemImage: "arrow.right") }
+                    else { Text("Sign in") }
                 }
                 .frame(maxWidth: .infinity, minHeight: 50)
             }
@@ -89,26 +81,18 @@ struct LoginView: View {
             .background(RememberDesign.accent, in: .rect(cornerRadius: 14))
             .disabled(email.isEmpty || password.isEmpty || store.isSigningIn)
             .opacity(email.isEmpty || password.isEmpty ? 0.55 : 1)
-            Label("Protected with a private, encrypted session", systemImage: "lock.fill")
+            Label("Private, encrypted session", systemImage: "lock.fill")
                 .font(.caption)
                 .foregroundStyle(RememberDesign.tertiaryText)
                 .frame(maxWidth: .infinity)
         }
-        .padding(22)
-        .background(RememberDesign.surface.opacity(0.9), in: .rect(cornerRadius: 24))
-        .overlay { RoundedRectangle(cornerRadius: 24).stroke(RememberDesign.line) }
+        .onChange(of: store.signInError) { _, error in
+            signInErrorIsFocused = error != nil
+        }
     }
 
     private func signIn() {
+        signInErrorIsFocused = false
         Task { await store.signIn(email: email, password: password) }
-    }
-}
-
-private extension View {
-    func archiveField() -> some View {
-        padding(.horizontal, 16)
-            .frame(minHeight: 54)
-            .background(RememberDesign.canvas, in: .rect(cornerRadius: 13))
-            .overlay { RoundedRectangle(cornerRadius: 13).stroke(RememberDesign.line) }
     }
 }
