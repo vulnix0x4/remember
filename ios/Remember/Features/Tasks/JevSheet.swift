@@ -71,6 +71,13 @@ struct JevSheet: View {
                             Divider().overlay(RememberDesign.line)
                             DatePicker("My day ends", selection: $end, displayedComponents: .hourAndMinute)
                                 .frame(minHeight: RememberDesign.rowHeight)
+                            if endsNextDay {
+                                Text("Ends the next day, after midnight.")
+                                    .font(.footnote)
+                                    .foregroundStyle(RememberDesign.text2)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.bottom, RememberDesign.spacingCompact)
+                            }
                         }
                         .font(.rememberRowTitle)
                         .padding(.horizontal, RememberDesign.spacing)
@@ -130,12 +137,18 @@ struct JevSheet: View {
         end = Self.time(hour: settings.endHour)
     }
 
+    private var endsNextDay: Bool {
+        let startHour = Calendar.current.component(.hour, from: start)
+        let endHour = Calendar.current.component(.hour, from: end)
+        return endHour != 0 && endHour < startHour
+    }
+
     private func saveAndClose() {
         guard var settings = store.brain?.settings else { dismiss(); return }
         let startHour = Calendar.current.component(.hour, from: start)
         var endHour = Calendar.current.component(.hour, from: end)
         if endHour == 0 { endHour = 24 }
-        guard endHour > startHour else { error = "Pick an end time after your start time."; return }
+        guard endHour != startHour else { error = "Your day can’t start and end at the same hour."; return }
         let updated = BrainSettings(
             enabled: enabled, timeZone: settings.timeZone, startHour: startHour, endHour: endHour,
             preferences: String(preferences.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2000))

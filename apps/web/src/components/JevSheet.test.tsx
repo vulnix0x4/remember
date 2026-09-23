@@ -42,11 +42,21 @@ describe("Jev sheet", () => {
     expect(close).toHaveBeenCalledOnce();
     expect(life.refreshBrain).toHaveBeenLastCalledWith({ ...brain.settings, preferences: "Chores after work", startHour: 9 });
   });
-  it("does not save an impossible day", () => {
+  it("saves a day that runs past midnight", () => {
     const life = controller();
     render(<JevSheet life={life} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Day starts"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Day ends"), { target: { value: "3" } });
+    expect(screen.getByText("Ends the next day, after midnight.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close and save" }));
+    expect(life.refreshBrain).toHaveBeenLastCalledWith(expect.objectContaining({ startHour: 12, endHour: 3 }));
+  });
+  it("does not save a day that starts and ends at the same hour", () => {
+    const life = controller();
+    render(<JevSheet life={life} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Day starts"), { target: { value: "7" } });
     fireEvent.change(screen.getByLabelText("Day ends"), { target: { value: "7" } });
-    expect(screen.getByRole("alert")).toHaveTextContent("end after the start");
+    expect(screen.getByRole("alert")).toHaveTextContent("different end hour");
     fireEvent.click(screen.getByRole("button", { name: "Close and save" }));
     expect(life.refreshBrain).not.toHaveBeenCalled();
   });
