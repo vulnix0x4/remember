@@ -310,7 +310,7 @@ final class RememberUITests: XCTestCase {
 
         addCurrentTask("Protect a focused block for creative work", in: app)
         XCTAssertFalse(app.buttons["remember.today.savedIdeas"].exists, "No disclosure hides the returned idea.")
-        let heading = app.staticTexts["ONE IDEA FOR TODAY"]
+        let heading = app.staticTexts["One idea for today"]
         scrollGentlyUntilHittable(heading, in: app)
         XCTAssertTrue(heading.exists)
 
@@ -538,7 +538,7 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(threads.waitForExistence(timeout: timeout))
         scrollUntilHittable(threads, in: app)
         threads.tap()
-        XCTAssertTrue(app.staticTexts["IDEAS THAT KEEP FINDING YOU"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.staticTexts["Ideas that keep finding you"].waitForExistence(timeout: timeout))
         let identity = app.descendants(matching: .any)["remember.thread.identity"]
         scrollUntilHittable(identity, in: app)
         XCTAssertTrue(identity.waitForExistence(timeout: timeout))
