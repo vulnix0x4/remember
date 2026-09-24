@@ -35,6 +35,7 @@ struct NowCard: View {
         .sheet(item: $stuckTask) { task in
             StuckSheet(task: task)
         }
+
         .sheet(item: $practiceTask) { task in
             PracticeResultView(task: task, minutesSpent: practiceMinutes, completesTask: true) {
                 timer.reset()
@@ -106,14 +107,23 @@ struct NowCard: View {
             }
             .buttonStyle(.rememberPrimary)
             .accessibilityIdentifier("remember.now.done")
-            Button {
-                stuckTask = task
-            } label: {
-                Label("I’m stuck", systemImage: "hand.raised")
+            HStack(spacing: RememberDesign.spacingSmall) {
+                Button {
+                    store.lockInTask = task
+                } label: {
+                    Label(store.lifeSnapshot.commitment(for: task)?.steps.isEmpty == false ? "Steps" : "Focus", systemImage: "scope")
+                }
+                .buttonStyle(.rememberSecondary)
+                .accessibilityIdentifier("remember.now.focus")
+                Button {
+                    stuckTask = task
+                } label: {
+                    Label("I’m stuck", systemImage: "hand.raised")
+                }
+                .buttonStyle(.rememberSecondary)
+                .accessibilityHint("Make it smaller, get a first step, or switch to something else")
+                .accessibilityIdentifier("remember.now.stuck")
             }
-            .buttonStyle(.rememberSecondary)
-            .accessibilityHint("Make it smaller, get a first step, or switch to something else")
-            .accessibilityIdentifier("remember.now.stuck")
         }
         .rememberCard(padding: compact ? RememberDesign.spacing : RememberDesign.spacingLarge)
         .overlay {
@@ -175,12 +185,11 @@ struct NowCard: View {
 
     private func eyebrow(_ text: String, pulsing: Bool) -> some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(RememberDesign.accent)
-                .frame(width: 8, height: 8)
-                .phaseAnimator([1.0, 0.3]) { dot, opacity in
-                    dot.opacity(pulsing && !reduceMotion ? opacity : 1)
-                } animation: { _ in .easeInOut(duration: 0.9) }
+            // Only "Doing" pulses; a still dot everywhere else keeps the screen (and battery) calm.
+            Image(systemName: "circle.fill")
+                .font(.system(size: 8))
+                .foregroundStyle(RememberDesign.accent)
+                .symbolEffect(.pulse, isActive: pulsing && !reduceMotion)
             Text(text)
                 .font(.rememberEyebrow)
                 .tracking(1.2)
@@ -233,6 +242,7 @@ struct NowCard: View {
         isWorking = true
         startFeedback += 1
         timer.start(task.id)
+        store.lockInTask = task
         Task {
             if task.status != .active { await store.startTask(task) }
             isWorking = false

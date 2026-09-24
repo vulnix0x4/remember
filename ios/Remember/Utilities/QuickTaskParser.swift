@@ -5,6 +5,8 @@ import Foundation
 struct ParsedQuickTask: Equatable, Sendable {
     var title: String
     var durationMinutes: Int?
+    /// True when the duration was guessed rather than typed.
+    var durationIsEstimate = false
     var notBefore: Date?
     var dueAt: Date?
     var repeatEveryDays: Int?
@@ -15,7 +17,7 @@ struct ParsedQuickTask: Equatable, Sendable {
     enum RepeatSource: Equatable, Sendable { case typed, usual, learned }
 
     var hasDetails: Bool {
-        durationMinutes != nil || notBefore != nil || dueAt != nil || repeatEveryDays != nil || priority != nil
+        (durationMinutes != nil && !durationIsEstimate) || notBefore != nil || dueAt != nil || repeatEveryDays != nil || priority != nil
     }
 }
 
@@ -24,6 +26,7 @@ enum QuickTaskParser {
     struct HistoryEntry: Sendable {
         let title: String
         let completedAt: Date?
+        var actualMinutes: Int? = nil
     }
 
     static func parse(_ text: String, now: Date = .now, calendar: Calendar = .current, history: [HistoryEntry] = []) -> ParsedQuickTask {
@@ -103,6 +106,10 @@ enum QuickTaskParser {
         }
         if title.isEmpty { return ParsedQuickTask(title: original) }
         result.title = title.prefix(1).uppercased() + title.dropFirst()
+        if result.durationMinutes == nil {
+            result.durationMinutes = estimateMinutes(for: result.title, history: history)
+            result.durationIsEstimate = true
+        }
         if result.repeatEveryDays != nil {
             result.repeatSource = .typed
         } else if !once {
@@ -116,6 +123,31 @@ enum QuickTaskParser {
         }
         return result
     }
+
+    /// How long a task usually takes: your own timed history first, then known tasks, then 15 minutes.
+    static func estimateMinutes(for title: String, history: [HistoryEntry]) -> Int {
+        let key = title.trimmingCharacters(in: .whitespaces).lowercased()
+        let timed = history
+            .filter { $0.title.trimmingCharacters(in: .whitespaces).lowercased() == key && ($0.actualMinutes ?? 0) > 0 && $0.completedAt != nil }
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+            .prefix(3)
+            .compactMap(\.actualMinutes)
+            .sorted()
+        if !timed.isEmpty { return clampDuration(timed[timed.count / 2]) }
+        return knownDurations.first { title.range(of: $0.pattern, options: [.regularExpression, .caseInsensitive]) != nil }?.minutes ?? 15
+    }
+
+    /// Typical minutes for common tasks. First match wins. Mirrors docs/REDESIGN.md.
+    private static let knownDurations: [(pattern: String, minutes: Int)] = [
+        (#"\b(gym|workout|work\s+out|study|homework|meal\s+prep|project|write|writing)\b"#, 60),
+        (#"\b(groceries|grocery|errands?)\b"#, 45),
+        (#"\b(cook|dinner)\b"#, 40),
+        (#"\b(laundry|run|clean|read|meeting)\b"#, 30),
+        (#"\b(walk|vacuum)\b"#, 20),
+        (#"\b(dishes|shower|tidy|water\s+(the\s+)?plants)\b"#, 15),
+        (#"\b(email|call|pay|bills?|rent|book)\b"#, 10),
+        (#"\b(text|trash|meds)\b"#, 5),
+    ]
 
     /// How often common chores usually repeat, in days. First match wins. Mirrors docs/REDESIGN.md.
     private static let usualRhythms: [(pattern: String, days: Int)] = [

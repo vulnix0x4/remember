@@ -18,6 +18,8 @@ struct HomeView: View {
                 .padding(.horizontal, RememberDesign.spacing)
                 .padding(.bottom, RememberDesign.spacingLarge)
             }
+            // Short days still scroll, so a swipe always puts the keyboard away.
+            .scrollBounceBehavior(.always, axes: .vertical)
             .scrollDismissesKeyboard(.immediately)
             .refreshable { await store.loadLife() }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -45,7 +47,10 @@ struct HomeView: View {
 
     private var upNextTasks: [LifeTask] {
         let current = store.lifeSnapshot.activeTask?.id ?? store.suggestedLifeTask?.id
-        return Array(store.queuedLifeTasks.filter { $0.id != current }.prefix(3))
+        // Only things that can happen now; future days live in Plan.
+        return Array(store.queuedLifeTasks.filter { task in
+            task.id != current && ([task.notBefore, task.scheduledStart].compactMap { $0 }.max() ?? .distantPast) <= .now
+        }.prefix(3))
     }
 
     @ViewBuilder

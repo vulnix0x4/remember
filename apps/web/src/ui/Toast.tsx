@@ -41,7 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const api = useMemo(() => ({ show, error, dismiss }), [show, error, dismiss]);
   // Toasts sit inside the bottom dock (above the add bar) so they share its solid background.
   // With no dock, or while a sheet is open over the page, they float above everything instead.
-  const slot = toast && !document.querySelector(".sheet-backdrop") ? document.querySelector<HTMLElement>(".add-dock .toast-slot") : null;
+  const slot = toast && !document.querySelector("[data-modal-layer]") ? document.querySelector<HTMLElement>(".add-dock .toast-slot") : null;
   const view = toast && <ToastView key={toast.id} toast={toast} onDone={dismiss} />;
   return <ToastContext.Provider value={api}>
     {children}

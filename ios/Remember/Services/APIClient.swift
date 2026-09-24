@@ -457,6 +457,30 @@ actor APIClient {
         return data
     }
 
+    func createCommitment(_ draft: CommitmentDraft) async throws -> Commitment {
+        struct Response: Decodable { let commitment: Commitment }
+        let response: Response = try await request(path: "api/life/commitments", method: "POST", body: try encoder.encode(draft))
+        return response.commitment
+    }
+
+    func updateCommitment(id: UUID, draft: CommitmentDraft) async throws -> Commitment {
+        struct Response: Decodable { let commitment: Commitment }
+        let response: Response = try await request(path: "api/life/commitments/\(id.uuidString.lowercased())", method: "PATCH", body: try encoder.encode(draft))
+        return response.commitment
+    }
+
+    func deleteCommitment(id: UUID) async throws {
+        var deletion = URLRequest(url: baseURL.appending(path: "api/life/commitments/\(id.uuidString.lowercased())"))
+        deletion.httpMethod = "DELETE"
+        deletion.timeoutInterval = 15
+        for (name, value) in credentials.headers(for: baseURL) {
+            deletion.setValue(value, forHTTPHeaderField: name)
+        }
+        let (_, response) = try await session.data(for: deletion)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
+    }
+
     func deleteVaultFile(id: UUID) async throws {
         var deletion = URLRequest(
             url: baseURL.appending(path: "api/life/files/\(id.uuidString.lowercased())")

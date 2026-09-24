@@ -83,6 +83,7 @@ struct TaskEditorSheet: View {
                             save()
                             dismiss()
                             timer.start(task.id)
+                            store.lockInTask = task
                             Task { await store.startTask(task) }
                         } label: {
                             Label("Start now", systemImage: "play.fill")

@@ -465,7 +465,8 @@ describe("Remember app", () => {
     await user.click(screen.getByRole("radio", { name: "It helped I want to carry this forward" }));
     await user.type(screen.getByLabelText(/What did you notice/i), "Starting first changed the whole session.");
     await user.click(screen.getByRole("button", { name: "Finish and remember this" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByRole("heading", { name: "Done." })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 3_000 });
     await user.click(within(screen.getByRole("navigation", { name: "Primary navigation" })).getByRole("button", { name: "Library" }));
     await user.click(screen.getByRole("button", { name: "Patterns" }));
     expect(screen.getByRole("heading", { name: "What your experiments are teaching you" })).toBeTruthy();
@@ -604,13 +605,14 @@ describe("Remember app", () => {
     expect(bar).toBe(document.activeElement);
     expect(await screen.findByRole("heading", { name: "Finish the life os shell" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Start" }));
-    expect(screen.getByRole("timer", { name: /Elapsed time/ })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "I’m stuck" }));
+    const focus = screen.getByRole("dialog", { name: "Finish the life os shell" });
+    expect(within(focus).getByRole("timer", { name: /Time left 30 minutes/ })).toBeTruthy();
+    await user.click(within(focus).getByRole("button", { name: "I’m stuck" }));
     expect(screen.getByRole("dialog", { name: "What’s getting in the way?" })).toBeTruthy();
     expect(screen.queryByText(/Choose another task/i)).toBeNull();
     await user.click(screen.getByRole("button", { name: "It’s too big" }));
     expect(await screen.findByText("Made it smaller")).toBeTruthy();
-    expect(await screen.findByText(/begin for two minutes/i)).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).getByText(/begin for two minutes/i)).toBeTruthy();
   });
 
   it("completes, deletes, and moves tasks aside without confirmation and undoes each", async () => {

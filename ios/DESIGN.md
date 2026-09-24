@@ -19,6 +19,19 @@ The iPhone app follows the attention-first spec in [docs/REDESIGN.md](../docs/RE
 - **Undoing a finished repeating task** also removes the next occurrence the server created when the task was completed.
 - **Motion:** system transitions, `sensoryFeedback`, a pulsing "Doing" dot, and toast slides. Reduce Motion turns the pulse and slides into fades.
 
+## Setup, routines and lock-in
+
+- **Settings is the one place for configuration:** `Remember/Features/Setup/`. The same sections (Your day, Commitments, Chores, Focus mode, Nudges, About me) render inside `SettingsView`, and one at a time in `SetupFlowView`. That flow appears on first launch while there are no commitments. Preview data mode only shows it with `REMEMBER_SHOW_SETUP=1`.
+- **Commitments and chores live on the server.** It turns them into dated tasks, so Jev plans them with everything else. The app only edits them, through `CommitmentEditorSheet`, and shows the tasks.
+- **Lock-in:** every Start button sets `store.lockInTask`, and `RootView` presents `LockInView` full screen.
+  - Tasks linked to a commitment with steps run as a guided routine. Progress is stored per task in `UserDefaults`, so leaving the app to move the laundry never loses your place.
+  - Wait steps schedule one local notification.
+  - Leaving takes a 3-second press, or the VoiceOver action.
+- **Screen Time:** `FocusShield` holds the person's `FamilyActivitySelection` and applies a named `ManagedSettingsStore`.
+  - The `RememberFocusMonitor` extension clears that store when the scheduled `DeviceActivity` interval ends. Intervals are at least 15 minutes, so the shield lifts even if the app is closed.
+  - Both targets need the Family Controls entitlement: development builds work now, but App Store distribution needs Apple's approval.
+- **Nudges:** `Nudges` schedules at most one "next planned" notification, one wrap-up per task, and one per routine wait. Nothing repeats.
+
 ## Verification still needed on hardware
 
-VoiceOver across the Now card, rows (custom actions: Start now, Delete), and toasts (announced). Also check dictation permission prompts, HealthKit, EventKit, Share Extension, and haptics on a physical device.
+VoiceOver across the Now card, rows (custom actions: Start now, Delete), toasts (announced), and lock-in (hold-to-leave has an accessibility action). Screen Time blocking and its automatic lift after the interval, and notification delivery while the app is closed. Also check dictation permission prompts, HealthKit, EventKit, Share Extension, and haptics on a physical device.

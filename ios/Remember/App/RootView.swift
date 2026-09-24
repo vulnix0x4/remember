@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppStore.self) private var store
+    @Environment(Nudges.self) private var nudges
     @Environment(\.scenePhase) private var scenePhase
     @State private var planSection = AppConfiguration.initialPlanSection
     @State private var lifeSection = AppConfiguration.initialLifeSection
@@ -55,12 +56,33 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $store.captureIsPresented) { CaptureView() }
+        .fullScreenCover(isPresented: $store.setupIsPresented) { SetupFlowView() }
+        .fullScreenCover(item: $store.lockInTask) { LockInView(task: $0) }
+        .onChange(of: nextPlannedBlock?.taskId) {
+            // One gentle nudge for whatever Jev planned next; replaced whenever the plan changes.
+            nudges.cancelNextPlanned()
+            if let block = nextPlannedBlock, store.lifeSnapshot.activeTask?.id != block.taskId {
+                nudges.nextPlanned(title: block.title, at: block.startAt)
+            }
+        }
+        .onChange(of: store.lifeLoadCount) {
+            let firstRun = !SetupProgress.isComplete && store.lifeSnapshot.allCommitments.isEmpty
+            if AppConfiguration.offersSetup, store.isAuthenticated, firstRun || AppConfiguration.forcesSetup,
+               !store.setupIsPresented, store.lifeLoadCount == 1 || firstRun {
+                store.setupIsPresented = true
+            }
+        }
         .sheet(isPresented: $settingsIsPresented) { SettingsSheet() }
         .alert("Something went wrong", isPresented: $store.errorIsPresented) {
             Button("OK") { store.errorMessage = nil }
         } message: {
             Text(store.errorMessage ?? "Please try again.")
         }
+    }
+
+    private var nextPlannedBlock: BrainBlock? {
+        guard store.brain?.settings.enabled == true else { return nil }
+        return store.brain?.plan.filter { $0.startAt > .now }.min { $0.startAt < $1.startAt }
     }
 
     @ViewBuilder

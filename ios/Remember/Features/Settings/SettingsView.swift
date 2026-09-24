@@ -21,6 +21,20 @@ struct SettingsView: View {
                         .font(.rememberScreenTitle)
                         .accessibilityAddTraits(.isHeader)
 
+                    settingsSection("Your day", detail: "When Jev can plan things") { YourDaySection() }
+                    settingsSection("Commitments", detail: "Things you do most days, like college or the gym") { CommitmentsSection(kind: .commitment) }
+                    settingsSection("Chores", detail: "Things that keep life running. They repeat on their own.") { CommitmentsSection(kind: .chore) }
+                    settingsSection("Focus mode", detail: nil) { FocusModeSection() }
+                    settingsSection("Nudges", detail: nil) { NudgesSection() }
+                    settingsSection("About me for Jev", detail: "Anything that helps Jev plan for you") { AboutMeSection() }
+
+                    Button("Run setup again", systemImage: "sparkles") {
+                        dismiss()
+                        SetupProgress.reset()
+                        store.setupIsPresented = true
+                    }
+                    .buttonStyle(.rememberSecondary)
+
                     VStack(spacing: 0) {
                         row("Sync", value: "Private cloud")
                         divider
@@ -103,6 +117,18 @@ struct SettingsView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(RememberDesign.canvas)
         .presentationCornerRadius(RememberDesign.sheetRadius)
+    }
+
+    private func settingsSection<Content: View>(_ title: String, detail: String?, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.rememberSectionTitle).accessibilityAddTraits(.isHeader)
+                if let detail {
+                    Text(detail).font(.footnote).foregroundStyle(RememberDesign.text3)
+                }
+            }
+            content()
+        }
     }
 
     private var divider: some View {

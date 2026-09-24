@@ -84,6 +84,15 @@ export function useLifeOS(enabled = true) {
     finally { setSnapshot(lifeService.readLocalLife()); setSyncState(lifeService.getLifeSyncState()); setWorking(false); }
   }, []);
 
+  /** Commitment changes make or clear dated tasks on the server, so pull the fresh snapshot afterwards. */
+  const runCommitment = useCallback(async <T,>(operation: () => Promise<T>): Promise<T> => {
+    const result = await run(operation);
+    if (enabled && !lifeService.getLifeSyncState().error) {
+      void lifeService.loadLife().then((loaded) => { setSnapshot(loaded.snapshot); setRemote(loaded.remote); setSyncState(lifeService.getLifeSyncState()); }).catch(() => undefined);
+    }
+    return result;
+  }, [enabled, run]);
+
   return {
     snapshot, loading, remote, working, refresh, brain, brainError, brainWorking, refreshBrain,
     pendingSync: syncState.pendingCount,
@@ -104,6 +113,9 @@ export function useLifeOS(enabled = true) {
     uploadFile: (file: File, metadata: { folder?: string; tags?: string[]; summary?: string }) => run(() => lifeService.uploadVaultFile(file, metadata)),
     deleteFile: (fileId: string) => run(() => lifeService.deleteVaultFile(fileId)),
     downloadFile: (fileId: string) => lifeService.downloadVaultFile(fileId),
+    createCommitment: (input: lifeService.CommitmentInput) => runCommitment(() => lifeService.createCommitment(input)),
+    updateCommitment: (commitmentId: string, patch: lifeService.CommitmentPatch) => runCommitment(() => lifeService.updateCommitment(commitmentId, patch)),
+    deleteCommitment: (commitmentId: string) => runCommitment(() => lifeService.deleteCommitment(commitmentId)),
   };
 }
 

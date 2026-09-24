@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeDay, describeRepeat, learnedRepeatDays, parseQuickTask, quickTaskChips } from "./quickTask";
+import { describeDay, describeRepeat, estimateDuration, estimateMinutes, learnedRepeatDays, parseQuickTask, quickTaskChips } from "./quickTask";
 
 // Wednesday, September 23, 2026 at 10:30 local time.
 const wednesday = new Date(2026, 8, 23, 10, 30);
@@ -173,5 +173,47 @@ describe("automatic repeat", () => {
   });
   it("labels where the repeat came from", () => {
     expect(quickTaskChips(parseQuickTask("laundry", now), now).find((chip) => chip.kind === "repeat")?.label).toBe("Weekly · usual");
+  });
+});
+
+describe("estimateMinutes", () => {
+  const now = new Date(2026, 8, 23, 10, 0);
+  const done = (title: string, day: number, actualMinutes: number | null) => ({ title, completedAt: new Date(2026, 8, day, 9).toISOString(), actualMinutes });
+  it("uses the median of the last three real times for the same title", () => {
+    const history = [done("Laundry", 1, 90), done("laundry", 10, 40), done("Laundry ", 12, 55), done("LAUNDRY", 15, 35), done("Dishes", 16, 5)];
+    expect(estimateDuration("Laundry", history)).toEqual({ minutes: 40, source: "history" });
+  });
+  it("averages the middle two when there are only two", () => {
+    expect(estimateMinutes("Study", [done("study", 1, 50), done("study", 2, 71)])).toBe(61);
+  });
+  it("ignores completions without a real time", () => {
+    expect(estimateDuration("Laundry", [done("Laundry", 1, null), done("Laundry", 2, 0)])).toEqual({ minutes: 30, source: "known" });
+    expect(estimateMinutes("Gym", [{ title: "Gym", completedAt: null, actualMinutes: 20 }])).toBe(60);
+  });
+  it.each([
+    ["Text Sam back", 5], ["Take out the trash", 5], ["Meds", 5],
+    ["Email the landlord", 10], ["Call mom", 10], ["Pay rent", 10], ["Pay bills", 10], ["Book a haircut", 10],
+    ["Do the dishes", 15], ["Shower", 15], ["Tidy desk", 15], ["Water plants", 15],
+    ["Walk the dog", 20], ["Vacuum", 20],
+    ["Laundry", 30], ["Go for a run", 30], ["Clean the kitchen", 30], ["Read a chapter", 30], ["Team meeting", 30],
+    ["Cook", 40], ["Make dinner", 40],
+    ["Groceries", 45], ["Run errands", 45],
+    ["Gym", 60], ["Workout", 60], ["Study for exam", 60], ["Homework", 60], ["Meal prep", 60], ["Side project", 60], ["Write the essay", 60],
+  ])("%s → %i minutes", (title, minutes) => {
+    expect(estimateMinutes(title)).toBe(minutes);
+  });
+  it("matches whole words only and falls back to 15", () => {
+    expect(estimateDuration("Fix the runner")).toEqual({ minutes: 15, source: "default" });
+    expect(estimateMinutes("Reading list", [])).toBe(15);
+    expect(estimateMinutes("Rebook flights")).toBe(15);
+  });
+  it("shows an estimated chip only when there is a real estimate, and a typed one without the ~", () => {
+    const labels = (text: string, history = [] as Array<ReturnType<typeof done>>) => quickTaskChips(parseQuickTask(text, now, history), now, history).filter((chip) => chip.kind === "duration").map((chip) => chip.label);
+    expect(labels("laundry")).toEqual(["~30 min"]);
+    expect(labels("gym")).toEqual(["~1 hr"]);
+    expect(labels("laundry 20m")).toEqual(["20 min"]);
+    expect(labels("finish the report")).toEqual([]);
+    expect(labels("finish the report", [done("Finish the report", 20, 25)])).toEqual(["~25 min"]);
+    expect(quickTaskChips(parseQuickTask("laundry", now), now).some((chip) => chip.kind === "duration")).toBe(false);
   });
 });

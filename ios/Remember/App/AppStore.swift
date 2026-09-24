@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 @Observable @MainActor
 final class AppStore {
@@ -35,6 +36,12 @@ final class AppStore {
     var lastHealthSync: Date?
     var lastCalendarSync: Date?
     var toast: AppToast?
+    @ObservationIgnored private var announcedToastID: UUID?
+    var setupIsPresented = false
+    /// The task shown in full-screen lock-in mode, from any Start button.
+    var lockInTask: LifeTask?
+    /// Increments after each successful life load, so views can react once data is in.
+    var lifeLoadCount = 0
 
     /// One ordering for Today and Plan, so they never recommend different tasks.
     var queuedLifeTasks: [LifeTask] {
@@ -364,6 +371,7 @@ final class AppStore {
         defer { isLoadingLife = false }
         do {
             lifeSnapshot = try await lifeRepository.load()
+            lifeLoadCount += 1
             Task { await refreshBrain() }
         }
         catch {
@@ -627,7 +635,21 @@ final class AppStore {
     // MARK: - Toasts
 
     func showToast(_ message: String, isError: Bool = false, undo: (@MainActor () async -> Void)? = nil) {
-        toast = AppToast(message: message, isError: isError, undo: undo)
+        let next = AppToast(message: message, isError: isError, undo: undo)
+        toast = next
+        // One countdown per toast, owned here so screens appearing or closing never cut it short.
+        // Undo needs time to notice and reach; plain confirmations can go sooner.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(undo == nil ? 4 : 8))
+            self?.dismissToast(next.id)
+        }
+    }
+
+    /// Posts a VoiceOver announcement once per toast, however many places show it.
+    func announceToast(_ id: UUID) {
+        guard let toast, toast.id == id, announcedToastID != id else { return }
+        announcedToastID = id
+        AccessibilityNotification.Announcement(toast.message).post()
     }
 
     func dismissToast(_ id: UUID) {
@@ -660,7 +682,7 @@ final class AppStore {
 
     /// Past tasks the quick-add parser learns repeat rhythms from.
     var taskHistory: [QuickTaskParser.HistoryEntry] {
-        lifeSnapshot.tasks.map { QuickTaskParser.HistoryEntry(title: $0.title, completedAt: $0.completedAt) }
+        lifeSnapshot.tasks.map { QuickTaskParser.HistoryEntry(title: $0.title, completedAt: $0.completedAt, actualMinutes: $0.actualMinutes) }
     }
 
     func startTask(_ task: LifeTask) async {
@@ -756,6 +778,40 @@ final class AppStore {
             await loadLife()
             presentLifeError("Couldn’t save that change. Try again.")
         }
+    }
+
+    // MARK: - Commitments and chores
+
+    @discardableResult
+    func saveCommitment(id: UUID? = nil, _ draft: CommitmentDraft) async -> Bool {
+        do {
+            _ = try await lifeRepository.saveCommitment(id: id, draft: draft)
+            await loadLife()
+            return true
+        } catch {
+            presentLifeError("Couldn’t save that. Try again.")
+            return false
+        }
+    }
+
+    func deleteCommitment(_ commitment: Commitment) async {
+        do {
+            try await lifeRepository.deleteCommitment(id: commitment.id)
+            await loadLife()
+            showToast("Removed \(commitment.title)") { [weak self] in
+                await self?.saveCommitment(CommitmentDraft(commitment))
+            }
+        } catch {
+            presentLifeError("Couldn’t remove that. Try again.")
+        }
+    }
+
+    /// Jev's settings, changed from Settings. Returns false when nothing could be saved.
+    @discardableResult
+    func updateBrainSettings(_ change: (inout BrainSettings) -> Void) async -> Bool {
+        guard var settings = brain?.settings else { return false }
+        change(&settings)
+        return await refreshBrain(settings: settings)
     }
 
     /// Library add bar: a link becomes a saved link, anything else a thought.

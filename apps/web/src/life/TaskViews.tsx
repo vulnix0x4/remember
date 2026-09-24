@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { ArrowsInSimple, Check, Clock, Lightning, Plus, Question, ShuffleSimple, Trash } from "@phosphor-icons/react";
 import * as lifeService from "../services/life";
-import { parseQuickTask, quickTaskChips, whenOptions, describeRepeat } from "../services/quickTask";
+import { estimateMinutes, parseQuickTask, quickTaskChips, whenOptions, describeRepeat } from "../services/quickTask";
+import { useLockIn } from "./lockInContext";
 import { AddBar } from "../ui/AddBar";
 import { Sheet } from "../ui/Sheet";
 import { haptic, useToast } from "../ui/Toast";
@@ -47,6 +48,17 @@ export function startFocusTimer(taskId: string) {
   if (!readFocusTimer(taskId)) writeFocusTimer(taskId, { accumulatedMs: 0, startedAt: Date.now() });
 }
 export function clearFocusTimer(taskId: string) { writeFocusTimer(taskId, null); }
+/** Stops the clock but keeps the time spent (used by Leave focus). */
+export function pauseFocusTimer(taskId: string) {
+  const timer = readFocusTimer(taskId);
+  if (timer && timer.startedAt !== null) writeFocusTimer(taskId, { accumulatedMs: focusTimerElapsedMs(timer), startedAt: null });
+}
+/** Starts the clock, or restarts a paused one. */
+export function resumeFocusTimer(taskId: string) {
+  const timer = readFocusTimer(taskId);
+  if (!timer) writeFocusTimer(taskId, { accumulatedMs: 0, startedAt: Date.now() });
+  else if (timer.startedAt === null) writeFocusTimer(taskId, { ...timer, startedAt: Date.now() });
+}
 
 /** A per-task stopwatch that survives reloads within the session. */
 export function useFocusTimer(taskId: string | undefined) {
@@ -92,14 +104,16 @@ export function mutationMessage(reason: unknown) {
 
 export function useTaskActions(life: LifeOSController) {
   const toast = useToast();
+  const lockIn = useLockIn();
   const fail = useCallback((reason: unknown) => { toast.error(mutationMessage(reason)); }, [toast]);
 
   const add = useCallback(async (text: string) => {
-    const parsed = parseQuickTask(text, new Date(), life.snapshot?.tasks ?? []);
+    const history = life.snapshot?.tasks ?? [];
+    const parsed = parseQuickTask(text, new Date(), history);
     try {
       await life.createTask({
         title: parsed.title,
-        durationMinutes: parsed.durationMinutes ?? 15,
+        durationMinutes: parsed.durationMinutes ?? estimateMinutes(parsed.title, history),
         notBefore: parsed.notBefore?.toISOString() ?? null,
         dueAt: parsed.dueAt?.toISOString() ?? null,
         repeatEveryDays: parsed.repeatEveryDays ?? null,
@@ -112,12 +126,14 @@ export function useTaskActions(life: LifeOSController) {
     } catch (reason) { fail(reason); return false; }
   }, [fail, life, toast]);
 
+  /** Start makes the task current, starts its clock, and opens lock-in mode, all in one tap. */
   const start = useCallback(async (task: LifeTask) => {
-    startFocusTimer(task.id); haptic();
+    resumeFocusTimer(task.id); haptic();
+    lockIn.open(task.id);
     if (task.status === "active") return;
     try { await life.updateTask(task.id, { status: "active" }); }
-    catch (reason) { clearFocusTimer(task.id); fail(reason); }
-  }, [fail, life]);
+    catch (reason) { clearFocusTimer(task.id); lockIn.close(); fail(reason); }
+  }, [fail, life, lockIn]);
 
   const restoreStatus = (task: LifeTask) => task.status === "active" ? "active" : task.status === "inbox" ? "inbox" : "queued";
 
@@ -185,7 +201,7 @@ export function TaskAddBar({ life }: { life: LifeOSController }) {
     label="Add a task"
     placeholder="Add a task…"
     sendLabel="Add task"
-    chips={(text) => quickTaskChips(parseQuickTask(text, new Date(), life.snapshot?.tasks ?? []), new Date())}
+    chips={(text) => quickTaskChips(parseQuickTask(text, new Date(), life.snapshot?.tasks ?? []), new Date(), life.snapshot?.tasks ?? [])}
     onSubmit={actions.add}
   />;
 }
@@ -201,6 +217,7 @@ export function NowCard({ life, compact = false, onOpenPlan, onOpenTask }: { lif
   const task = pick?.task;
   const timer = useFocusTimer(task?.id);
   const actions = useTaskActions(life);
+  const lockIn = useLockIn();
   const [stuckOpen, setStuckOpen] = useState(false);
   const [practiceOpen, setPracticeOpen] = useState(false);
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -267,6 +284,7 @@ export function NowCard({ life, compact = false, onOpenPlan, onOpenTask }: { lif
       <div className="now-actions">
         <button className="btn primary" type="button" disabled={busy} onClick={() => void finish()}>{busy ? "Saving…" : "Done"}</button>
         <button className="btn secondary" type="button" onClick={() => setStuckOpen(true)}>I’m stuck</button>
+        <button className="btn quiet" type="button" onClick={() => { resumeFocusTimer(task.id); lockIn.open(task.id); }}>Back to focus</button>
       </div>
       {sheets}
     </section>;
@@ -395,7 +413,7 @@ export function UpNext({ life, onSeeAll, onOpen }: { life: LifeOSController; onS
 const durationChoices = [5, 15, 30, 60, 90];
 const repeatChoices: Array<{ label: string; value: number | null }> = [{ label: "Never", value: null }, { label: "Daily", value: 1 }, { label: "Weekly", value: 7 }, { label: "Monthly", value: 30 }];
 
-function ChipGroup<T>({ label, options, value, onChange }: { label: string; options: Array<{ label: string; value: T }>; value: T; onChange: (value: T) => void }) {
+export function ChipGroup<T>({ label, options, value, onChange }: { label: string; options: Array<{ label: string; value: T }>; value: T; onChange: (value: T) => void }) {
   return <fieldset className="chip-field">
     <legend>{label}</legend>
     <div className="chip-row" role="group" aria-label={label}>
