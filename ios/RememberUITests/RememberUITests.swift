@@ -227,6 +227,43 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(previous.exists, "The set-aside task should still be in Plan.")
     }
 
+    func testLaundryWaitRunsInTheBackgroundWithoutBlocking() {
+        let laundryID = "60000000-0000-0000-0000-000000000004"
+        let app = makeApp(initialRoute: "tasks")
+        app.launch()
+
+        let row = app.buttons["remember.life-task.\(laundryID)"]
+        scrollUntilHittable(row, in: app)
+        XCTAssertTrue(row.waitForExistence(timeout: timeout))
+        row.tap()
+        let startNow = app.buttons["Start now"]
+        XCTAssertTrue(startNow.waitForExistence(timeout: timeout))
+        startNow.tap()
+
+        let next = app.buttons["remember.lockin.nextStep"]
+        XCTAssertTrue(next.waitForExistence(timeout: timeout), "Laundry opens as a guided routine.")
+        XCTAssertTrue(app.buttons["remember.lockin.close"].exists, "Routines close with one tap instead of a hold.")
+        XCTAssertFalse(app.staticTexts["Apps blocked"].exists, "Routines never block apps.")
+        XCTAssertTrue(app.staticTexts["Gather dirty clothes"].exists)
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Start the washer"].waitForExistence(timeout: timeout))
+        next.tap()
+        XCTAssertTrue(app.staticTexts["Washer running"].waitForExistence(timeout: timeout))
+        XCTAssertEqual(next.label, "Start 45-min timer")
+        next.tap()
+
+        XCTAssertTrue(next.waitForNonExistence(timeout: timeout), "Starting the wait hands laundry to the background.")
+        selectPrimaryTab("Today", in: app)
+        let background = app.buttons["remember.background.\(laundryID)"]
+        XCTAssertTrue(background.waitForExistence(timeout: timeout), "Today shows laundry running in the background.")
+        XCTAssertTrue(app.buttons["remember.now.start"].exists, "Jev offers something else to do meanwhile.")
+        attachScreenshot(of: app, named: "Laundry in the background")
+
+        background.tap()
+        XCTAssertTrue(app.buttons["remember.lockin.nextStep"].waitForExistence(timeout: timeout))
+        XCTAssertEqual(app.buttons["remember.lockin.nextStep"].label, "It's done already")
+    }
+
     func testTaskSheetKeepsDetailsOptionalAndCurrencySearchRemainsAvailable() {
         let taskApp = makeApp(initialRoute: "tasks")
         taskApp.launch()
@@ -834,6 +871,7 @@ final class RememberUITests: XCTestCase {
         app.launchEnvironment["REMEMBER_API_URL"] = "http://127.0.0.1:1"
         app.launchEnvironment["REMEMBER_MOCK_FALLBACK"] = mockFallback ? "1" : "0"
         app.launchEnvironment["REMEMBER_INITIAL_TAB"] = initialRoute
+        app.launchEnvironment["REMEMBER_RESET_LOCAL_STATE"] = "1"
         app.launchArguments += [
             "-ApplePersistenceIgnoreState", "YES",
             "-AppleLanguages", "(en)",

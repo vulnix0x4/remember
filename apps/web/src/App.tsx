@@ -40,6 +40,7 @@ import type { AskMessage, Imprint, Page, PrimaryPage, ReturnCue } from "./types"
 import { JevStatusLine } from "./components/JevSheet";
 import { LockInProvider } from "./life/lockInContext";
 import { LockInHost } from "./life/LockIn";
+import { BackgroundSection, RoutineNudger } from "./life/BackgroundRoutines";
 import { Onboarding } from "./setup/Onboarding";
 import { shouldShowSetup } from "./setup/setupState";
 import { AboutMeSection, CommitmentSection, NudgesSection, YourDaySection } from "./setup/SetupSections";
@@ -410,6 +411,7 @@ function HomePage({ imprints, resurfaced, onOpen, onNavigate, life }: { imprints
   }, [contextOverview, history, imprints, life.snapshot, localRecentQuestion, resurfaced]);
   return (
     <div className="screen-body home-page">
+      <BackgroundSection life={life} />
       <NowCard life={life} onOpenPlan={() => onNavigate("tasks")} />
       <UpNext life={life} onSeeAll={() => onNavigate("tasks")} onOpen={setOpenTask} />
       <DailyBasics life={life} />
@@ -1094,6 +1096,7 @@ function AppContent() {
         {screen}
       </main>
       <LockInHost life={life} onFinished={() => navigate("home")} />
+      <RoutineNudger life={life} />
       {setupOpen && <Onboarding life={life} onFinish={() => { setSetupOpen(false); navigate("home"); }} />}
       <nav className="bottom-nav" aria-label="Mobile navigation">{navItems.map(({ page: itemPage, label, icon: Icon }) => { const active = primaryPage === itemPage; return <button className={cx(active && "active")} type="button" key={itemPage} onClick={() => navigate(itemPage)} aria-current={active ? "page" : undefined}><Icon size={24} weight={active ? "fill" : "regular"} /><span>{label}</span></button>; })}</nav>
     </div>

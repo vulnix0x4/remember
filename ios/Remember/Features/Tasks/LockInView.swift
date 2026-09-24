@@ -38,6 +38,8 @@ struct LockInView: View {
     @State private var isHoldingLeave = false
     @State private var winCount: Int?
     @State private var stepFeedback = 0
+    /// Set while a routine hands off to the background, so the status change doesn't read as leaving.
+    @State private var movingToBackground = false
 
     private var steps: [RoutineStep] { store.lifeSnapshot.commitment(for: task)?.steps ?? [] }
     private var isRoutine: Bool { !steps.isEmpty }
@@ -70,7 +72,7 @@ struct LockInView: View {
         .onAppear(perform: begin)
         .onChange(of: store.lifeSnapshot.tasks.first { $0.id == task.id }?.status) { previous, status in
             // Stuck → "Do something else" or delete moves this task away; leave focus with it.
-            if previous == .active, status != .active, winCount == nil { finishCleanup(); dismiss() }
+            if previous == .active, status != .active, winCount == nil, !movingToBackground { finishCleanup(); dismiss() }
         }
         .statusBarHidden()
     }
@@ -78,11 +80,19 @@ struct LockInView: View {
     private var content: some View {
         VStack(spacing: 0) {
             HStack {
-                Label(shield.isShielding ? "Apps blocked" : "Locked in", systemImage: shield.isShielding ? "lock.fill" : "scope")
+                Label(shield.isShielding ? "Apps blocked" : isRoutine ? "Step by step" : "Locked in",
+                      systemImage: shield.isShielding ? "lock.fill" : isRoutine ? "list.number" : "scope")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(RememberDesign.accent)
                 Spacer()
-                leaveButton
+                if isRoutine {
+                    // Routines run alongside other things, so closing is one tap and keeps your place.
+                    Button("Close") { dismiss() }
+                        .buttonStyle(.rememberQuiet)
+                        .accessibilityIdentifier("remember.lockin.close")
+                } else {
+                    leaveButton
+                }
             }
             .padding(.horizontal, RememberDesign.spacing)
             .padding(.top, RememberDesign.spacingSmall)
@@ -280,6 +290,13 @@ struct LockInView: View {
         progress.save(task.id)
         let next = steps.indices.contains(progress.stepIndex + 1) ? steps[progress.stepIndex + 1].title : nil
         nudges.routineWaitEnds(taskID: task.id, at: ends, finished: step.title.replacingOccurrences(of: " running", with: ""), next: next)
+
+        // The wait runs in the background: free the Now slot so Jev offers something else meanwhile.
+        movingToBackground = true
+        timer.reset()
+        store.showToast("\(step.title) · we'll nudge you in \(minutes) min")
+        Task { await store.patchTask(task.id, LifeTaskPatch(status: .queued, notBefore: .some(ends)), quietly: true) }
+        dismiss()
     }
 
     private func advanceRoutine() {
@@ -294,6 +311,14 @@ struct LockInView: View {
             progress.waitEndsAt = nil
         }
         progress.save(task.id)
+        resumeIfBackgrounded()
+    }
+
+    /// Coming back from a background wait makes the routine the current task again.
+    private func resumeIfBackgrounded() {
+        guard store.lifeSnapshot.tasks.first(where: { $0.id == task.id })?.status != .active else { return }
+        timer.start(task.id)
+        Task { await store.startTask(task) }
     }
 
     // MARK: Leave (press and hold, so leaving is a decision)
@@ -326,10 +351,20 @@ struct LockInView: View {
 
     private func begin() {
         progress = RoutineProgress.load(task.id)
+        if isRoutine {
+            // Routines never block apps. A finished background wait moves straight on to the next step.
+            if let ends = progress.waitEndsAt {
+                if ends <= .now { advanceRoutine() }
+                return
+            }
+            resumeIfBackgrounded()
+            return
+        }
         if !timer.isTracking(task.id) || !timer.isRunning { timer.start(task.id) }
-        if !shield.isShielding { shield.begin(minutes: max(task.durationMinutes, shield.defaultMinutes)) }
+        // Block until Done, capped a little past the task's length so nobody is ever stuck.
+        if !shield.isShielding { shield.begin(minutes: task.durationMinutes + 10) }
         let wrapUp = Date.now.addingTimeInterval(targetSeconds - timer.elapsed(for: task.id) - 5 * 60)
-        if !isRoutine { nudges.wrapUp(taskID: task.id, title: task.title, at: wrapUp) }
+        nudges.wrapUp(taskID: task.id, title: task.title, at: wrapUp)
     }
 
     private func finish() {

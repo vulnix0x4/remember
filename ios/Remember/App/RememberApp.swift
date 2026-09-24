@@ -9,6 +9,16 @@ struct RememberApp: App {
     @State private var nudges = Nudges()
 
     init() {
+        #if DEBUG
+        // UI tests start from a clean device: no routine in progress, no running focus timer.
+        if ProcessInfo.processInfo.environment["REMEMBER_RESET_LOCAL_STATE"] == "1" {
+            let defaults = UserDefaults.standard
+            for key in defaults.dictionaryRepresentation().keys
+            where key.hasPrefix("remember.routine.") || key.hasPrefix("remember.focus.") || key.hasPrefix("remember.setup.") {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        #endif
         let client = APIClient(baseURL: AppConfiguration.apiURL, credentials: AppConfiguration.apiCredentials)
         let repository = LiveImprintRepository(
             client: client,

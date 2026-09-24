@@ -177,7 +177,7 @@ Settings sections, in order:
    - *Groceries*: weekly, 45 min
    - *Clean bathroom*: weekly, 30 min
    - *Change sheets*: every 2 weeks, 15 min
-4. **Focus mode.** iOS only. *Block distracting apps while I focus* (on/off), then *Choose apps* (the system app picker) and a default length (25 / 45 / 60 / 90 min).
+4. **Focus mode.** iOS only. *Block distracting apps while I focus* (on/off), then *Choose apps* (the system app picker). There is no length setting, because blocking follows the task (see Lock-in mode).
 5. **Nudges.** *Gentle reminders* (on/off). This controls notifications for the next planned thing, "wrap up in 5 minutes", and wait steps finishing. Each is sent once and never repeated.
 6. **About me for Jev.** The free-text preferences field.
 7. Account, appearance and data: the existing settings, unchanged.
@@ -219,7 +219,14 @@ The server turns each commitment into dated tasks for the next 7 days, linked by
 
 When a task has a `commitmentId` whose commitment has steps, **Start** opens lock-in mode in routine form. It shows one step at a time, as a big title with a `Next step` primary button, plus a progress line ("Step 2 of 7").
 
-A step with `waitMinutes` shows a countdown ("Washer running · 38 min left"). You can leave the app. A gentle notification fires when the wait ends: "Washer's done. Move clothes to the dryer." (the notification uses the next step's title). You can end a wait early with *It's done already*.
+Routines **never block apps**, because laundry is something you do alongside other things.
+
+A step with `waitMinutes` has one primary button, *Start 45-min timer*. Tapping it:
+- **Moves the routine to the background.** Lock-in closes and the task is set back to `queued` with `notBefore` at the wait's end, so Jev immediately offers something else to do meanwhile. The step index and wait end are kept on the device.
+- **Schedules one nudge** for when the wait ends: "Washer's done. Next: Move clothes to the dryer." It uses the next step's title.
+- **Adds a strip to Today**, under the header, labeled "In the background". It shows a row per running routine ("Laundry · Washer running · 32 min left"). When the wait is over, the row changes to "Washer's done · Move clothes to the dryer" with a *Continue* button. Tapping a row reopens the routine at the right step.
+
+During a wait, the routine screen shows the countdown and one button, *It's done already*. That ends the wait early and makes the task current again.
 
 Finishing the last step completes the task, and the chore comes back on its rhythm.
 
@@ -240,7 +247,7 @@ A full-screen view replaces the Now card's in-place timer. It holds:
 - **Countdown:** a large ring counting down the task's duration, since time blindness is real. Tap the ring to pause. When the time is up, the ring keeps counting up in the accent color and nothing alarms.
 - **Buttons:** a primary **Done**, a secondary **I'm stuck** (the existing Stuck sheet), and a quiet **Leave focus**, which you have to *press and hold for 3 seconds*.
 
-On iOS with Focus blocking on, starting applies a Screen Time shield to the chosen apps until the timer ends, Done, or Leave focus. A scheduled device-activity interval guarantees the shield lifts even if the app is closed. The web shows the same screen without blocking.
+**Blocking (iOS, Focus mode on).** Starting a task that isn't a routine blocks the chosen apps with a Screen Time shield. The block lasts until Done or Leave focus, capped at the task's length plus 10 minutes. The cap is at least 15 minutes, because that's the shortest block Screen Time allows. A scheduled device-activity interval lifts the shield at the cap even if the app is closed. Routines never block. The web shows the same screen without blocking.
 
 After **Done**, a two-second win moment appears: the accent check and "Done. That's 3 today." Then it returns to Today.
 

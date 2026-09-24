@@ -1,14 +1,14 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check } from "@phosphor-icons/react";
 import * as lifeService from "../services/life";
-import { nudgesEnabled, sendNudge } from "../services/nudges";
+import { mutationMessage } from "./TaskViews";
 import { HoldButton } from "../ui/HoldButton";
 import { ModalBackdrop } from "../ui/Sheet";
-import { haptic } from "../ui/Toast";
+import { haptic, useToast } from "../ui/Toast";
 import { useLockIn } from "./lockInContext";
 import { doneToday } from "./planning";
-import { advanceRoutine, enterStep, readRoutine, waitDoneMessage, waitLeftLabel, waitRemainingMs, writeRoutine, type RoutineProgress } from "./routine";
-import { PracticeResultSheet, StuckSheet, pauseFocusTimer, resumeFocusTimer, useFocusTimer, useTaskActions } from "./TaskViews";
+import { advanceRoutine, enterStep, readRoutine, startWait, waitDoneMessage, waitLeftLabel, waitRemainingMs, writeRoutine, type RoutineProgress } from "./routine";
+import { PracticeResultSheet, StuckSheet, clearFocusTimer, pauseFocusTimer, resumeFocusTimer, useFocusTimer, useTaskActions } from "./TaskViews";
 import type { LifeTask, PracticeResult, RoutineStep } from "./types";
 import type { LifeOSController } from "./useLifeOS";
 
@@ -30,8 +30,9 @@ function spokenDuration(seconds: number) {
   return minutes ? `${minutes} minute${minutes === 1 ? "" : "s"} ${rest} second${rest === 1 ? "" : "s"}` : `${rest} second${rest === 1 ? "" : "s"}`;
 }
 
-function stillOpen(task: LifeTask, now: number) {
-  return (task.status === "active" || task.status === "queued" || task.status === "inbox") && !(task.notBefore && Date.parse(task.notBefore) > now);
+/** Still something to show. A routine waiting in the background is queued until its wait ends, and that's fine. */
+function stillOpen(task: LifeTask, now: number, backgroundWait = false) {
+  return (task.status === "active" || task.status === "queued" || task.status === "inbox") && (backgroundWait || !(task.notBefore && Date.parse(task.notBefore) > now));
 }
 
 /** Renders lock-in mode for whichever task Start opened. Lives once, at the app root. */
@@ -97,6 +98,7 @@ function clampProgress(progress: RoutineProgress, steps: RoutineStep[]): Routine
 
 export function LockInView({ taskId, life, onClose, onFinished }: { taskId: string; life: LifeOSController; onClose: () => void; onFinished: () => void }) {
   const titleId = useId();
+  const toast = useToast();
   const actions = useTaskActions(life);
   const clock = useClock();
   const live = life.snapshot.tasks.find((task) => task.id === taskId);
@@ -116,27 +118,23 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
   const [storedProgress, setProgress] = useState<RoutineProgress>(() => readRoutine(taskId) ?? enterStep(steps, 0));
   const progress = clampProgress(storedProgress, steps);
 
+  // A routine whose wait is running lives in the background: no focus clock until it's picked up again.
+  const backgroundWait = routine && progress.waitEndsAt !== null;
   // Make sure the clock runs whenever lock-in is showing (for example after a reload).
   const hasTask = Boolean(task);
-  useEffect(() => { if (hasTask) resumeFocusTimer(taskId); }, [hasTask, taskId]);
+  const startsInBackground = useRef(backgroundWait).current;
+  useEffect(() => { if (hasTask && !startsInBackground) resumeFocusTimer(taskId); }, [hasTask, startsInBackground, taskId]);
   const { step: stepIndex, waitEndsAt, notified } = progress;
   useEffect(() => { if (routine) writeRoutine(taskId, { step: stepIndex, waitEndsAt, notified }); }, [routine, taskId, stepIndex, waitEndsAt, notified]);
   // Close quietly when the task is moved aside, deleted, or finished somewhere else.
   const finishing = useRef(false);
   useEffect(() => {
     if (phase === "win" || finishing.current) return;
-    if (!live || !stillOpen(live, Date.now())) onClose();
-  }, [live, phase, onClose]);
-  // One gentle nudge when a wait ends.
+    if (!live || !stillOpen(live, Date.now(), backgroundWait)) onClose();
+  }, [live, phase, onClose, backgroundWait]);
+  // The nudge when a wait ends is sent by RoutineNudger, which runs even when lock-in is closed.
   const waitLeft = waitRemainingMs(progress, Math.max(clock, Date.now()));
   const waitOver = routine && progress.waitEndsAt !== null && waitLeft === 0;
-  useEffect(() => {
-    if (!waitOver || progress.notified) return;
-    // In the app, the screen already says it; the notification is for when they've looked away.
-    if (document.visibilityState === "hidden") sendNudge("Remember", waitDoneMessage(steps, progress.step));
-    haptic([10, 40, 10]);
-    setProgress({ ...progress, notified: true });
-  }, [waitOver]); // Fires once per wait.
   const finished = useRef(onFinished); finished.current = onFinished;
   useEffect(() => {
     if (phase !== "win") return;
@@ -160,11 +158,36 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
     return true;
   };
   const done = () => { if (task.source === "practice") setPracticeOpen(true); else void complete(); };
+  /** Coming back from a wait makes the task current again, with its clock running. */
+  const reactivate = () => {
+    resumeFocusTimer(taskId);
+    const current = life.snapshot.tasks.find((item) => item.id === taskId);
+    if (!current || (current.status === "active" && !current.notBefore)) return;
+    finishing.current = true; // Don't close while the task is on its way back from "later".
+    life.updateTask(taskId, { status: "active", notBefore: null })
+      .catch((reason) => toast.error(mutationMessage(reason)))
+      .finally(() => { finishing.current = false; });
+  };
   const nextStep = () => {
     haptic();
+    const fromWait = progress.waitEndsAt !== null;
     const moved = advanceRoutine(progress, steps);
-    if (moved.finished) { done(); return; }
+    if (fromWait) reactivate();
+    if (moved.finished) { if (fromWait) setProgress({ ...progress, waitEndsAt: null }); done(); return; }
     setProgress(moved.progress);
+  };
+  /** "Start 45-min timer": the routine moves to the background and Jev offers something else meanwhile. */
+  const startTimer = async () => {
+    const step = steps[progress.step];
+    const next = startWait(progress, steps);
+    haptic([8, 30, 8]);
+    finishing.current = true;
+    writeRoutine(taskId, next);
+    clearFocusTimer(taskId);
+    onClose();
+    toast.show({ message: `${step?.title ?? "Timer"} · we’ll nudge you` });
+    try { await life.updateTask(taskId, { status: "queued", notBefore: new Date(next.waitEndsAt!).toISOString() }); }
+    catch (reason) { toast.error(mutationMessage(reason)); }
   };
   const leave = () => { pauseFocusTimer(taskId); onClose(); };
 
@@ -183,7 +206,8 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
   const step = routine ? steps[progress.step] : undefined;
   const waiting = routine && progress.waitEndsAt !== null && waitLeft > 0;
   const lastStep = routine && progress.step >= steps.length - 1;
-  const showReady = timer.elapsedSeconds < 60 && !waiting;
+  const waitToStart = routine && Boolean(step?.waitMinutes) && progress.waitEndsAt === null;
+  const showReady = timer.elapsedSeconds < 60 && !backgroundWait && !waitToStart;
   const stuckButton = <button className="btn secondary" type="button" onClick={() => setStuckOpen(true)}>I’m stuck</button>;
 
   return <ModalBackdrop className="lockin-backdrop" onClose={() => undefined} closeOnEscape={false} closeOnBackdrop={false}>
@@ -201,7 +225,7 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
           {waiting && <>
             <CountdownRing totalSeconds={(step.waitMinutes ?? 1) * 60} elapsedSeconds={(step.waitMinutes ?? 1) * 60 - waitLeft / 1_000} running spokenPrefix="Wait left" />
             <p className="lockin-sub" role="status">{step.title} · {waitLeftLabel(waitLeft)}</p>
-            <p className="lockin-note">{nudgesEnabled() ? "You can leave the app. We’ll nudge you when it’s done." : "You can leave the app. It keeps counting."}</p>
+            <p className="lockin-note">It keeps running while you do other things.</p>
           </>}
           {waitOver && <p className="lockin-sub accent" role="status">{waitDoneMessage(steps, progress.step)}</p>}
         </> : <CountdownRing totalSeconds={Math.max(1, task.durationMinutes) * 60} elapsedSeconds={timer.elapsedSeconds} running={timer.running} onToggle={timer.toggle} />}
@@ -212,7 +236,10 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
         {routine
           ? waiting
             ? <button className="btn secondary" type="button" data-auto-focus onClick={nextStep}>It’s done already</button>
-            : <>
+            : waitToStart ? <>
+              <button className="btn primary" type="button" data-auto-focus onClick={() => void startTimer()}>Start {step?.waitMinutes}-min timer</button>
+              {stuckButton}
+            </> : <>
               <button className="btn primary" type="button" data-auto-focus disabled={busy} onClick={nextStep}>{busy ? "Saving…" : lastStep ? "Done" : "Next step"}</button>
               {stuckButton}
             </>

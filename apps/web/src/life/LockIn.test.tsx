@@ -4,7 +4,8 @@ import * as lifeService from "../services/life";
 import { ToastProvider } from "../ui/Toast";
 import { LockInHost } from "./LockIn";
 import { LockInProvider, useLockIn } from "./lockInContext";
-import { advanceRoutine, enterStep, routineStorageKey, waitDoneMessage, waitLeftLabel } from "./routine";
+import { BackgroundSection, RoutineNudger } from "./BackgroundRoutines";
+import { advanceRoutine, enterStep, routineStorageKey, startWait, waitDoneMessage, waitDoneTitle, waitLeftLabel, waitMinutesLeftLabel } from "./routine";
 import { focusTimerStorageKey } from "./TaskViews";
 import { emptyLifeSnapshot, type Commitment, type LifeTask, type RoutineStep } from "./types";
 import { useLifeOS } from "./useLifeOS";
@@ -21,8 +22,9 @@ function Harness({ onFinished }: { onFinished: () => void }) {
   const lockIn = useLockIn();
   return <>
     <p>Open: {lockIn.taskId ?? "none"}</p>
-    <div className="app-shell"><main /></div>
+    <div className="app-shell"><main><BackgroundSection life={life} /></main></div>
     <LockInHost life={life} onFinished={onFinished} />
+    <RoutineNudger life={life} />
   </>;
 }
 function renderLockIn(onFinished = vi.fn()) {
@@ -37,18 +39,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("routine steps", () => {
-  it("starts a wait when arriving on its step and finishes after the last step", () => {
+  it("waits for the timer tap before a wait starts, and finishes after the last step on its step and finishes after the last step", () => {
     const now = 1_000_000;
-    const first = enterStep(steps, 0, now);
+    const first = enterStep(steps, 0);
     expect(first).toEqual({ step: 0, waitEndsAt: null, notified: false });
-    const second = advanceRoutine(first, steps, now);
-    expect(second).toEqual({ finished: false, progress: { step: 1, waitEndsAt: now + 45 * 60_000, notified: false } });
-    const third = advanceRoutine(second.progress, steps, now + 5_000);
+    const second = advanceRoutine(first, steps);
+    // Arriving on a wait step doesn't start it; the person taps "Start 45-min timer".
+    expect(second).toEqual({ finished: false, progress: { step: 1, waitEndsAt: null, notified: false } });
+    expect(startWait(second.progress, steps, now)).toEqual({ step: 1, waitEndsAt: now + 45 * 60_000, notified: false });
+    const third = advanceRoutine(second.progress, steps);
     expect(third.progress).toEqual({ step: 2, waitEndsAt: null, notified: false });
     expect(advanceRoutine(third.progress, steps).finished).toBe(true);
   });
   it("says what finished and what's next", () => {
-    expect(waitDoneMessage(steps, 1)).toBe("Washer’s done. Move clothes to the dryer.");
+    expect(waitDoneMessage(steps, 1)).toBe("Washer’s done. Next: Move clothes to the dryer.");
+    expect(waitDoneTitle(steps, 1)).toBe("Washer’s done");
+    expect(waitMinutesLeftLabel(31 * 60_000 + 5_000)).toBe("32 min left");
     expect(waitDoneMessage([{ title: "Soak beans", waitMinutes: 60 }], 0)).toBe("Time’s up.");
     expect(waitLeftLabel(38 * 60_000 - 1)).toBe("38 min left");
     expect(waitLeftLabel(12_000)).toBe("12 sec left");
@@ -101,35 +107,65 @@ describe("lock-in mode", () => {
     expect(screen.getByRole("button", { name: "Resume timer" })).toBeInTheDocument();
   });
 
-  it("walks a routine one step at a time, times the wait, resumes after a reload, and celebrates when done", async () => {
-    lifeService.saveLocalLife({ ...emptyLifeSnapshot(), commitments: [laundry], tasks: [task({ title: "Laundry", firstStep: "Gather dirty clothes", commitmentId: "laundry", occurrenceDate: "2026-09-23" })] });
+  it("walks a routine one step at a time and sends a wait to the background so something else can happen", async () => {
+    lifeService.saveLocalLife({ ...emptyLifeSnapshot(), commitments: [laundry], tasks: [task({ title: "Laundry", firstStep: "Gather dirty clothes", commitmentId: "laundry", occurrenceDate: "2026-09-23" }), task({ id: "t2", title: "Email the landlord", status: "queued" })] });
     sessionStorage.setItem("remember-lock-in-v1", "t1");
-    const complete = vi.spyOn(lifeService, "completeTask");
-    const finished = vi.fn();
-    const view = renderLockIn(finished);
+    renderLockIn();
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
-    expect(screen.getByText("Gather dirty clothes")).toBeInTheDocument();
-
+    expect(screen.queryByRole("region", { name: "In the background" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next step" }));
+
+    // The wait step: one primary button, and nothing is counting yet.
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
-    expect(screen.getByText("Washer running · 45 min left")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Next step" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "It’s done already" })).toBeNull();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Start 45-min timer" })); });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Washer running · we’ll nudge you")).toBeInTheDocument();
+    const saved = lifeService.readLocalLife().tasks.find((item) => item.id === "t1")!;
+    expect(saved).toMatchObject({ status: "queued", notBefore: new Date(Date.now() + 45 * 60_000).toISOString() });
+    expect(sessionStorage.getItem(focusTimerStorageKey("t1"))).toBeNull();
     expect(JSON.parse(localStorage.getItem(routineStorageKey("t1"))!)).toMatchObject({ step: 1, waitEndsAt: Date.now() + 45 * 60_000 });
 
-    advance(7 * 60_000);
-    expect(screen.getByText("Washer running · 38 min left")).toBeInTheDocument();
-    // Reload: the same step and the same wait come back.
-    view.unmount();
-    renderLockIn(finished);
-    expect(screen.getByText("Washer running · 38 min left")).toBeInTheDocument();
+    const strip = screen.getByRole("region", { name: "In the background" });
+    expect(within(strip).getByRole("button", { name: /Laundry Washer running · 45 min left/ })).toBeInTheDocument();
+    advance(13 * 60_000);
+    expect(within(strip).getByRole("button", { name: /Laundry Washer running · 32 min left/ })).toBeInTheDocument();
 
-    advance(38 * 60_000);
-    expect(screen.getByText("Washer’s done. Move clothes to the dryer.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Next step" }));
+    // Tapping the row during the wait shows the countdown with only "It's done already".
+    fireEvent.click(within(strip).getByRole("button", { name: /Laundry/ }));
+    const dialog = screen.getByRole("dialog", { name: "Laundry" });
+    expect(within(dialog).getByText("Washer running · 32 min left")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /Next step|Done|Start/ })).toBeNull();
+    await act(async () => { fireEvent.click(within(dialog).getByRole("button", { name: "It’s done already" })); });
     expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
+    expect(lifeService.readLocalLife().tasks.find((item) => item.id === "t1")).toMatchObject({ status: "active", notBefore: null });
+    expect(screen.queryByRole("region", { name: "In the background" })).toBeNull();
+  });
 
+  it("says when the wait is over and continues at the next step, then celebrates when done", async () => {
+    lifeService.saveLocalLife({ ...emptyLifeSnapshot(), commitments: [laundry], tasks: [task({ title: "Laundry", commitmentId: "laundry", status: "queued", notBefore: new Date(Date.now() + 5 * 60_000).toISOString() })] });
+    localStorage.setItem(routineStorageKey("t1"), JSON.stringify({ step: 1, waitEndsAt: Date.now() + 5 * 60_000 }));
+    const complete = vi.spyOn(lifeService, "completeTask");
+    const finished = vi.fn();
+    renderLockIn(finished);
+    expect(screen.getByRole("button", { name: /Washer running · 5 min left/ })).toBeInTheDocument();
+    advance(5 * 60_000 + 1_000);
+    const strip = screen.getByRole("region", { name: "In the background" });
+    expect(within(strip).getByRole("button", { name: "Washer’s done Move clothes to the dryer" })).toBeInTheDocument();
+    // One in-app nudge, once.
+    expect(screen.getByText("Washer’s done. Next: Move clothes to the dryer.")).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(routineStorageKey("t1"))!)).toMatchObject({ notified: true });
+
+    await act(async () => { fireEvent.click(within(strip).getByRole("button", { name: "Continue Laundry" })); });
+    expect(screen.getByRole("dialog", { name: "Laundry" })).toBeInTheDocument();
+    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
+    expect(lifeService.readLocalLife().tasks[0]).toMatchObject({ status: "active", notBefore: null });
+    expect(screen.queryByRole("region", { name: "In the background" })).toBeNull();
+
+    advance(60_000);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Done" })); });
-    expect(complete).toHaveBeenCalledWith("t1", 45, undefined);
+    expect(complete).toHaveBeenCalledWith("t1", 1, undefined);
     expect(screen.getByRole("heading", { name: "Done." })).toBeInTheDocument();
     expect(screen.getByText("That’s 1 today.")).toBeInTheDocument();
     expect(localStorage.getItem(routineStorageKey("t1"))).toBeNull();
@@ -138,14 +174,21 @@ describe("lock-in mode", () => {
     expect(finished).toHaveBeenCalledOnce();
   });
 
-  it("ends a wait early with It's done already", () => {
+  it("resumes the same step after a reload", () => {
     lifeService.saveLocalLife({ ...emptyLifeSnapshot(), commitments: [laundry], tasks: [task({ title: "Laundry", commitmentId: "laundry" })] });
-    localStorage.setItem(routineStorageKey("t1"), JSON.stringify({ step: 1, waitEndsAt: Date.now() + 10 * 60_000 }));
+    localStorage.setItem(routineStorageKey("t1"), JSON.stringify({ step: 2, waitEndsAt: null }));
     sessionStorage.setItem("remember-lock-in-v1", "t1");
     renderLockIn();
-    fireEvent.click(screen.getByRole("button", { name: "It’s done already" }));
+    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
     expect(screen.getByText("Move clothes to the dryer")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
+
+  it("hides the background section when nothing is running", () => {
+    lifeService.saveLocalLife({ ...emptyLifeSnapshot(), commitments: [laundry], tasks: [task({ title: "Laundry", commitmentId: "laundry" })] });
+    localStorage.setItem(routineStorageKey("t1"), JSON.stringify({ step: 1, waitEndsAt: null }));
+    renderLockIn();
+    expect(screen.queryByRole("region", { name: "In the background" })).toBeNull();
+    expect(screen.queryByText("In the background")).toBeNull();
   });
 
   it("closes by itself when the task is moved aside", async () => {

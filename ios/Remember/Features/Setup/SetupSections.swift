@@ -268,11 +268,6 @@ struct FocusModeSection: View {
                 }
                 .buttonStyle(.plain)
 
-                ChoiceGroup(title: "Usual focus length") {
-                    ForEach([25, 45, 60, 90], id: \.self) { minutes in
-                        ChoiceChip(label: minutes.durationLabel, isOn: shield.defaultMinutes == minutes) { shield.defaultMinutes = minutes }
-                    }
-                }
             }
             if authorizationFailed {
                 Text("Screen Time access wasn't granted. You can allow it in the Settings app under Screen Time.")
