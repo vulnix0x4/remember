@@ -19,7 +19,6 @@ final class FocusShield {
     private(set) var isAuthorized: Bool
     private(set) var isShielding = false
     var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Keys.enabled) } }
-    var defaultMinutes: Int { didSet { defaults.set(defaultMinutes, forKey: Keys.minutes) } }
     var selection: FamilyActivitySelection { didSet { persistSelection() } }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -29,7 +28,6 @@ final class FocusShield {
         self.defaults = defaults
         isAuthorized = AuthorizationCenter.shared.authorizationStatus == .approved
         isEnabled = defaults.bool(forKey: Keys.enabled)
-        defaultMinutes = defaults.object(forKey: Keys.minutes) as? Int ?? 45
         if let data = defaults.data(forKey: Keys.selection),
            let saved = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
             selection = saved
@@ -100,7 +98,6 @@ final class FocusShield {
 
     private enum Keys {
         static let enabled = "remember.focus.blockingEnabled"
-        static let minutes = "remember.focus.defaultMinutes"
         static let selection = "remember.focus.selection"
     }
 }

@@ -23,24 +23,32 @@ export function readRoutine(taskId: string): RoutineProgress | null {
   } catch { return null; }
 }
 
+export const ROUTINE_EVENT = "remember-routine";
+
 export function writeRoutine(taskId: string, progress: RoutineProgress | null) {
   try {
     if (progress) localStorage.setItem(routineStorageKey(taskId), JSON.stringify(progress));
     else localStorage.removeItem(routineStorageKey(taskId));
   } catch { /* Progress still works for this view. */ }
+  window.dispatchEvent(new CustomEvent(ROUTINE_EVENT, { detail: taskId }));
 }
 
-/** Arriving on a step starts its wait, if it has one. */
-export function enterStep(steps: RoutineStep[], index: number, now = Date.now()): RoutineProgress {
+/** Arriving on a step. A wait only starts when the person taps "Start 45-min timer". */
+export function enterStep(steps: RoutineStep[], index: number): RoutineProgress {
   const step = Math.max(0, Math.min(index, steps.length - 1));
-  const wait = steps[step]?.waitMinutes;
-  return { step, waitEndsAt: wait ? now + wait * 60_000 : null, notified: false };
+  return { step, waitEndsAt: null, notified: false };
+}
+
+/** Starts the current step's hands-off wait. The routine then runs in the background. */
+export function startWait(progress: RoutineProgress, steps: RoutineStep[], now = Date.now()): RoutineProgress {
+  const wait = steps[progress.step]?.waitMinutes ?? 0;
+  return { ...progress, waitEndsAt: now + Math.max(1, wait) * 60_000, notified: false };
 }
 
 /** Moves to the next step. Returns `finished` after the last step. Also used for "It's done already". */
-export function advanceRoutine(progress: RoutineProgress, steps: RoutineStep[], now = Date.now()): { progress: RoutineProgress; finished: boolean } {
+export function advanceRoutine(progress: RoutineProgress, steps: RoutineStep[]): { progress: RoutineProgress; finished: boolean } {
   if (progress.step >= steps.length - 1) return { progress, finished: true };
-  return { progress: enterStep(steps, progress.step + 1, now), finished: false };
+  return { progress: enterStep(steps, progress.step + 1), finished: false };
 }
 
 export function waitRemainingMs(progress: RoutineProgress, now = Date.now()) {
@@ -56,13 +64,23 @@ function waitSubject(title: string) {
   return title.replace(/\s+(?:is\s+)?(?:running|going|on|spinning|in progress|working|drying|washing|cooking|baking|soaking)$/i, "").trim();
 }
 
-/** "Washer's done. Move clothes to the dryer." — the line (and nudge) when a wait ends. */
-export function waitDoneMessage(steps: RoutineStep[], index: number) {
+/** "Washer’s done" (or "Time’s up") for the step whose wait just ended. */
+export function waitDoneTitle(steps: RoutineStep[], index: number) {
   const current = steps[index];
-  const next = steps[index + 1];
   const subject = current ? waitSubject(current.title) : "";
-  const done = subject && subject.toLowerCase() !== current?.title.toLowerCase() ? `${subject}’s done.` : "Time’s up.";
-  return next ? `${done} ${next.title.replace(/[.!]$/, "")}.` : done;
+  return subject && subject.toLowerCase() !== current?.title.toLowerCase() ? `${subject}’s done` : "Time’s up";
+}
+
+/** "Washer’s done. Next: Move clothes to the dryer." — the line (and nudge) when a wait ends. */
+export function waitDoneMessage(steps: RoutineStep[], index: number) {
+  const next = steps[index + 1];
+  const done = `${waitDoneTitle(steps, index)}.`;
+  return next ? `${done} Next: ${next.title.replace(/[.!]$/, "")}.` : done;
+}
+
+/** "32 min left", at minute resolution, for the Today strip. */
+export function waitMinutesLeftLabel(ms: number) {
+  return `${Math.max(1, Math.ceil(ms / 60_000))} min left`;
 }
 
 /** "38 min left", or "45 sec left" for the last minute. */

@@ -10,6 +10,7 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
+                    BackgroundRoutinesStrip()
                     NowCard()
                     upNext
                     DailyBasicsStrip()
