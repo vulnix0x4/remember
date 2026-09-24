@@ -49,64 +49,74 @@ struct LifeCalendarView: View {
                             .font(.title2.bold())
                     }
 
-                    if store.lifeSnapshot.events.isEmpty && store.lastCalendarSync == nil {
-                        ContentUnavailableView {
-                            Label("Connect your calendar", systemImage: "calendar")
-                        } description: {
-                            Text("Remember reads events only after you choose Sync.")
-                        } actions: {
-                            Button(store.isSyncingCalendar ? "Connecting…" : "Connect", action: sync)
-                                .buttonStyle(.borderedProminent)
-                                .tint(RememberDesign.accent)
-                                .foregroundStyle(RememberDesign.accentInk)
-                                .disabled(store.isSyncingCalendar)
-                        }
-                    } else if selectedEvents.isEmpty && plannedTasks.isEmpty {
-                        ContentUnavailableView(
-                            "No events",
-                            systemImage: "calendar",
-                            description: Text("This day is open.")
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 220)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(selectedEvents) { event in
-                                eventRow(event)
-                                if event.id != selectedEvents.last?.id {
-                                    Divider().padding(.leading, 72)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, RememberDesign.spacing)
-                        .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
-                    }
-
                     if !plannedTasks.isEmpty {
-                        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                            Text("Planned by Jev").font(.headline)
+                        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                            SectionHeading(title: "Planned by Jev")
                             ForEach(plannedTasks) { block in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(block.startAt, style: .time).font(.caption).foregroundStyle(RememberDesign.secondaryText)
-                                    Text(block.title).font(.headline)
-                                    Text(block.reason).font(.footnote).foregroundStyle(RememberDesign.secondaryText)
+                                HStack(spacing: RememberDesign.spacingCompact) {
+                                    Capsule().fill(RememberDesign.accent).frame(width: 4)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(block.startAt, style: .time)
+                                            .font(.rememberMeta)
+                                            .foregroundStyle(RememberDesign.accent)
+                                        Text(block.title).font(.rememberRowTitle)
+                                        if !block.reason.isEmpty {
+                                            Text(block.reason)
+                                                .font(.footnote)
+                                                .foregroundStyle(RememberDesign.text2)
+                                                .lineLimit(2)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
                                 }
+                                .padding(RememberDesign.spacing)
+                                .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
                             }
                         }
-                        .rememberSurface()
                     }
 
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Calendar access is optional")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text(store.lastCalendarSync.map { "Last synced \($0.formatted(date: .abbreviated, time: .shortened))." } ?? "You can revoke access in Settings at any time.")
-                                .font(.caption)
-                                .foregroundStyle(RememberDesign.secondaryText)
+                    if store.lifeSnapshot.events.isEmpty && store.lastCalendarSync == nil {
+                        RememberEmptyState(
+                            systemImage: "calendar",
+                            title: "See your events here",
+                            message: "Jev plans around what you already have.",
+                            actionTitle: store.isSyncingCalendar ? "Connecting…" : "Connect calendar",
+                            action: sync
+                        )
+                        .disabled(store.isSyncingCalendar)
+                    } else if selectedEvents.isEmpty && plannedTasks.isEmpty {
+                        RememberEmptyState(systemImage: "sun.max", title: "Nothing scheduled", message: "This day is open.")
+                    } else if !selectedEvents.isEmpty {
+                        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                            SectionHeading(title: "Events")
+                            VStack(spacing: 0) {
+                                ForEach(selectedEvents) { event in
+                                    eventRow(event)
+                                    if event.id != selectedEvents.last?.id {
+                                        Divider().overlay(RememberDesign.line).padding(.leading, 72)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, RememberDesign.spacing)
+                            .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
                         }
-                    } icon: {
-                        Image(systemName: "lock.shield")
-                            .foregroundStyle(RememberDesign.accent)
+                    }
+
+                    if !store.lifeSnapshot.events.isEmpty || store.lastCalendarSync != nil {
+                        Button {
+                            sync()
+                        } label: {
+                            Label(store.isSyncingCalendar ? "Syncing…" : "Sync calendar", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(.rememberQuiet)
+                        .disabled(store.isSyncingCalendar)
+                        .frame(maxWidth: .infinity)
+                        if let lastSync = store.lastCalendarSync {
+                            Text("Last synced \(lastSync.formatted(.relative(presentation: .named)))")
+                                .font(.footnote)
+                                .foregroundStyle(RememberDesign.text3)
+                                .frame(maxWidth: .infinity)
+                        }
                     }
                 }
                     .padding(RememberDesign.spacing)
@@ -114,14 +124,9 @@ struct LifeCalendarView: View {
                 }
                 .refreshable { await store.loadLife() }
             }
-            .navigationTitle("Calendar")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if !store.lifeSnapshot.events.isEmpty || store.lastCalendarSync != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(store.isSyncingCalendar ? "Syncing" : "Sync", systemImage: "arrow.triangle.2.circlepath", action: sync)
-                            .disabled(store.isSyncingCalendar)
-                    }
+            .rememberBottomDock {
+                AddBar(placeholder: "Add a task…", parsesTasks: true, accessibilityIdentifier: "remember.task.quickAdd") {
+                    await store.quickAddTask($0)
                 }
             }
             .rememberPrimaryActions()
@@ -166,9 +171,9 @@ struct LifeCalendarView: View {
                                 .frame(width: 4, height: 4)
                         }
                         .frame(maxWidth: .infinity, minHeight: 64)
-                        .foregroundStyle(Calendar.current.isDate(day, inSameDayAs: selectedDate) ? RememberDesign.accentInk : .primary)
+                        .foregroundStyle(Calendar.current.isDate(day, inSameDayAs: selectedDate) ? RememberDesign.canvas : .white)
                         .background(
-                            Calendar.current.isDate(day, inSameDayAs: selectedDate) ? RememberDesign.accent : .clear,
+                            Calendar.current.isDate(day, inSameDayAs: selectedDate) ? RememberDesign.primaryFill : .clear,
                             in: .rect(cornerRadius: RememberDesign.controlRadius)
                         )
                     }
@@ -219,7 +224,7 @@ struct LifeCalendarView: View {
 
     private func eventSourceIcon(_ event: LifeCalendarEvent) -> some View {
         Image(systemName: symbol(for: event.source))
-            .foregroundStyle(RememberDesign.accent)
+            .foregroundStyle(event.source == "task" ? RememberDesign.accent : RememberDesign.text2)
             .frame(width: 24)
             .accessibilityHidden(true)
     }

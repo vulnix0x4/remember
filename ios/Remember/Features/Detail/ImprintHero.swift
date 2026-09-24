@@ -10,18 +10,18 @@ struct ImprintHero: View {
                 ArchiveArtwork(imprint: imprint, height: dynamicTypeSize.isAccessibilitySize ? 152 : 238)
             }
             Label("\(imprint.sourceLabel) · \(imprint.creator)", systemImage: sourceSymbol)
-                .font(.caption)
-                .foregroundStyle(RememberDesign.secondaryText)
+                .font(.rememberMeta)
+                .foregroundStyle(RememberDesign.text2)
             if let scope = imprint.analysisScopeLabel {
                 Label(scope, systemImage: "checkmark.shield")
                     .font(.caption)
                     .bold()
-                    .foregroundStyle(RememberDesign.accent)
+                    .foregroundStyle(RememberDesign.text2)
             }
             if imprint.sourceType == .note, let noteText = imprint.noteText {
                 Text("Your words")
-                    .font(.caption.bold())
-                    .foregroundStyle(RememberDesign.accent)
+                    .font(.rememberEyebrow)
+                    .foregroundStyle(RememberDesign.text2)
                     .textCase(.uppercase)
                 Text(noteText)
                     .font(.title2.weight(.semibold))
@@ -29,13 +29,12 @@ struct ImprintHero: View {
                     .textSelection(.enabled)
             } else {
                 Text(imprint.title)
-                    .font(.title)
-                    .bold()
+                    .font(.rememberHero)
             }
             if imprint.sourceType == .note {
                 Text("Remember’s reflection")
-                    .font(.caption.bold())
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .font(.rememberEyebrow)
+                    .foregroundStyle(RememberDesign.text2)
                     .textCase(.uppercase)
             }
             Text(imprint.essence)
@@ -56,9 +55,9 @@ struct ImprintHero: View {
                     }
                 }
             }
-            .font(.footnote)
+            .font(.rememberMeta)
+            .foregroundStyle(RememberDesign.text2)
             if !imprint.summary.isEmpty {
-                Divider().overlay { RememberDesign.line }
                 Text(imprint.summary)
                     .font(.body)
                     .foregroundStyle(RememberDesign.secondaryText)

@@ -5,12 +5,12 @@ struct ConnectionsSection: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "", title: "Related saves")
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: "Related saves")
             if connections.isEmpty {
                 Text("Related saves will appear as your library grows.")
-                    .font(.body)
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .font(.subheadline)
+                    .foregroundStyle(RememberDesign.text2)
             }
             ForEach(connections) { connection in
                 if let related = store.imprint(withID: connection.itemID) {

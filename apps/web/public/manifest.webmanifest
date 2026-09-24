@@ -4,8 +4,8 @@
   "description": "Save links, organize plans, and keep health, money, and files in one private space.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0c100e",
-  "theme_color": "#0c100e",
+  "background_color": "#12110F",
+  "theme_color": "#12110F",
   "shortcuts": [
     { "name": "Today", "short_name": "Today", "url": "/#/home" },
     { "name": "Tasks", "short_name": "Tasks", "url": "/#/tasks" },

@@ -24,53 +24,56 @@ struct RetryPracticeView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                    Text("Keep the part that worked and change the part that did not.")
-                        .font(.body)
-                        .foregroundStyle(RememberDesign.secondaryText)
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+                        Text("Try a new version")
+                            .font(.rememberHero)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("Keep what worked. Change one thing.")
+                            .font(.subheadline)
+                            .foregroundStyle(RememberDesign.text2)
+                    }
 
-                    field("What will you try this time?", text: $title, field: .title)
-                    field("What is the first step?", text: $firstStep, field: .firstStep)
+                    field("What will you try?", text: $title, field: .title)
+                    field("First step", text: $firstStep, field: .firstStep)
 
                     if let errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
+                            .font(.rememberMeta)
                             .foregroundStyle(RememberDesign.danger)
                     }
                 }
                 .padding(RememberDesign.spacing)
-                .padding(.bottom, 92)
             }
-            .safeAreaInset(edge: .bottom) {
+            .scrollDismissesKeyboard(.interactively)
+            .background(RememberDesign.canvas)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 Button(isSaving ? "Adding…" : "Add to Plan", action: save)
-                    .buttonStyle(.borderedProminent)
-                    .tint(RememberDesign.accent)
-                    .foregroundStyle(RememberDesign.accentInk)
-                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .buttonStyle(.rememberPrimary)
                     .disabled(isSaving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || firstStep.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .padding(.horizontal, RememberDesign.spacing)
                     .padding(.vertical, RememberDesign.spacingSmall)
-                    .background(.bar)
+                    .background(RememberDesign.canvas)
                     .accessibilityIdentifier("remember.retry-practice.save")
             }
-            .navigationTitle("Try a new version")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: dismiss.callAsFunction)
                 }
             }
         }
+        .presentationDragIndicator(.visible)
+        .presentationBackground(RememberDesign.canvas)
+        .presentationCornerRadius(RememberDesign.sheetRadius)
     }
 
     private func field(_ label: String, text: Binding<String>, field: Field) -> some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-            Text(label)
-                .font(.headline)
+            SectionHeading(title: label)
             TextField(label, text: text, axis: .vertical)
                 .lineLimit(2...5)
-                .textFieldStyle(.roundedBorder)
                 .focused($focusedField, equals: field)
-                .frame(minHeight: 48)
+                .padding(RememberDesign.spacing)
+                .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.controlRadius))
         }
     }
 
@@ -94,7 +97,7 @@ struct RetryPracticeView: View {
                 onSaved?()
                 dismiss()
             } else {
-                errorMessage = "That new experiment could not be added. Try again."
+                errorMessage = "Couldn’t add that. Try again."
                 isSaving = false
             }
         }

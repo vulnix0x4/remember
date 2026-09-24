@@ -16,30 +16,20 @@ struct BringBackSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-            HStack(alignment: .top, spacing: RememberDesign.spacingCompact) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.title3)
-                    .foregroundStyle(RememberDesign.accent)
-                    .frame(width: 44, height: 44)
-                    .background(RememberDesign.mutedFill, in: .rect(cornerRadius: RememberDesign.controlRadius))
-                VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
-                    Text("Bring this back when it can help").font(.title3.bold())
-                    Text("Tell Remember the kind of moment this idea belongs in.").font(.subheadline).foregroundStyle(RememberDesign.secondaryText)
-                }
-            }
+        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+            Text("Bring it back when…")
+                .font(.rememberSectionTitle)
+                .accessibilityAddTraits(.isHeader)
             ReturnCuePicker(selection: selection, returnDate: returnDate, onSelect: choose, onDateChange: changeDate)
             if selection == .date {
                 Button(isSaving ? "Saving…" : "Set return day") { Task { await persist(.date, at: returnDate) } }
-                    .buttonStyle(.borderedProminent)
-                    .tint(RememberDesign.accent)
-                    .foregroundStyle(RememberDesign.accentInk)
+                    .buttonStyle(.rememberSecondary)
                     .disabled(isSaving)
             }
-            if let message { Label(message, systemImage: "checkmark.circle.fill").font(.footnote.bold()).foregroundStyle(RememberDesign.accent) }
-            if let errorMessage { Label(errorMessage, systemImage: "exclamationmark.circle.fill").font(.footnote).foregroundStyle(RememberDesign.danger) }
+            if let message { Label(message, systemImage: "checkmark.circle.fill").font(.rememberMeta).foregroundStyle(RememberDesign.text2) }
+            if let errorMessage { Label(errorMessage, systemImage: "exclamationmark.circle.fill").font(.rememberMeta).foregroundStyle(RememberDesign.danger) }
         }
-        .rememberSurface()
+        .rememberCard(padding: RememberDesign.spacing + 4)
         .onChange(of: imprint.returnCue) { _, value in selection = value }
         .onChange(of: imprint.returnAt) { _, value in if let value { returnDate = value } }
     }

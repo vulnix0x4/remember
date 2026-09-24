@@ -42,6 +42,11 @@ enum AppConfiguration {
         initialRoute == "settings"
     }
 
+    /// Opens the detailed save sheet (note + return moment) on launch.
+    static var presentsCaptureOnLaunch: Bool {
+        initialRoute == "capture"
+    }
+
     static var apiURL: URL {
         if let value = ProcessInfo.processInfo.environment["REMEMBER_API_URL"],
            let configuredURL = URL(string: value) {
@@ -58,6 +63,13 @@ enum AppConfiguration {
         let environmentToken = ProcessInfo.processInfo.environment["REMEMBER_API_TOKEN"]
         return APICredentials(bearerToken: environmentToken ?? KeychainTokenStore.load())
     }
+
+    /// First-run setup appears automatically, except in preview data mode unless asked for.
+    static var offersSetup: Bool {
+        !usesMockFallback || ProcessInfo.processInfo.environment["REMEMBER_SHOW_SETUP"] == "1"
+    }
+
+    static var forcesSetup: Bool { ProcessInfo.processInfo.environment["REMEMBER_SHOW_SETUP"] == "1" }
 
     static var usesMockFallback: Bool {
         #if DEBUG

@@ -39,7 +39,7 @@ export async function judgeTasks(snapshot: LifeSnapshot, settings: BrainSettings
       body: JSON.stringify({ model: "typesafe/jev-1.13", state: {
         now: now.toISOString(), timeZone: settings.timeZone,
         preferences: settings.preferences, planningHours: [settings.startHour, settings.endHour],
-        tasks: candidates.map((task) => ({ id: task.id, title: task.title, firstStep: task.firstStep, notes: task.notes.slice(0, 500), area: task.area, priority: task.priority, energy: task.energy, durationMinutes: task.durationMinutes, dueAt: task.dueAt, notBefore: task.notBefore, goalId: task.goalId, repeatEveryDays: task.repeatEveryDays })),
+        tasks: candidates.map((task) => ({ id: task.id, title: task.title, firstStep: task.firstStep, notes: task.notes.slice(0, 500), area: task.area, priority: task.priority, energy: task.energy, durationMinutes: task.durationMinutes, dueAt: task.dueAt, notBefore: task.notBefore, goalId: task.goalId, repeatEveryDays: task.repeatEveryDays, recurringCommitment: Boolean(task.commitmentId) })),
         goals: snapshot.goals.filter((goal) => goal.status === "active").slice(0, 20).map((goal) => ({ id: goal.id, title: goal.title, why: goal.why.slice(0, 300), targetDate: goal.targetDate })),
         calendar: snapshot.events.filter((event) => event.status !== "cancelled" && Date.parse(event.endAt) > now.getTime()).slice(0, 40).map((event) => ({ title: event.title, startAt: event.startAt, endAt: event.endAt, allDay: event.allDay })),
         principles: personal.principles, ownThoughts: personal.thoughts,
@@ -76,6 +76,9 @@ export function scheduleTasks(snapshot: LifeSnapshot, settings: BrainSettings, j
     const parts = Object.fromEntries(formatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]));
     return { day: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) + Number(parts.minute) / 60 };
   };
+  // Planning hours may cross midnight (start 12, end 3 means noon to 3 AM the next day).
+  const spanHours = settings.endHour > settings.startHour ? settings.endHour - settings.startHour : settings.endHour + 24 - settings.startHour;
+  const hoursIntoDay = (hour: number) => (hour - settings.startHour + 24) % 24;
   const overlaps = (start: number, end: number, other: { start: number; end: number }) => start < other.end && end > other.start;
   const occupied = snapshot.events.filter((event) => event.status !== "cancelled" && !event.allDay)
     .map((event) => ({ start: Date.parse(event.startAt) - 5 * 60_000, end: Date.parse(event.endAt) + 5 * 60_000 }));
@@ -91,9 +94,13 @@ export function scheduleTasks(snapshot: LifeSnapshot, settings: BrainSettings, j
     blocks.push({ taskId: task.id, title: task.title, firstStep: task.firstStep, startAt: new Date(start).toISOString(), endAt: new Date(end).toISOString(), confidence: 1, reason: "Time you already set aside." });
   }
   const byId = new Map(snapshot.tasks.map((task) => [task.id, task]));
-  for (const judgment of [...judgments].sort((a, b) => b.score - a.score || a.taskId.localeCompare(b.taskId))) {
+  // Commitments the person marked "must do" (college study) always get a slot, and get it first.
+  const mustDo = (taskId: string) => { const task = byId.get(taskId); return Boolean(task?.commitmentId && task.priority === "must"); };
+  const effectiveScore = (judgment: TaskJudgment) => mustDo(judgment.taskId) ? Math.max(judgment.score, 5) : judgment.score;
+  for (const judgment of [...judgments].sort((a, b) => effectiveScore(b) - effectiveScore(a) || a.taskId.localeCompare(b.taskId))) {
     const task = byId.get(judgment.taskId);
-    if (!task || !["queued", "inbox"].includes(task.status) || task.scheduledStart || judgment.confidence < 0.65 || judgment.score < 1) continue;
+    if (!task || !["queued", "inbox"].includes(task.status) || task.scheduledStart) continue;
+    if (!mustDo(task.id) && (judgment.confidence < 0.65 || judgment.score < 1)) continue;
     const earliest = Math.max(current, task.notBefore ? Date.parse(task.notBefore) : current);
     const duration = task.durationMinutes * 60_000;
     const horizon = current + 7 * 86_400_000;
@@ -101,14 +108,15 @@ export function scheduleTasks(snapshot: LifeSnapshot, settings: BrainSettings, j
     for (let start = current; start + duration <= horizon; start += 15 * 60_000) {
       if (start < earliest) continue;
       const end = start + duration;
-      const left = local(start); const right = local(end - 1);
-      if (left.day !== right.day || left.hour < settings.startHour || right.hour >= settings.endHour) continue;
+      if (hoursIntoDay(local(start).hour) + duration / 3_600_000 > spanHours) continue;
       if (occupied.some((block) => overlaps(start, end, block))) continue;
       if (task.dueAt && Date.parse(task.dueAt) > current && end > Date.parse(task.dueAt)) continue;
       valid.push(start);
     }
     const matches = (start: number) => {
-      const hour = local(start).hour;
+      const clockHour = local(start).hour;
+      // After midnight in an overnight day still counts as evening.
+      const hour = settings.endHour <= settings.startHour && clockHour < settings.startHour ? clockHour + 24 : clockHour;
       return judgment.period === "any" || (judgment.period === "morning" ? hour < 12 : judgment.period === "afternoon" ? hour >= 12 && hour < 17 : hour >= 17);
     };
     const start = valid.find(matches) ?? valid[0];

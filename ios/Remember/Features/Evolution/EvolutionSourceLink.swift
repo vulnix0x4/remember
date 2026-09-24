@@ -9,10 +9,13 @@ struct EvolutionSourceLink: View {
             NavigationLink(value: imprint) {
                 Label(imprint.title, systemImage: "bookmark")
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.rememberQuiet)
         } else {
             Label("Saved source", systemImage: "bookmark")
+                .font(.subheadline)
+                .foregroundStyle(RememberDesign.text3)
         }
     }
 

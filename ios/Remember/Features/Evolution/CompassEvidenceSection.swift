@@ -6,72 +6,57 @@ struct CompassEvidenceSection: View {
     @State private var experimentToReflectOn: LifeTask?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
-                Text("WHAT CHANGED")
-                    .font(.caption)
-                    .bold()
-                    .foregroundStyle(RememberDesign.secondaryText)
-                Text("What experience taught you")
-                    .font(.title2)
-                    .bold()
-            }
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: "What changed")
 
             ForEach(completedExperiments) { experiment in
                 VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                     Label(experiment.task.title, systemImage: "checkmark.circle.fill")
-                        .font(.headline)
-                        .foregroundStyle(RememberDesign.accent)
+                        .font(.rememberRowTitle)
+                        .labelStyle(AccentIconLabelStyle())
                     if let outcome = experiment.task.practiceOutcome {
                         Text(resultMeaning(outcome))
-                            .foregroundStyle(RememberDesign.secondaryText)
+                            .font(.subheadline)
+                            .foregroundStyle(RememberDesign.text2)
                         if let reflection = experiment.task.practiceReflection, !reflection.isEmpty {
-                            Text(reflection)
-                                .font(.body)
-                                .italic()
-                                .padding(.leading, RememberDesign.spacingSmall)
-                                .overlay(alignment: .leading) {
-                                    Rectangle()
-                                        .fill(RememberDesign.accent)
-                                        .frame(width: 2)
-                                }
+                            PatternQuote(text: reflection)
                         }
                     } else {
-                        Text("You tried this and completed it. What did real life teach you?")
-                            .foregroundStyle(RememberDesign.secondaryText)
+                        Text("How did it go?")
+                            .font(.subheadline)
+                            .foregroundStyle(RememberDesign.text2)
                         Button("Add what happened", systemImage: "quote.bubble") {
                             experimentToReflectOn = experiment.task
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(RememberDesign.accent)
-                        .foregroundStyle(RememberDesign.accentInk)
+                        .buttonStyle(.rememberSecondary)
                     }
                     if let imprint = experiment.imprint {
                         NavigationLink(value: imprint) {
                             Label("See the idea it came from", systemImage: "bookmark")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.rememberQuiet)
                     }
                 }
-                .padding(.vertical, RememberDesign.spacingSmall)
-                Divider()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .rememberCard(padding: RememberDesign.spacing)
             }
 
             ForEach(changes) { change in
                 VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                    Label(change.imprint?.title ?? "A saved idea", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
-                        .font(.headline)
+                    Text(change.imprint?.title ?? "A saved idea")
+                        .font(.rememberRowTitle)
                     Text(change.statement)
-                        .foregroundStyle(RememberDesign.secondaryText)
+                        .font(.subheadline)
+                        .foregroundStyle(RememberDesign.text2)
                     if let imprint = change.imprint {
                         NavigationLink(value: imprint) {
                             Label("Revisit the evidence", systemImage: "bookmark")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.rememberQuiet)
                     }
                 }
-                .padding(.vertical, RememberDesign.spacingSmall)
-                Divider()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .rememberCard(padding: RememberDesign.spacing)
             }
         }
         .sheet(item: $experimentToReflectOn) { task in
@@ -81,9 +66,19 @@ struct CompassEvidenceSection: View {
 
     private func resultMeaning(_ outcome: PracticeOutcome) -> String {
         switch outcome {
-        case .helped: "It helped. This earned a place in your real life."
-        case .mixed: "Somewhat. Some of it worked, and some still needs testing."
-        case .notForMe: "Not for me. Trying it gave you permission to let it go."
+        case .helped: "It helped."
+        case .mixed: "Some of it worked."
+        case .notForMe: "Not for you. Fine to let go."
+        }
+    }
+}
+
+/// Label whose icon is the accent (for checkmarks and progress only).
+struct AccentIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacingSmall) {
+            configuration.icon.foregroundStyle(RememberDesign.accent)
+            configuration.title
         }
     }
 }

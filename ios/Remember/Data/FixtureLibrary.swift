@@ -258,8 +258,46 @@ enum FixtureLibrary {
             createdAt: now.addingTimeInterval(-259_200),
             updatedAt: now.addingTimeInterval(-172_800)
         )
+        func everyday(_ id: String, _ title: String, minutes: Int, priority: LifeTaskPriority = .normal, notBefore: Date? = nil, dueAt: Date? = nil, repeatEveryDays: Int? = nil) -> LifeTask {
+            LifeTask(
+                id: uuid(id), goalId: nil, title: title, firstStep: "", notes: "", area: .direction,
+                status: .queued, priority: priority, energy: .any, durationMinutes: minutes, dueAt: dueAt,
+                scheduledStart: nil, scheduledEnd: nil, source: "manual", completedAt: nil,
+                createdAt: now.addingTimeInterval(-3_600), updatedAt: now.addingTimeInterval(-3_600),
+                repeatEveryDays: repeatEveryDays, notBefore: notBefore
+            )
+        }
+        let calendar = Calendar.current
+        let tomorrowMorning = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: calendar.date(byAdding: .day, value: 1, to: .now)!)!
+        let inThreeDays = calendar.date(bySettingHour: 17, minute: 0, second: 0, of: calendar.date(byAdding: .day, value: 3, to: .now)!)!
+        let everydayTasks = [
+            everyday("60000000-0000-0000-0000-000000000003", "Reply to Sam about Saturday", minutes: 5, priority: .high),
+            everyday("60000000-0000-0000-0000-000000000004", "Laundry", minutes: 45, repeatEveryDays: 7),
+            everyday("60000000-0000-0000-0000-000000000005", "Pay rent", minutes: 10, dueAt: inThreeDays),
+            everyday("60000000-0000-0000-0000-000000000006", "Book a dentist appointment", minutes: 10, notBefore: tomorrowMorning),
+        ]
+        let habits = [("Drink water", "glasses", 8), ("Walk outside", "minutes", 20), ("Take meds", "dose", 1)].enumerated().map { index, habit in
+            LifeFloorItem(
+                id: uuid("70000000-0000-0000-0000-00000000000\(index + 1)"), title: habit.0, area: .health,
+                target: habit.2, unit: habit.1, completionDates: index == 2 ? [.now] : [],
+                createdAt: now, updatedAt: now
+            )
+        }
+        let laundryRoutine = Commitment(
+            id: uuid("80000000-0000-0000-0000-000000000001"), title: "Laundry", kind: .chore, days: 127, everyDays: 7,
+            fixedStart: nil, durationMinutes: 30, importance: .high, steps: CommitmentTemplates.laundrySteps,
+            notes: "", active: true, createdAt: now, updatedAt: now
+        )
+        let college = Commitment(
+            id: uuid("80000000-0000-0000-0000-000000000002"), title: "College study", kind: .commitment, days: 127, everyDays: nil,
+            fixedStart: nil, durationMinutes: 120, importance: .must, steps: [], notes: "", active: true, createdAt: now, updatedAt: now
+        )
+        var linkedTasks = everydayTasks
+        linkedTasks[1].commitmentId = laundryRoutine.id
         var snapshot = LifeSnapshot.empty
-        snapshot.tasks = [queued, completed]
+        snapshot.tasks = [queued, completed] + linkedTasks
+        snapshot.floor = habits
+        snapshot.commitments = [college, laundryRoutine]
         return snapshot
     }()
 

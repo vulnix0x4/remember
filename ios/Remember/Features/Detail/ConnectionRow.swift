@@ -7,15 +7,14 @@ struct ConnectionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
             Label(connection.type.label, systemImage: connection.type == .contradicts ? "arrow.left.arrow.right" : "link")
-                .font(.subheadline)
-                .bold()
-                .foregroundStyle(RememberDesign.accent)
-            Text(connection.title).font(.headline)
-            Text(connection.explanation).font(.subheadline).foregroundStyle(RememberDesign.secondaryText)
+                .font(.rememberMeta)
+                .foregroundStyle(RememberDesign.text3)
+            Text(connection.title).font(.rememberRowTitle).foregroundStyle(RememberDesign.text)
+            Text(connection.explanation).font(.subheadline).foregroundStyle(RememberDesign.text2)
         }
         .padding(RememberDesign.spacing)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 14))
+        .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
         .accessibilityElement(children: .combine)
         .accessibilityHint(opensConnectedSave ? "Opens the connected save" : "")
     }
