@@ -11,6 +11,8 @@ protocol LifeOSRepository: Sendable {
     func reflectOnPractice(id: UUID, result: PracticeResult) async throws
     func blockTask(id: UUID, reason: LifeBlockerReason) async throws
     func createGoal(_ goal: CreateLifeGoalRequest) async throws -> LifeGoal
+    func saveCommitment(id: UUID?, draft: CommitmentDraft) async throws -> Commitment
+    func deleteCommitment(id: UUID) async throws
     func updateGoal(id: UUID, progress: Int?, status: String?) async throws
     func createFloorItem(_ item: CreateLifeFloorRequest) async throws -> LifeFloorItem
     func toggleFloorItem(id: UUID, date: Date) async throws
@@ -45,8 +47,16 @@ actor LiveLifeOSRepository: LifeOSRepository {
         try await client.decideNextMove(input)
     }
 
+    private var mockBrainSettings = BrainSettings(enabled: true, timeZone: TimeZone.current.identifier, startHour: 8, endHour: 22, preferences: "")
+
     func syncBrain(settings: BrainSettings?) async throws -> BrainState? {
-        try await client.syncBrain(settings: settings)
+        do { return try await client.syncBrain(settings: settings) }
+        catch where usesMockFallback {
+            // Preview data only: a stand-in so settings screens work without a server. Never a real plan.
+            if let settings { mockBrainSettings = settings }
+            return BrainState(settings: mockBrainSettings, status: "preview", message: "Preview data", model: nil,
+                              evaluatedAt: nil, nextCheckAt: nil, plan: [], contextUsed: [], unscheduledCount: 0)
+        }
     }
 
     func load() async throws -> LifeSnapshot {
@@ -162,6 +172,31 @@ actor LiveLifeOSRepository: LifeOSRepository {
                 mockSnapshot.tasks[index].status = .queued
                 mockSnapshot.tasks[index].notBefore = .now.addingTimeInterval(3600)
             }
+        }
+    }
+
+    func saveCommitment(id: UUID?, draft: CommitmentDraft) async throws -> Commitment {
+        do {
+            if let id { return try await client.updateCommitment(id: id, draft: draft) }
+            return try await client.createCommitment(draft)
+        } catch where usesMockFallback {
+            let now = Date.now
+            let commitment = Commitment(
+                id: id ?? UUID(), title: draft.title, kind: draft.kind, days: draft.days, everyDays: draft.everyDays,
+                fixedStart: draft.fixedStart, durationMinutes: draft.durationMinutes, importance: draft.importance,
+                steps: draft.steps, notes: draft.notes, active: draft.active, createdAt: now, updatedAt: now
+            )
+            var list = mockSnapshot.allCommitments.filter { $0.id != commitment.id }
+            list.append(commitment)
+            mockSnapshot.commitments = list
+            return commitment
+        }
+    }
+
+    func deleteCommitment(id: UUID) async throws {
+        do { try await client.deleteCommitment(id: id) }
+        catch where usesMockFallback {
+            mockSnapshot.commitments = mockSnapshot.allCommitments.filter { $0.id != id }
         }
     }
 

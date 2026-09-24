@@ -35,6 +35,7 @@ targets:
       path: Remember/Remember.entitlements
       properties:
         com.apple.developer.healthkit: true
+        com.apple.developer.family-controls: true
         com.apple.security.application-groups:
           - $(REMEMBER_APP_GROUP)
     settings:
@@ -50,6 +51,8 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: $(REMEMBER_APP_PROFILE_SPECIFIER)
     dependencies:
       - target: RememberShare
+        embed: true
+      - target: RememberFocusMonitor
         embed: true
   RememberShare:
     type: app-extension
@@ -72,6 +75,25 @@ targets:
         TARGETED_DEVICE_FAMILY: 1
         CODE_SIGN_STYLE: $(REMEMBER_SHARE_CODE_SIGN_STYLE)
         PROVISIONING_PROFILE_SPECIFIER: $(REMEMBER_SHARE_PROFILE_SPECIFIER)
+  RememberFocusMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: RememberFocusMonitor
+        excludes: [Info.plist]
+    entitlements:
+      path: RememberFocusMonitor/RememberFocusMonitor.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(REMEMBER_BUNDLE_ID).focus-monitor
+        PRODUCT_NAME: RememberFocusMonitor
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: RememberFocusMonitor/Info.plist
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: 1
+        CODE_SIGN_STYLE: $(REMEMBER_SHARE_CODE_SIGN_STYLE)
   RememberTests:
     type: bundle.unit-test
     platform: iOS

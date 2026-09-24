@@ -12,8 +12,8 @@ export interface QuickTask {
   priority?: Extract<TaskPriority, "high" | "must">;
 }
 
-/** A previously seen task, used to learn how often the person actually repeats something. */
-export interface TaskHistoryEntry { title: string; completedAt?: string | null }
+/** A previously seen task, used to learn how often (and how long) the person actually does something. */
+export interface TaskHistoryEntry { title: string; completedAt?: string | null; actualMinutes?: number | null; status?: string }
 
 /** How often common chores usually repeat, in days. First match wins. Mirrors docs/REDESIGN.md. */
 const USUAL_RHYTHMS: Array<[RegExp, number]> = [
@@ -44,6 +44,47 @@ export function learnedRepeatDays(title: string, history: TaskHistoryEntry[], no
   const gapDays = ((completions.length > 1 ? completions[0] : now.getTime()) - (completions.length > 1 ? completions[1] : completions[0])) / 86_400_000;
   if (gapDays < 0.5) return undefined;
   return RHYTHM_STEPS.reduce((best, step) => Math.abs(step - gapDays) < Math.abs(best - gapDays) ? step : best);
+}
+
+/** Typical minutes for common tasks. Whole words, first match wins. Mirrors docs/REDESIGN.md. */
+// Longest first, so "run errands" is an errand (45), not a run (30). Mirrors the iOS table.
+const KNOWN_DURATIONS: Array<[RegExp, number]> = [
+  [/\b(?:gym|workout|work\s+out|study|homework|meal\s+prep|project|write|writing)\b/i, 60],
+  [/\b(?:groceries|grocery|errands?)\b/i, 45],
+  [/\b(?:cook|dinner)\b/i, 40],
+  [/\b(?:laundry|run|clean|read|meeting)\b/i, 30],
+  [/\b(?:walk|vacuum)\b/i, 20],
+  [/\b(?:dishes|shower|tidy|water\s+(?:the\s+)?plants)\b/i, 15],
+  [/\b(?:email|call|pay|bills?|rent|book)\b/i, 10],
+  [/\b(?:text|trash|meds)\b/i, 5],
+];
+export const DEFAULT_ESTIMATE_MINUTES = 15;
+
+export interface DurationEstimate { minutes: number; source: "history" | "known" | "default" }
+
+/**
+ * How long a task will probably take: the median of the last three real times for the same title,
+ * else the usual time for a known kind of task, else 15 minutes.
+ */
+export function estimateDuration(title: string, history: TaskHistoryEntry[] = []): DurationEstimate {
+  const key = title.trim().toLowerCase();
+  const recent = history
+    .filter((entry) => entry.completedAt && entry.title.trim().toLowerCase() === key && typeof entry.actualMinutes === "number" && entry.actualMinutes > 0)
+    .sort((a, b) => Date.parse(b.completedAt!) - Date.parse(a.completedAt!))
+    .slice(0, 3)
+    .map((entry) => entry.actualMinutes!)
+    .sort((a, b) => a - b);
+  if (recent.length) {
+    const middle = Math.floor(recent.length / 2);
+    const median = recent.length % 2 ? recent[middle] : (recent[middle - 1] + recent[middle]) / 2;
+    return { minutes: Math.min(720, Math.max(2, Math.round(median))), source: "history" };
+  }
+  const known = KNOWN_DURATIONS.find(([pattern]) => pattern.test(title))?.[1];
+  return known ? { minutes: known, source: "known" } : { minutes: DEFAULT_ESTIMATE_MINUTES, source: "default" };
+}
+
+export function estimateMinutes(title: string, history: TaskHistoryEntry[] = []): number {
+  return estimateDuration(title, history).minutes;
 }
 
 export const QUICK_TASK_DEFAULTS = { durationMinutes: 15, area: "direction", status: "queued", priority: "normal" } as const;
@@ -185,10 +226,21 @@ export function describeRepeat(days: number): string {
 
 export type QuickChipKind = "duration" | "when" | "due" | "repeat" | "priority";
 
-/** Read-only preview chips for what was understood. Empty when nothing was recognized. */
-export function quickTaskChips(parsed: QuickTask, now: Date = new Date()): Array<{ kind: QuickChipKind; label: string }> {
+function minutesLabel(minutes: number) {
+  return minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} hr` : `${minutes} min`;
+}
+
+/**
+ * Read-only preview chips for what was understood. Empty when nothing was recognized.
+ * Pass `history` to also show an estimated length (`~30 min`) when none was typed.
+ */
+export function quickTaskChips(parsed: QuickTask, now: Date = new Date(), history?: TaskHistoryEntry[]): Array<{ kind: QuickChipKind; label: string }> {
   const chips: Array<{ kind: QuickChipKind; label: string }> = [];
-  if (parsed.durationMinutes) chips.push({ kind: "duration", label: parsed.durationMinutes >= 60 && parsed.durationMinutes % 60 === 0 ? `${parsed.durationMinutes / 60} hr` : `${parsed.durationMinutes} min` });
+  if (parsed.durationMinutes) chips.push({ kind: "duration", label: minutesLabel(parsed.durationMinutes) });
+  else if (history) {
+    const estimate = estimateDuration(parsed.title, history);
+    if (estimate.source !== "default") chips.push({ kind: "duration", label: `~${minutesLabel(estimate.minutes)}` });
+  }
   if (parsed.notBefore) chips.push({ kind: "when", label: describeDay(parsed.notBefore, now) });
   if (parsed.dueAt) chips.push({ kind: "due", label: `Due ${describeDay(parsed.dueAt, now).replace("Tonight", "today").replace("Today", "today")}` });
   if (parsed.repeatEveryDays) {

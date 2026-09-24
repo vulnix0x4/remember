@@ -64,6 +64,13 @@ enum AppConfiguration {
         return APICredentials(bearerToken: environmentToken ?? KeychainTokenStore.load())
     }
 
+    /// First-run setup appears automatically, except in preview data mode unless asked for.
+    static var offersSetup: Bool {
+        !usesMockFallback || ProcessInfo.processInfo.environment["REMEMBER_SHOW_SETUP"] == "1"
+    }
+
+    static var forcesSetup: Bool { ProcessInfo.processInfo.environment["REMEMBER_SHOW_SETUP"] == "1" }
+
     static var usesMockFallback: Bool {
         #if DEBUG
         if let value = ProcessInfo.processInfo.environment["REMEMBER_MOCK_FALLBACK"] {

@@ -4,13 +4,21 @@ import { X } from "@phosphor-icons/react";
 
 const focusableSelector = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
-/** Portal + focus trap + inert background shared by every sheet and dialog. */
-export function ModalBackdrop({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+/** Portal + focus trap + inert background shared by every sheet, dialog, and full-screen layer. */
+export function ModalBackdrop({ children, onClose, className = "sheet-backdrop", closeOnEscape = true, closeOnBackdrop = true }: {
+  children: ReactNode;
+  onClose: () => void;
+  className?: string;
+  closeOnEscape?: boolean;
+  closeOnBackdrop?: boolean;
+}) {
   const backdrop = useRef<HTMLDivElement>(null);
   const close = useRef(onClose); close.current = onClose;
+  const escapeCloses = useRef(closeOnEscape); escapeCloses.current = closeOnEscape;
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const background = [...document.querySelectorAll<HTMLElement>(".app-shell > *")].map((element) => ({
+    // Hide the app and any layer already open underneath (a sheet can open over lock-in mode).
+    const background = [...document.querySelectorAll<HTMLElement>(".app-shell > *, [data-modal-layer]")].filter((element) => element !== backdrop.current).map((element) => ({
       element,
       inert: element.hasAttribute("inert"),
       ariaHidden: element.getAttribute("aria-hidden"),
@@ -22,10 +30,11 @@ export function ModalBackdrop({ children, onClose }: { children: ReactNode; onCl
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusable = () => [...(backdrop.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [])];
+    const isTopLayer = () => { const layers = document.querySelectorAll("[data-modal-layer]"); return layers[layers.length - 1] === backdrop.current; };
     const frame = window.requestAnimationFrame(() => (backdrop.current?.querySelector<HTMLElement>("[data-auto-focus]") ?? focusable()[0])?.focus());
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      if (event.key === "Escape") { event.preventDefault(); close.current(); return; }
+      if (event.defaultPrevented || !isTopLayer()) return;
+      if (event.key === "Escape") { if (escapeCloses.current) { event.preventDefault(); close.current(); } return; }
       if (event.key !== "Tab") return;
       const controls = focusable(); if (!controls.length) return;
       const first = controls[0]; const last = controls[controls.length - 1];
@@ -42,10 +51,10 @@ export function ModalBackdrop({ children, onClose }: { children: ReactNode; onCl
         if (ariaHidden === null) element.removeAttribute("aria-hidden");
         else element.setAttribute("aria-hidden", ariaHidden);
       });
-      previous?.focus();
+      if (previous?.isConnected) previous.focus();
     };
   }, []);
-  return createPortal(<div ref={backdrop} className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close.current(); }}>{children}</div>, document.body);
+  return createPortal(<div ref={backdrop} className={className} data-modal-layer="" role="presentation" onMouseDown={(event) => { if (closeOnBackdrop && event.target === event.currentTarget) close.current(); }}>{children}</div>, document.body);
 }
 
 /**

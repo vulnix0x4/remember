@@ -5,6 +5,8 @@ struct RememberApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var store: AppStore
     @State private var focusTimer = FocusTimer()
+    @State private var focusShield = FocusShield()
+    @State private var nudges = Nudges()
 
     init() {
         let client = APIClient(baseURL: AppConfiguration.apiURL, credentials: AppConfiguration.apiCredentials)
@@ -21,6 +23,8 @@ struct RememberApp: App {
             RootView()
                 .environment(store)
                 .environment(focusTimer)
+                .environment(focusShield)
+                .environment(nudges)
                 .tint(RememberDesign.accent)
                 .foregroundStyle(RememberDesign.text)
                 .preferredColorScheme(.dark)

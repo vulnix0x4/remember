@@ -1,5 +1,5 @@
 import { apiConfig, authHeaders } from "./api";
-import { emptyLifeSnapshot, type BlockerReason, type CalendarEvent, type FinanceAccount, type FinanceTransaction, type Goal, type HealthMetric, type LifeArea, type LifeFloorItem, type LifeSnapshot, type LifeTask, type PracticeResult, type VaultFile } from "../life/types";
+import { emptyLifeSnapshot, type BlockerReason, type CalendarEvent, type Commitment, type FinanceAccount, type FinanceTransaction, type Goal, type HealthMetric, type LifeArea, type LifeFloorItem, type LifeSnapshot, type LifeTask, type PracticeResult, type VaultFile } from "../life/types";
 
 const LIFE_STORAGE_KEY = "remember-life-os-v1";
 const LIFE_OUTBOX_KEY = "remember-life-os-outbox-v1";
@@ -15,7 +15,7 @@ interface LifeEntityReference {
 interface LifeCreateMapping {
   collection: LifeCollection;
   localId: string;
-  responseKey: "goal" | "task" | "item" | "accounts";
+  responseKey: "goal" | "task" | "item" | "accounts" | "commitment";
   responseIndex?: number;
 }
 
@@ -188,6 +188,8 @@ export function reconcileLifeSnapshots(remote: LifeSnapshot, local: LifeSnapshot
     accounts: reconcileCollection(remote.accounts, local.accounts, preferred.get("accounts") ?? new Set(), discarded.get("accounts") ?? new Set()),
     transactions: reconcileCollection(remote.transactions, local.transactions, preferred.get("transactions") ?? new Set(), discarded.get("transactions") ?? new Set()),
     files: reconcileCollection(remote.files, local.files, preferred.get("files") ?? new Set(), discarded.get("files") ?? new Set()),
+    // Older servers don't send commitments; keep what this device knows.
+    commitments: reconcileCollection(remote.commitments ?? [], local.commitments ?? [], preferred.get("commitments") ?? new Set(), discarded.get("commitments") ?? new Set()),
   };
 }
 
@@ -392,7 +394,7 @@ export async function completeTask(taskId: string, minutesSpent = 0, result?: Pr
     localEntities: [{ collection: "tasks", id: taskId }],
   }));
   const snapshot = readLocalLife(); const completedAt = now();
-  snapshot.tasks = snapshot.tasks.map((task) => task.id === taskId ? (completed?.task ?? { ...task, status: "done", completedAt, updatedAt: completedAt, ...(result ? { practiceOutcome: result.outcome, practiceReflection: result.reflection, reflectedAt: completedAt } : {}) }) : task);
+  snapshot.tasks = snapshot.tasks.map((task) => task.id === taskId ? (completed?.task ?? { ...task, status: "done", completedAt, updatedAt: completedAt, ...(minutesSpent > 0 ? { actualMinutes: Math.round(minutesSpent) } : {}), ...(result ? { practiceOutcome: result.outcome, practiceReflection: result.reflection, reflectedAt: completedAt } : {}) }) : task);
   if (completed?.next) snapshot.tasks = snapshot.tasks.map((task) => task.id === completed.next!.id ? completed.next! : task);
   else if (!completed && !snapshot.tasks.some((task) => task.status === "active")) {
     const next = bestNext(snapshot.tasks);
@@ -543,6 +545,70 @@ export async function downloadVaultFile(fileId: string): Promise<Blob> {
   const response = await fetch(`${baseUrl}/api/life/files/${encodeURIComponent(fileId)}/download`, { headers: authHeaders(baseUrl), credentials: "include" });
   if (!response.ok) throw new Error("File download failed.");
   return response.blob();
+}
+
+/* ---------- Commitments and chores ---------- */
+
+export type CommitmentInput = Pick<Commitment, "title" | "kind"> & Partial<Pick<Commitment, "days" | "everyDays" | "fixedStart" | "durationMinutes" | "importance" | "steps" | "notes" | "active">>;
+export type CommitmentPatch = Partial<Pick<Commitment, "title" | "kind" | "days" | "everyDays" | "fixedStart" | "durationMinutes" | "importance" | "steps" | "notes" | "active">>;
+
+/** Mirrors the server defaults in createCommitmentSchema. */
+function commitmentPayload(input: CommitmentInput): Omit<Commitment, "id" | "createdAt" | "updatedAt"> {
+  return {
+    title: input.title.trim(), kind: input.kind, days: input.days ?? 127, everyDays: input.everyDays ?? null,
+    fixedStart: input.fixedStart ?? null, durationMinutes: input.durationMinutes ?? 60, importance: input.importance ?? "high",
+    steps: input.steps ?? [], notes: input.notes ?? "", active: input.active ?? true,
+  };
+}
+
+/** Saves a commitment or chore. The server turns it into dated tasks; offline it waits in the outbox. */
+export async function createCommitment(input: CommitmentInput): Promise<Commitment> {
+  const localId = id();
+  const timestamp = now();
+  const payload = commitmentPayload(input);
+  const created = await sendOrQueue<{ commitment: Commitment }>(mutation({
+    method: "POST", path: "/api/life/commitments", body: payload,
+    localEntities: [{ collection: "commitments", id: localId }],
+    createMapping: { collection: "commitments", localId, responseKey: "commitment" },
+  }));
+  const commitment = created?.commitment ?? { ...payload, id: localId, createdAt: timestamp, updatedAt: timestamp };
+  const snapshot = readLocalLife();
+  snapshot.commitments = [...snapshot.commitments.filter((item) => item.id !== commitment.id), commitment];
+  saveLocalLife(snapshot);
+  return commitment;
+}
+
+export async function updateCommitment(commitmentId: string, patch: CommitmentPatch): Promise<Commitment | null> {
+  const updated = await sendOrQueue<{ commitment: Commitment }>(mutation({
+    method: "PATCH", path: `/api/life/commitments/${commitmentId}`, body: patch,
+    localEntities: [{ collection: "commitments", id: commitmentId }],
+  }));
+  const snapshot = readLocalLife();
+  const current = snapshot.commitments.find((item) => item.id === commitmentId);
+  const commitment = updated?.commitment ?? (current ? { ...current, ...patch, updatedAt: now() } : null);
+  if (commitment) {
+    snapshot.commitments = snapshot.commitments.map((item) => item.id === commitmentId ? commitment : item);
+    // Keep upcoming occurrences in step with the edit until the server sends fresh ones.
+    if (patch.title || patch.durationMinutes) snapshot.tasks = snapshot.tasks.map((task) => task.commitmentId === commitmentId && (task.status === "queued" || task.status === "inbox")
+      ? { ...task, ...(patch.title ? { title: patch.title } : {}), ...(patch.durationMinutes ? { durationMinutes: patch.durationMinutes } : {}) } : task);
+    saveLocalLife(snapshot);
+  }
+  return commitment;
+}
+
+/** Deletes a commitment and quietly clears its occurrences that haven't started. */
+export async function deleteCommitment(commitmentId: string): Promise<void> {
+  const removed = mutation({
+    method: "DELETE", path: `/api/life/commitments/${commitmentId}`,
+    localEntities: [{ collection: "commitments", id: commitmentId }],
+  });
+  const result = await requestJSON<null>(removed.path, { method: "DELETE" });
+  if (!result.ok) queueMutation(removed, result.error);
+  const snapshot = readLocalLife();
+  snapshot.commitments = snapshot.commitments.filter((item) => item.id !== commitmentId);
+  snapshot.tasks = snapshot.tasks.map((task) => task.commitmentId === commitmentId && (task.status === "queued" || task.status === "inbox") ? { ...task, status: "removed", updatedAt: now() } : task);
+  saveLocalLife(snapshot);
+  if (result.ok) acknowledgeForRefresh(removed);
 }
 
 export const lifeStorageKey = LIFE_STORAGE_KEY;

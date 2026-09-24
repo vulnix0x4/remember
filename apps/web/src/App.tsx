@@ -38,6 +38,11 @@ import { mergeMemoryFeedback, readMemoryFeedback } from "./services/memoryFeedba
 import { canReturnImprint, latestByItem } from "./product/returnEligibility";
 import type { AskMessage, Imprint, Page, PrimaryPage, ReturnCue } from "./types";
 import { JevStatusLine } from "./components/JevSheet";
+import { LockInProvider } from "./life/lockInContext";
+import { LockInHost } from "./life/LockIn";
+import { Onboarding } from "./setup/Onboarding";
+import { shouldShowSetup } from "./setup/setupState";
+import { AboutMeSection, CommitmentSection, NudgesSection, YourDaySection } from "./setup/SetupSections";
 import type { LifeTask } from "./life/types";
 import { useLifeOS, type LifeOSController } from "./life/useLifeOS";
 import { DailyBasics, NowCard, TaskAddBar, TaskSheet, UpNext } from "./life/TaskViews";
@@ -649,7 +654,7 @@ function AskPage({ imprints, life, onOpen, onOpenPlan, onUpdate }: { imprints: I
     if (!messages.length && !thinking && !failure) return;
     conversationEndRef.current?.scrollIntoView?.({
       block: "end",
-      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth",
     });
   }, [failure, messages.length, thinking]);
 
@@ -836,7 +841,12 @@ function EvolutionPage({ imprints, life, onOpen, onOpenPlan, onExplore, onSaved 
   );
 }
 
-function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut, onClose }: { imprints: Imprint[]; life: LifeOSController; theme: ThemePreference; onTheme: (theme: ThemePreference) => void; session: AppSession | null; onSignOut: () => void; onClose: () => void }) {
+function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut, onClose, onRunSetup, focusSection }: { imprints: Imprint[]; life: LifeOSController; theme: ThemePreference; onTheme: (theme: ThemePreference) => void; session: AppSession | null; onSignOut: () => void; onClose: () => void; onRunSetup: () => void; focusSection?: "day" | null }) {
+  useEffect(() => {
+    if (focusSection !== "day") return;
+    const frame = window.requestAnimationFrame(() => document.getElementById("settings-your-day")?.scrollIntoView?.({ block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusSection]);
   const [apiToken, setApiTokenValue] = useState(() => getApiToken());
   const [exporting, setExporting] = useState<"json" | "md" | null>(null);
   const [exportError, setExportError] = useState("");
@@ -863,6 +873,17 @@ function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut, onCl
     <div className="screen settings-page page-enter">
       <button className="btn quiet back-link" type="button" onClick={onClose}><ArrowLeft size={18} aria-hidden="true" /> Back</button>
       <header className="screen-header"><div className="screen-title-row"><h1>Settings</h1></div></header>
+      <div className="setup-sections">
+        <YourDaySection life={life} />
+        <CommitmentSection life={life} kind="commitment" />
+        <CommitmentSection life={life} kind="chore" />
+        <NudgesSection />
+        <AboutMeSection life={life} />
+        <section className="setup-section" aria-label="Setup">
+          <ul className="setup-list"><li><button className="setup-row" type="button" onClick={onRunSetup}><span><strong>Run setup again</strong></span><CaretRight size={16} aria-hidden="true" /></button></li></ul>
+        </section>
+      </div>
+      <h2 className="section-label settings-more-label">Account and data</h2>
       <div className="settings-layout">
         <section className="settings-group"><div className="settings-title"><span><Moon size={19} /></span><div><h2>Appearance</h2><p>System follows your device automatically.</p></div></div><div className="segmented" role="group" aria-label="Color theme"><button type="button" aria-pressed={theme === "system"} className={theme === "system" ? "active" : ""} onClick={() => onTheme("system")}>System</button><button type="button" aria-pressed={theme === "light"} className={theme === "light" ? "active" : ""} onClick={() => onTheme("light")}><Sun size={16} /> Light</button><button type="button" aria-pressed={theme === "dark"} className={theme === "dark" ? "active" : ""} onClick={() => onTheme("dark")}><Moon size={16} /> Dark</button></div></section>
         <section className="settings-group"><div className="settings-title"><span><DownloadSimple size={19} /></span><div><h2>Your data</h2><p>Download a copy whenever you need one.</p></div></div><div className="export-actions"><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("md")}><BookOpen size={17} /> {exporting === "md" ? "Preparing..." : "Export Markdown"}</button><button className="button secondary" type="button" disabled={exporting !== null} onClick={() => void download("json")}><Database size={17} /> {exporting === "json" ? "Preparing..." : "Export JSON"}</button></div>{exportError && <p className="field-error" role="alert"><Warning size={15} /> {exportError}</p>}<div className="privacy-note"><ShieldCheck size={17} /><span><strong>Your saved items and personal records are included.</strong><small>Exports include saved item summaries, goals, tasks, calendar, health, finance, and file metadata. Download file contents separately.</small></span></div></section>
@@ -916,13 +937,16 @@ const librarySections: Array<{ page: Page; label: string }> = [{ page: "library"
 const lifeSections: Array<{ page: Page; label: string }> = [{ page: "health", label: "Health" }, { page: "money", label: "Money" }, { page: "files", label: "Files" }];
 
 export function App() {
-  return <ToastProvider><AppContent /></ToastProvider>;
+  return <ToastProvider><LockInProvider><AppContent /></LockInProvider></ToastProvider>;
 }
 
 function AppContent() {
   const [route, setRoute] = useState<AppRoute>(() => routeFromHash());
   const { page, detailId } = route;
   const settingsReturnRef = useRef<Page>("home");
+  const [settingsFocus, setSettingsFocus] = useState<"day" | null>(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const setupChecked = useRef(false);
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "anonymous">(apiConfig.authMode === "password" ? "loading" : "authenticated");
   const [session, setSession] = useState<AppSession | null>(null);
   const [imprints, setImprints] = useState<Imprint[]>(apiConfig.baseUrl ? [] : fixtureImprints);
@@ -964,6 +988,12 @@ function AppContent() {
     return () => window.removeEventListener("hashchange", syncRoute);
   }, []);
   useEffect(() => { document.title = `${pageTitles[page]} · Remember`; }, [page]);
+  // First run: once the real snapshot is in, offer setup if nothing is set up yet.
+  useEffect(() => {
+    if (setupChecked.current || authStatus !== "authenticated" || life.loading || !life.remote) return;
+    setupChecked.current = true;
+    if (shouldShowSetup({ remote: life.remote, loading: life.loading, commitments: life.snapshot.commitments.length })) setSetupOpen(true);
+  }, [authStatus, life.loading, life.remote, life.snapshot.commitments.length]);
   useEffect(() => {
     if (apiConfig.authMode !== "password") return;
     let active = true;
@@ -1000,7 +1030,7 @@ function AppContent() {
   }, [authStatus]);
   if (authStatus === "loading") return <AuthLoading />;
   if (authStatus === "anonymous") return <LoginPage onAuthenticated={(value) => { setSession(value); setAuthStatus("authenticated"); }} />;
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ? "auto" : "smooth" });
   const navigate = (next: Page) => {
     setRoute({ page: next, detailId: null });
     const nextHash = `#/${next}`;
@@ -1014,7 +1044,7 @@ function AppContent() {
     scrollToTop();
     void loadImprint(id).then(({ item }) => { if (item) replaceImprint(item); });
   };
-  const openSettings = () => { settingsReturnRef.current = page === "settings" ? "home" : page; navigate("settings"); };
+  const openSettings = (focus: "day" | null = null) => { settingsReturnRef.current = page === "settings" ? "home" : page; setSettingsFocus(focus); navigate("settings"); };
   const explore = (question: string) => { sessionStorage.setItem(ASK_SEED_STORAGE_KEY, question); navigate("ask"); };
   const saveCapture = async (draft: Imprint) => {
     const { item, synced } = await saveImprint(draft);
@@ -1030,24 +1060,24 @@ function AppContent() {
   const loading = (label: string) => <FeatureLoading label={label} />;
   const screen = activeImprint
     ? <DetailPage imprint={activeImprint} imprints={imprints} life={life} onBack={() => navigate("library")} onOpen={openDetail} onOpenPlan={() => navigate("tasks")} onUpdate={replaceImprint} />
-    : page === "settings" ? <SettingsPage imprints={imprints} life={life} theme={themePreference} onTheme={setThemePreference} session={session} onSignOut={signOut} onClose={() => navigate(settingsReturnRef.current)} />
+    : page === "settings" ? <SettingsPage imprints={imprints} life={life} theme={themePreference} onTheme={setThemePreference} session={session} onSignOut={signOut} onClose={() => navigate(settingsReturnRef.current)} onRunSetup={() => setSetupOpen(true)} focusSection={settingsFocus} />
     : <div className="screen page-enter" key={primaryPage}>
       {page === "home" ? <>
-        <ScreenHeader title="Today" onAvatar={openSettings}><JevStatusLine life={life} /></ScreenHeader>
+        <ScreenHeader title="Today" onAvatar={() => openSettings()}><JevStatusLine life={life} onOpen={() => openSettings("day")} /></ScreenHeader>
         <HomePage imprints={imprints} resurfaced={resurfaced} onOpen={openDetail} onNavigate={navigate} life={life} />
       </> : page === "ask" ? <>
-        <ScreenHeader title="Ask" onAvatar={openSettings} />
+        <ScreenHeader title="Ask" onAvatar={() => openSettings()} />
         <AskPage imprints={imprints} life={life} onOpen={openDetail} onOpenPlan={() => navigate("tasks")} onUpdate={replaceImprint} />
       </> : primaryPage === "plan" ? <>
-        <ScreenHeader title="Plan" onAvatar={openSettings} sections={planSections} active={planSection} onNavigate={navigate} />
+        <ScreenHeader title="Plan" onAvatar={() => openSettings()} sections={planSections} active={planSection} onNavigate={navigate} />
         <Suspense fallback={loading("Opening your plan…")}>{planSection === "goals" ? <GoalsPage life={life} /> : planSection === "calendar" ? <CalendarPage life={life} /> : <TasksPage life={life} />}</Suspense>
       </> : primaryPage === "library" ? <>
-        <ScreenHeader title="Library" onAvatar={openSettings} sections={librarySections} active={librarySection} onNavigate={navigate} />
+        <ScreenHeader title="Library" onAvatar={() => openSettings()} sections={librarySections} active={librarySection} onNavigate={navigate} />
         {librarySection === "evolution"
           ? <EvolutionPage imprints={imprints} life={life} onOpen={openDetail} onOpenPlan={() => navigate("tasks")} onExplore={explore} onSaved={saveCapture} />
           : <LibraryPage imprints={imprints} onOpen={openDetail} loading={libraryLoading} onSaved={saveCapture} onExplore={explore} onSeeCompass={() => navigate("evolution")} />}
       </> : <>
-        <ScreenHeader title="Life" onAvatar={openSettings} sections={lifeSections} active={youSection} onNavigate={navigate} />
+        <ScreenHeader title="Life" onAvatar={() => openSettings()} sections={lifeSections} active={youSection} onNavigate={navigate} />
         <Suspense fallback={loading("Opening Life…")}>{youSection === "money" ? <MoneyPage life={life} /> : youSection === "files" ? <FilesPage life={life} /> : <HealthPage life={life} />}</Suspense>
       </>}
     </div>;
@@ -1063,6 +1093,8 @@ function AppContent() {
         <LifeSyncBanner life={life} />
         {screen}
       </main>
+      <LockInHost life={life} onFinished={() => navigate("home")} />
+      {setupOpen && <Onboarding life={life} onFinish={() => { setSetupOpen(false); navigate("home"); }} />}
       <nav className="bottom-nav" aria-label="Mobile navigation">{navItems.map(({ page: itemPage, label, icon: Icon }) => { const active = primaryPage === itemPage; return <button className={cx(active && "active")} type="button" key={itemPage} onClick={() => navigate(itemPage)} aria-current={active ? "page" : undefined}><Icon size={24} weight={active ? "fill" : "regular"} /><span>{label}</span></button>; })}</nav>
     </div>
   );

@@ -28,9 +28,18 @@ struct LifeTasksView: View {
     }
 
     private var laterTasks: [LifeTask] {
-        store.queuedLifeTasks
+        let upcoming = store.queuedLifeTasks
             .filter { task in task.id != currentID && startDate(task).map { $0 > .now && !Calendar.current.isDateInToday($0) } ?? false }
             .sorted { (startDate($0) ?? .distantFuture) < (startDate($1) ?? .distantFuture) }
+        // A daily commitment has a task for every coming day; show only the next one of each.
+        var seenCommitments = Set<UUID>(todayTasks.compactMap(\.commitmentId))
+        if let currentCommitment = store.lifeSnapshot.tasks.first(where: { $0.id == currentID })?.commitmentId {
+            seenCommitments.insert(currentCommitment)
+        }
+        return upcoming.filter { task in
+            guard let commitment = task.commitmentId else { return true }
+            return seenCommitments.insert(commitment).inserted
+        }
     }
 
     private var doneToday: [LifeTask] {
@@ -105,6 +114,7 @@ struct LifeTasksView: View {
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         Button {
                             timer.start(task.id)
+                            store.lockInTask = task
                             Task { await store.startTask(task) }
                         } label: {
                             Label("Start", systemImage: "play.fill")

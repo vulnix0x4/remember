@@ -380,11 +380,7 @@ private struct ToastView: View {
         // Contain, not combine: combining folds Undo into the message, so activating it missed the button.
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.updatesFrequently)
-        .task(id: toast.id) {
-            AccessibilityNotification.Announcement(toast.message).post()
-            try? await Task.sleep(for: .seconds(5))
-            store.dismissToast(toast.id)
-        }
+        .onAppear { store.announceToast(toast.id) }
     }
 }
 
@@ -528,11 +524,11 @@ private struct ParsePreview: View {
     let parsed: ParsedQuickTask
 
     var body: some View {
-        if parsed.hasDetails {
+        if parsed.hasDetails || (parsed.durationIsEstimate && parsed.durationMinutes != 15) {
             ScrollView(.horizontal) {
                 HStack(spacing: 6) {
                     if let minutes = parsed.durationMinutes {
-                        MetaChip(text: minutes.durationLabel, systemImage: "timer", isAccent: true)
+                        MetaChip(text: (parsed.durationIsEstimate ? "~" : "") + minutes.durationLabel, systemImage: "timer", isAccent: !parsed.durationIsEstimate)
                     }
                     if let start = parsed.notBefore {
                         MetaChip(text: start.relativeDayLabel, systemImage: "calendar", isAccent: true)
@@ -629,5 +625,72 @@ extension Date {
             return calendar.component(.hour, from: self) == 9 ? weekday : "\(weekday) \(time)"
         }
         return formatted(.dateTime.month(.abbreviated).day())
+    }
+}
+
+// MARK: - Choice chips
+
+/// A selectable capsule used for small, fixed choices (durations, days, rhythms).
+struct ChoiceChip: View {
+    let label: String
+    let isOn: Bool
+    var minWidth: CGFloat? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isOn ? RememberDesign.primaryInk : RememberDesign.text)
+                .padding(.horizontal, minWidth == nil ? RememberDesign.spacing : 0)
+                .frame(minWidth: minWidth ?? 0, minHeight: 44)
+                .background(isOn ? RememberDesign.primaryFill : RememberDesign.cardRaised, in: .capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .sensoryFeedback(.selection, trigger: isOn)
+    }
+}
+
+/// A labeled group of wrapping choice chips.
+struct ChoiceGroup<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: title)
+            FlowLayout(spacing: RememberDesign.spacingSmall) { content }
+        }
+    }
+}
+
+/// Wraps children onto new lines when they run out of width.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, lineHeight: CGFloat = 0, maxX: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width { x = 0; y += lineHeight + spacing; lineHeight = 0 }
+            x += size.width + spacing
+            maxX = max(maxX, x - spacing)
+            lineHeight = max(lineHeight, size.height)
+        }
+        return CGSize(width: min(maxX, width), height: y + lineHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, lineHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += lineHeight + spacing; lineHeight = 0 }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+        }
     }
 }

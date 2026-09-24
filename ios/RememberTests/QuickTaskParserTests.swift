@@ -144,3 +144,59 @@ final class AutomaticRepeatTests: XCTestCase {
         XCTAssertEqual(QuickTaskParser.learnedRepeatDays(for: "Laundry", history: [.init(title: "laundry", completedAt: now.addingTimeInterval(-14 * 86_400))], now: now), 14)
     }
 }
+
+final class TimeEstimateTests: XCTestCase {
+    func testKnownTasksGetARealisticEstimate() {
+        XCTAssertEqual(QuickTaskParser.estimateMinutes(for: "Go to the gym", history: []), 60)
+        XCTAssertEqual(QuickTaskParser.estimateMinutes(for: "Groceries", history: []), 45)
+        XCTAssertEqual(QuickTaskParser.estimateMinutes(for: "Email the landlord", history: []), 10)
+        XCTAssertEqual(QuickTaskParser.estimateMinutes(for: "Something new", history: []), 15)
+    }
+
+    func testYourOwnTimingWins() {
+        let history = [20, 40, 30].enumerated().map { index, minutes in
+            QuickTaskParser.HistoryEntry(title: "Groceries", completedAt: .now.addingTimeInterval(Double(-index) * 86_400), actualMinutes: minutes)
+        }
+        XCTAssertEqual(QuickTaskParser.estimateMinutes(for: "groceries", history: history), 30)
+    }
+
+    func testTypedDurationIsNotAnEstimate() {
+        let typed = QuickTaskParser.parse("gym 45m")
+        XCTAssertEqual(typed.durationMinutes, 45)
+        XCTAssertFalse(typed.durationIsEstimate)
+        let guessed = QuickTaskParser.parse("gym")
+        XCTAssertEqual(guessed.durationMinutes, 60)
+        XCTAssertTrue(guessed.durationIsEstimate)
+    }
+}
+
+final class WeekdaysTests: XCTestCase {
+    func testLabels() {
+        XCTAssertEqual(Weekdays.label(127), "Every day")
+        XCTAssertEqual(Weekdays.label(Weekdays.weekdays), "Weekdays")
+        XCTAssertEqual(Weekdays.label(2 | 8 | 32), "Mon, Wed, Fri")
+    }
+
+    func testCommitmentSummary() {
+        let gym = Commitment(id: UUID(), title: "Gym", kind: .commitment, days: 2 | 8 | 32, everyDays: nil, fixedStart: nil,
+                             durationMinutes: 60, importance: .high, steps: [], notes: "", active: true, createdAt: .now, updatedAt: .now)
+        XCTAssertEqual(gym.summary, "Mon, Wed, Fri · 1 hr")
+        var laundry = gym
+        laundry.kind = .chore
+        laundry.days = 127
+        laundry.everyDays = 7
+        laundry.durationMinutes = 30
+        XCTAssertEqual(laundry.summary, "Weekly · 30 min")
+    }
+
+    func testCommitmentDecodesFromTheServer() throws {
+        let json = #"{"id":"6f1d2c3b-1111-4222-8333-944455556666","title":"Laundry","kind":"chore","days":127,"everyDays":7,"fixedStart":null,"durationMinutes":30,"importance":"high","steps":[{"title":"Gather clothes"},{"title":"Washer running","waitMinutes":45}],"notes":"","active":true,"createdAt":"2026-09-23T10:00:00Z","updatedAt":"2026-09-23T10:00:00Z"}"#
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let commitment = try decoder.decode(Commitment.self, from: Data(json.utf8))
+        XCTAssertEqual(commitment.steps.map(\.waitMinutes), [nil, 45])
+        let encoded = String(decoding: try JSONEncoder().encode(CommitmentDraft(commitment)), as: UTF8.self)
+        XCTAssertTrue(encoded.contains(#""everyDays":7"#))
+        XCTAssertTrue(encoded.contains(#""fixedStart":null"#))
+    }
+}

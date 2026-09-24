@@ -61,15 +61,21 @@ describe("automated serious accessibility gate", () => {
     await screen.findByRole("heading", { name: "Laundry" });
     await expectAccessible(container, "Today with tasks");
 
-    await user.click(screen.getByRole("button", { name: "Start" }));
-    await user.click(screen.getByRole("button", { name: "I’m stuck" }));
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    await expectAccessible(document.body, "Stuck sheet");
-    await user.keyboard("{Escape}");
-
     await user.click(screen.getByRole("button", { name: "Jev is paused" }));
-    await expectAccessible(document.body, "Jev sheet");
+    await screen.findByRole("heading", { name: "Your day" });
+    await expectAccessible(container, "Settings from the Jev line");
+    await user.click(screen.getByRole("button", { name: "Add chore" }));
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    await expectAccessible(document.body, "Chore editor");
     await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Run setup again" }));
+    await expectAccessible(document.body, "Setup");
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await expectAccessible(document.body, "Setup: your day");
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await expectAccessible(document.body, "Setup: commitments");
+    for (let step = 0; step < 4; step += 1) await user.click(screen.getByRole("button", { name: /^(Next|Go to Today)$/ }));
+    expect(screen.queryByRole("dialog")).toBeNull();
 
     await user.click(screen.getAllByRole("button", { name: "Plan" })[0]);
     await screen.findByRole("heading", { name: "Later" });
@@ -104,5 +110,12 @@ describe("automated serious accessibility gate", () => {
     await user.click(screen.getAllByRole("button", { name: "Library" })[0]);
     await user.click(screen.getByRole("button", { name: /Your worst years can shape your best life/i }));
     await expectAccessible(container, "Imprint detail");
-  });
+
+    await user.click(screen.getAllByRole("button", { name: "Today" })[0]);
+    await user.click(await screen.findByRole("button", { name: "Start" }));
+    await expectAccessible(document.body, "Lock-in mode");
+    await user.click(screen.getByRole("button", { name: "I’m stuck" }));
+    expect(screen.getByRole("dialog", { name: "What’s getting in the way?" })).toBeTruthy();
+    await expectAccessible(document.body, "Stuck sheet over lock-in mode");
+  }, 30_000);
 });

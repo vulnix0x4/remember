@@ -152,7 +152,7 @@ Opened from the Today status line. Contents: a toggle `Let Jev plan my day`, pla
 
 ## Toasts
 
-One toast at a time, pinned above the add bar. `card` background, white text, and an optional accent `Undo` button. Auto-dismisses after 5s. Errors use the same toast with danger text. Replace blocking error alerts with toasts wherever the action is retryable.
+One toast at a time, pinned above the add bar. `card` background, white text, and an optional accent `Undo` button. Auto-dismisses after 8 s when it offers Undo, 4 s otherwise. Errors use the same toast with danger text. Replace blocking error alerts with toasts wherever the action is retryable.
 
 ## Accessibility
 
@@ -248,7 +248,7 @@ After **Done**, a two-second win moment appears: the accent check and "Done. Tha
 
 Quick add estimates duration when the text doesn't say. `estimateMinutes(title, history)` uses, in order:
 1. **Your history:** the median `actualMinutes` of the last three completed tasks with the same title (case-insensitive).
-2. **Known tasks:** whole-word, first match wins.
+2. **Known tasks:** whole-word, checked longest first (so "run errands" is 45).
 
    | Minutes | Words |
    |---|---|

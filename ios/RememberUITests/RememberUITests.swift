@@ -150,7 +150,7 @@ final class RememberUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Add task"].exists, "Quick add never opens a form.")
     }
 
-    func testStartShowsDoingThenDoneOffersUndo() {
+    func testStartOpensLockInThenDoneCelebratesAndOffersUndo() {
         let app = makeApp()
         app.launch()
 
@@ -158,16 +158,18 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(start.waitForExistence(timeout: timeout))
         start.tap()
 
-        let done = app.buttons["remember.now.done"]
-        XCTAssertTrue(done.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["DOING"].exists || app.otherElements["DOING"].exists || app.descendants(matching: .any)["DOING"].exists)
-        XCTAssertTrue(app.buttons["remember.now.stuck"].exists)
-        attachScreenshot(of: app, named: "Doing")
+        let done = app.buttons["remember.lockin.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: timeout), "Start opens lock-in mode.")
+        XCTAssertTrue(app.buttons["remember.lockin.stuck"].exists)
+        XCTAssertTrue(app.staticTexts["Get ready"].exists, "Lock-in offers a short get-ready list.")
+        attachScreenshot(of: app, named: "Lock-in")
 
         done.tap()
+        XCTAssertTrue(app.staticTexts["Done."].waitForExistence(timeout: timeout), "A short win moment follows Done.")
+        XCTAssertTrue(app.staticTexts["Done."].waitForNonExistence(timeout: timeout), "The win moment returns to Today by itself.")
         let undo = visibleUndo(in: app)
         XCTAssertTrue(undo.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Done. Nice work."].firstMatch.exists)
+        XCTAssertTrue(anyElement(containing: "Done. Nice work.", in: app).exists)
 
         undo.tap()
         XCTAssertTrue(anyElement(containing: firstNowTask, in: app).waitForExistence(timeout: timeout), "Undo brings the finished task back.")
@@ -178,7 +180,7 @@ final class RememberUITests: XCTestCase {
         app.launch()
 
         app.buttons["remember.now.start"].tap()
-        let stuck = app.buttons["remember.now.stuck"]
+        let stuck = app.buttons["remember.lockin.stuck"]
         XCTAssertTrue(stuck.waitForExistence(timeout: timeout))
         stuck.tap()
 
@@ -193,12 +195,11 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What’s getting in the way?"].waitForNonExistence(timeout: timeout))
         let undo = visibleUndo(in: app)
         XCTAssertTrue(undo.waitForExistence(timeout: timeout))
-        XCTAssertTrue(app.staticTexts["Deleted"].firstMatch.exists)
-        XCTAssertTrue(anyElement(containing: firstNowTask, in: app).waitForNonExistence(timeout: timeout))
+        XCTAssertTrue(anyElement(containing: "Deleted", in: app).exists)
 
+        // Undo is only on screen for a few seconds, so use it before anything slower.
         undo.tap()
-        if !anyElement(containing: firstNowTask, in: app).waitForExistence(timeout: timeout) { print("DEBUGDUMP-DELETE\n" + app.debugDescription) }
-        XCTAssertTrue(anyElement(containing: firstNowTask, in: app).exists, "Undo restores the deleted task.")
+        XCTAssertTrue(anyElement(containing: firstNowTask, in: app).waitForExistence(timeout: timeout), "Undo restores the deleted task.")
     }
 
     func testDoingSomethingElseKeepsThePreviousTaskInPlan() {
@@ -209,7 +210,7 @@ final class RememberUITests: XCTestCase {
         let start = app.buttons["remember.now.start"]
         XCTAssertTrue(start.waitForExistence(timeout: timeout))
         start.tap()
-        let stuck = app.buttons["remember.now.stuck"]
+        let stuck = app.buttons["remember.lockin.stuck"]
         XCTAssertTrue(stuck.waitForExistence(timeout: timeout))
         stuck.tap()
 
@@ -279,9 +280,8 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(startNow.waitForExistence(timeout: timeout))
         startNow.tap()
 
-        let done = app.buttons["remember.now.done"]
-        for _ in 0..<4 where !done.isHittable { app.swipeDown() }
-        XCTAssertTrue(done.waitForExistence(timeout: timeout))
+        let done = app.buttons["remember.lockin.done"]
+        XCTAssertTrue(done.waitForExistence(timeout: timeout), "Start now opens lock-in mode.")
         done.tap()
 
         XCTAssertTrue(app.staticTexts["Did it help?"].waitForExistence(timeout: timeout))

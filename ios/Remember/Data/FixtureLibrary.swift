@@ -283,9 +283,21 @@ enum FixtureLibrary {
                 createdAt: now, updatedAt: now
             )
         }
+        let laundryRoutine = Commitment(
+            id: uuid("80000000-0000-0000-0000-000000000001"), title: "Laundry", kind: .chore, days: 127, everyDays: 7,
+            fixedStart: nil, durationMinutes: 30, importance: .high, steps: CommitmentTemplates.laundrySteps,
+            notes: "", active: true, createdAt: now, updatedAt: now
+        )
+        let college = Commitment(
+            id: uuid("80000000-0000-0000-0000-000000000002"), title: "College study", kind: .commitment, days: 127, everyDays: nil,
+            fixedStart: nil, durationMinutes: 120, importance: .must, steps: [], notes: "", active: true, createdAt: now, updatedAt: now
+        )
+        var linkedTasks = everydayTasks
+        linkedTasks[1].commitmentId = laundryRoutine.id
         var snapshot = LifeSnapshot.empty
-        snapshot.tasks = [queued, completed] + everydayTasks
+        snapshot.tasks = [queued, completed] + linkedTasks
         snapshot.floor = habits
+        snapshot.commitments = [college, laundryRoutine]
         return snapshot
     }()
 
