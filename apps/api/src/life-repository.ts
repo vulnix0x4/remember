@@ -1,8 +1,11 @@
 import type {
   BlockerReason,
+  Commitment,
+  CreateCommitment,
   CreateGoal,
   CreateTask,
   LifeSnapshot,
+  UpdateCommitment,
 } from "@remember/domain";
 import { ApiError } from "./http";
 
@@ -18,6 +21,7 @@ type TaskRow = {
   source_item_id: string | null; practice_outcome: string | null; practice_reflection: string; reflected_at: string | null;
   created_at: string; updated_at: string;
   repeat_every_days: number | null; not_before: string | null;
+  commitment_id?: string | null; occurrence_date?: string | null; actual_minutes?: number | null;
 };
 
 type BlockerRow = {
@@ -75,7 +79,50 @@ function publicGoal(row: GoalRow) {
   return { id: row.id, title: row.title, area: row.area, vision: row.vision, why: row.why, status: row.status, progress: row.progress, targetDate: row.target_date, createdAt: row.created_at, updatedAt: row.updated_at };
 }
 function publicTask(row: TaskRow) {
-  return { id: row.id, goalId: row.goal_id, title: row.title, firstStep: row.first_step, notes: row.notes, area: row.area, status: row.status, priority: row.priority, energy: row.energy, durationMinutes: row.duration_minutes, dueAt: row.due_at, scheduledStart: row.scheduled_start, scheduledEnd: row.scheduled_end, source: row.source, sourceItemId: row.source_item_id, practiceOutcome: row.practice_outcome, practiceReflection: row.practice_reflection, reflectedAt: row.reflected_at, completedAt: row.completed_at, createdAt: row.created_at, updatedAt: row.updated_at, repeatEveryDays: row.repeat_every_days ?? null, notBefore: row.not_before ?? null };
+  return { id: row.id, goalId: row.goal_id, title: row.title, firstStep: row.first_step, notes: row.notes, area: row.area, status: row.status, priority: row.priority, energy: row.energy, durationMinutes: row.duration_minutes, dueAt: row.due_at, scheduledStart: row.scheduled_start, scheduledEnd: row.scheduled_end, source: row.source, sourceItemId: row.source_item_id, practiceOutcome: row.practice_outcome, practiceReflection: row.practice_reflection, reflectedAt: row.reflected_at, completedAt: row.completed_at, createdAt: row.created_at, updatedAt: row.updated_at, repeatEveryDays: row.repeat_every_days ?? null, notBefore: row.not_before ?? null, commitmentId: row.commitment_id ?? null, occurrenceDate: row.occurrence_date ?? null, actualMinutes: row.actual_minutes ?? null };
+}
+
+type CommitmentRow = {
+  id: string; user_id: string; title: string; kind: string; days: number; every_days: number | null; fixed_start: string | null;
+  duration_minutes: number; importance: string; steps_json: string; notes: string; active: number; created_at: string; updated_at: string;
+};
+function publicCommitment(row: CommitmentRow): Commitment {
+  let steps: Commitment["steps"] = [];
+  try { const parsed = JSON.parse(row.steps_json); if (Array.isArray(parsed)) steps = parsed; } catch { /* keep empty */ }
+  return { id: row.id, title: row.title, kind: row.kind as Commitment["kind"], days: row.days, everyDays: row.every_days, fixedStart: row.fixed_start, durationMinutes: row.duration_minutes, importance: row.importance as Commitment["importance"], steps, notes: row.notes, active: row.active === 1, createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+/** Calendar helpers in the person's time zone, without a date library. */
+function localDate(instant: number, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" })
+    .formatToParts(new Date(instant)).map((part) => [part.type, part.value]));
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.weekday ?? "");
+  return { ymd: `${parts.year}-${parts.month}-${parts.day}`, weekday };
+}
+function ymdParts(ymd: string): [number, number, number] {
+  const [year = 1970, month = 1, day = 1] = ymd.split("-").map(Number);
+  return [year, month, day];
+}
+function addDays(ymd: string, days: number) {
+  const [year, month, day] = ymdParts(ymd);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+function weekdayOf(ymd: string) {
+  const [year, month, day] = ymdParts(ymd);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+/** The UTC instant for a local wall-clock time on a local date. */
+function zonedInstant(ymd: string, hour: number, minute: number, timeZone: string) {
+  const [year, month, day] = ymdParts(ymd);
+  const wall = Date.UTC(year, month - 1, day, hour, minute);
+  let guess = wall;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(new Date(guess)).map((part) => [part.type, Number(part.value)]));
+    const shown = Date.UTC(parts.year ?? year, (parts.month ?? month) - 1, parts.day ?? day, parts.hour ?? hour, parts.minute ?? minute);
+    guess += wall - shown;
+  }
+  return guess;
 }
 function publicBlocker(row: BlockerRow) {
   return { id: row.id, taskId: row.task_id, taskTitle: row.task_title, reason: row.reason, originalDuration: row.original_duration, createdAt: row.created_at };
@@ -157,7 +204,9 @@ export class LifeRepository {
       this.db.prepare(`SELECT * FROM finance_transactions WHERE user_id = ?1 ORDER BY occurred_at DESC${allHistory ? "" : " LIMIT 2000"}`).bind(userId).all<TransactionRow>(),
       this.db.prepare(`SELECT * FROM vault_files WHERE user_id = ?1 ORDER BY created_at DESC${allHistory ? "" : " LIMIT 1000"}`).bind(userId).all<FileRow>(),
     ]);
+    const commitments = await this.db.prepare("SELECT * FROM life_commitments WHERE user_id = ?1 ORDER BY kind, created_at").bind(userId).all<CommitmentRow>();
     return {
+      commitments: commitments.results.map(publicCommitment),
       goals: goals.results.map(publicGoal) as LifeSnapshot["goals"],
       tasks: tasks.results.map(publicTask) as LifeSnapshot["tasks"],
       blockers: blockers.results.map(publicBlocker) as LifeSnapshot["blockers"],
@@ -224,7 +273,7 @@ export class LifeRepository {
     if (task.status === "done") return { task, next: await this.activeTask(userId) };
     if (result && task.source !== "practice") throw new ApiError(422, "not_a_practice", "Only a real-life experiment can record this kind of result.");
     const now = isoNow();
-    const completion = this.db.prepare("UPDATE life_tasks SET status = 'done', completed_at = ?3, updated_at = ?3, notes = CASE WHEN ?4 > 0 THEN notes || CASE WHEN notes = '' THEN '' ELSE '\n' END || 'Completed in ' || ?4 || ' minutes.' ELSE notes END, practice_outcome = COALESCE(?5, practice_outcome), practice_reflection = CASE WHEN ?5 IS NULL THEN practice_reflection ELSE ?6 END, reflected_at = CASE WHEN ?5 IS NULL THEN reflected_at ELSE ?3 END WHERE user_id = ?1 AND id = ?2")
+    const completion = this.db.prepare("UPDATE life_tasks SET status = 'done', completed_at = ?3, updated_at = ?3, actual_minutes = CASE WHEN ?4 > 0 THEN ?4 ELSE actual_minutes END, notes = CASE WHEN ?4 > 0 THEN notes || CASE WHEN notes = '' THEN '' ELSE '\n' END || 'Completed in ' || ?4 || ' minutes.' ELSE notes END, practice_outcome = COALESCE(?5, practice_outcome), practice_reflection = CASE WHEN ?5 IS NULL THEN practice_reflection ELSE ?6 END, reflected_at = CASE WHEN ?5 IS NULL THEN reflected_at ELSE ?3 END WHERE user_id = ?1 AND id = ?2")
       .bind(userId, id, now, Math.max(0, Math.round(minutesSpent)), result?.outcome ?? null, result?.reflection ?? "");
     if (task.repeatEveryDays) {
       const notBefore = new Date(Date.parse(now) + task.repeatEveryDays * 86_400_000).toISOString();
@@ -367,6 +416,102 @@ export class LifeRepository {
   private async activeTask(userId: string) {
     const row = await this.db.prepare("SELECT * FROM life_tasks WHERE user_id = ?1 AND status = 'active' LIMIT 1").bind(userId).first<TaskRow>();
     return row ? publicTask(row) : null;
+  }
+
+  /** The person's planning time zone, from Jev's settings; UTC until a device has synced one. */
+  async timeZone(userId: string) {
+    const row = await this.db.prepare("SELECT json_extract(settings_json, '$.timeZone') AS zone FROM life_brain WHERE user_id = ?1").bind(userId).first<{ zone: string | null }>();
+    return row?.zone || "UTC";
+  }
+
+  async createCommitment(userId: string, input: CreateCommitment, timeZone: string) {
+    const id = crypto.randomUUID(); const now = isoNow();
+    await this.db.prepare(`INSERT INTO life_commitments (id,user_id,title,kind,days,every_days,fixed_start,duration_minutes,importance,steps_json,notes,active,created_at,updated_at)
+      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?13)`)
+      .bind(id, userId, input.title, input.kind, input.days, input.everyDays, input.fixedStart, input.durationMinutes, input.importance, JSON.stringify(input.steps), input.notes, input.active ? 1 : 0, now).run();
+    await this.materializeCommitments(userId, timeZone);
+    return this.requireCommitment(userId, id);
+  }
+
+  async updateCommitment(userId: string, id: string, input: UpdateCommitment, timeZone: string) {
+    const current = await this.requireCommitment(userId, id);
+    const next: Commitment = { ...current, ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) };
+    if (next.days < 1) throw new ApiError(422, "invalid_days", "Pick at least one day.");
+    await this.db.prepare(`UPDATE life_commitments SET title = ?3, kind = ?4, days = ?5, every_days = ?6, fixed_start = ?7, duration_minutes = ?8, importance = ?9, steps_json = ?10, notes = ?11, active = ?12, updated_at = ?13
+      WHERE user_id = ?1 AND id = ?2`)
+      .bind(userId, id, next.title, next.kind, next.days, next.everyDays, next.fixedStart, next.durationMinutes, next.importance, JSON.stringify(next.steps), next.notes, next.active ? 1 : 0, isoNow()).run();
+    await this.clearUpcomingOccurrences(userId, id, timeZone);
+    await this.materializeCommitments(userId, timeZone);
+    return this.requireCommitment(userId, id);
+  }
+
+  async deleteCommitment(userId: string, id: string, timeZone: string) {
+    await this.requireCommitment(userId, id);
+    await this.clearUpcomingOccurrences(userId, id, timeZone);
+    await this.db.prepare("DELETE FROM life_commitments WHERE user_id = ?1 AND id = ?2").bind(userId, id).run();
+  }
+
+  private async requireCommitment(userId: string, id: string) {
+    const row = await this.db.prepare("SELECT * FROM life_commitments WHERE user_id = ?1 AND id = ?2").bind(userId, id).first<CommitmentRow>();
+    if (!row) throw new ApiError(404, "not_found", "That commitment was not found.");
+    return publicCommitment(row);
+  }
+
+  /** Removes today's and future occurrences that haven't been started, so edits take effect right away. */
+  private async clearUpcomingOccurrences(userId: string, commitmentId: string, timeZone: string) {
+    const today = localDate(Date.now(), timeZone).ymd;
+    await this.db.prepare(`DELETE FROM life_tasks WHERE user_id = ?1 AND commitment_id = ?2 AND occurrence_date >= ?3 AND status IN ('queued', 'inbox')`)
+      .bind(userId, commitmentId, today).run();
+  }
+
+  /**
+   * Turns commitments into dated tasks for the next week so Jev plans them with everything else.
+   * Weekday commitments get one task per matching day, due by the end of that day; missed days are
+   * cleared quietly. Chores with `everyDays` keep exactly one open occurrence that waits until the
+   * rhythm comes due and stays until it's done.
+   */
+  async materializeCommitments(userId: string, timeZone: string, now = new Date()) {
+    const rows = await this.db.prepare("SELECT * FROM life_commitments WHERE user_id = ?1 AND active = 1").bind(userId).all<CommitmentRow>();
+    const today = localDate(now.getTime(), timeZone).ymd;
+    const created = isoNow();
+    const statements: D1PreparedStatement[] = [
+      this.db.prepare(`UPDATE life_tasks SET status = 'removed', updated_at = ?3 WHERE user_id = ?1 AND commitment_id IS NOT NULL AND occurrence_date < ?2
+        AND status IN ('queued', 'inbox') AND commitment_id IN (SELECT id FROM life_commitments WHERE every_days IS NULL)`).bind(userId, today, created),
+    ];
+    const insert = (commitment: Commitment, ymd: string, flexibleUntilDone: boolean) => {
+      const [hour = 0, minute = 0] = commitment.fixedStart ? commitment.fixedStart.split(":").map(Number) : [];
+      const start = zonedInstant(ymd, hour, minute, timeZone);
+      const fixedStart = commitment.fixedStart ? new Date(start).toISOString() : null;
+      const fixedEnd = commitment.fixedStart ? new Date(start + commitment.durationMinutes * 60_000).toISOString() : null;
+      const due = flexibleUntilDone ? null : new Date(zonedInstant(addDays(ymd, 1), 0, 0, timeZone) - 60_000).toISOString();
+      const priority = commitment.importance;
+      const area = commitment.kind === "chore" ? "environment" : "direction";
+      return this.db.prepare(`INSERT INTO life_tasks
+        (id,user_id,title,first_step,notes,area,status,priority,energy,duration_minutes,due_at,scheduled_start,scheduled_end,source,created_at,updated_at,not_before,commitment_id,occurrence_date)
+        VALUES (?1,?2,?3,?4,'',?5,'queued',?6,'any',?7,?8,?9,?10,'manual',?11,?11,?12,?13,?14)
+        ON CONFLICT(user_id,commitment_id,occurrence_date) WHERE commitment_id IS NOT NULL DO NOTHING`)
+        .bind(crypto.randomUUID(), userId, commitment.title, commitment.steps[0]?.title ?? "", area, priority, Math.min(720, commitment.durationMinutes), due, fixedStart, fixedEnd, created,
+          fixedStart ? null : new Date(start).toISOString(), commitment.id, ymd);
+    };
+    for (const commitment of rows.results.map(publicCommitment)) {
+      if (commitment.everyDays) {
+        const latest = await this.db.prepare(`SELECT status, occurrence_date, completed_at FROM life_tasks WHERE user_id = ?1 AND commitment_id = ?2 ORDER BY occurrence_date DESC LIMIT 1`)
+          .bind(userId, commitment.id).first<{ status: string; occurrence_date: string; completed_at: string | null }>();
+        if (latest && latest.status !== "done" && latest.status !== "removed") continue;
+        let ymd = latest?.status === "done" && latest.completed_at
+          ? addDays(localDate(Date.parse(latest.completed_at), timeZone).ymd, commitment.everyDays)
+          : today;
+        if (ymd < today) ymd = today;
+        for (let step = 0; step < 7 && !(commitment.days & (1 << weekdayOf(ymd))); step++) ymd = addDays(ymd, 1);
+        statements.push(insert(commitment, ymd, true));
+      } else {
+        for (let offset = 0; offset < 7; offset++) {
+          const ymd = addDays(today, offset);
+          if (commitment.days & (1 << weekdayOf(ymd))) statements.push(insert(commitment, ymd, false));
+        }
+      }
+    }
+    await this.db.batch(statements);
   }
 
   private async activateBestTask(userId: string) {
