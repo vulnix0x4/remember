@@ -50,6 +50,8 @@ export class BrainService {
   async run(userId: string, now = new Date()): Promise<BrainState | null> {
     const row = await this.row(userId); if (!row) return null;
     const settings = brainSettingsSchema.parse(JSON.parse(row.settings_json));
+    // Commitments become dated tasks before planning, so Jev sees today's college block and laundry.
+    await new LifeRepository(this.env.DB).materializeCommitments(userId, settings.timeZone, now);
     if (!settings.enabled) return this.read(userId);
     // Failed calls back off for five minutes, including after ordinary context changes.
     if (!row.dirty && row.next_check_at && row.next_check_at > now.toISOString()) return this.read(userId);

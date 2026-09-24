@@ -68,6 +68,11 @@ export const taskSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
   repeatEveryDays: z.number().int().min(1).max(365).nullable().optional(),
   notBefore: z.iso.datetime({ offset: true }).nullable().optional(),
+  /** Set when the task is one day's occurrence of a commitment or chore. */
+  commitmentId: z.uuid().nullable().optional(),
+  occurrenceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  /** Minutes the focus timer actually ran, recorded on completion. */
+  actualMinutes: z.number().int().min(0).nullable().optional(),
 });
 
 export const createTaskSchema = taskSchema.pick({ title: true }).extend({
@@ -233,6 +238,50 @@ export const vaultFileSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
 });
 
+/**
+ * Something that recurs on its own and gets planned with everything else: a commitment
+ * (college study, gym) or a chore (laundry). Each day's occurrence becomes a task.
+ */
+export const commitmentKindSchema = z.enum(["commitment", "chore"]);
+export const commitmentImportanceSchema = z.enum(["must", "high", "normal"]);
+export const routineStepSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  /** A hands-off wait (washer running). The app times it and nudges when it ends. */
+  waitMinutes: z.number().int().min(1).max(600).nullable().optional(),
+});
+export const commitmentSchema = z.object({
+  id: z.uuid(),
+  title: z.string().trim().min(1).max(200),
+  kind: commitmentKindSchema,
+  /** Weekdays it happens on, as a bitmask: Sunday = 1, Monday = 2 … Saturday = 64. */
+  days: z.number().int().min(0).max(127),
+  /** For chores: repeat this many days after the last time it was done, on one of `days`. */
+  everyDays: z.number().int().min(1).max(365).nullable(),
+  /** "HH:MM" local time when it must happen; null lets Jev choose. */
+  fixedStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
+  durationMinutes: z.number().int().min(5).max(720),
+  importance: commitmentImportanceSchema,
+  steps: z.array(routineStepSchema).max(20),
+  notes: z.string().trim().max(2_000),
+  active: z.boolean(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+export const createCommitmentSchema = commitmentSchema.pick({ title: true, kind: true }).extend({
+  days: commitmentSchema.shape.days.default(127),
+  everyDays: commitmentSchema.shape.everyDays.default(null),
+  fixedStart: commitmentSchema.shape.fixedStart.default(null),
+  durationMinutes: commitmentSchema.shape.durationMinutes.default(60),
+  importance: commitmentImportanceSchema.default("high"),
+  steps: commitmentSchema.shape.steps.default([]),
+  notes: commitmentSchema.shape.notes.default(""),
+  active: z.boolean().default(true),
+}).refine((value) => value.days > 0, "Pick at least one day.");
+export const updateCommitmentSchema = commitmentSchema.pick({
+  title: true, kind: true, days: true, everyDays: true, fixedStart: true, durationMinutes: true, importance: true, steps: true, notes: true, active: true,
+}).partial().refine((value) => Object.keys(value).length > 0, "At least one field is required.")
+  .refine((value) => value.days === undefined || value.days > 0, "Pick at least one day.");
+
 export const lifeSnapshotSchema = z.object({
   goals: z.array(goalSchema),
   tasks: z.array(taskSchema),
@@ -243,8 +292,13 @@ export const lifeSnapshotSchema = z.object({
   accounts: z.array(financeAccountSchema),
   transactions: z.array(financeTransactionSchema),
   files: z.array(vaultFileSchema),
+  commitments: z.array(commitmentSchema).optional(),
 });
 
+export type Commitment = z.infer<typeof commitmentSchema>;
+export type CreateCommitment = z.infer<typeof createCommitmentSchema>;
+export type UpdateCommitment = z.infer<typeof updateCommitmentSchema>;
+export type RoutineStep = z.infer<typeof routineStepSchema>;
 export type LifeArea = z.infer<typeof lifeAreaSchema>;
 export type Goal = z.infer<typeof goalSchema>;
 export type CreateGoal = z.infer<typeof createGoalSchema>;

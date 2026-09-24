@@ -157,3 +157,110 @@ One toast at a time, pinned above the add bar. `card` background, white text, an
 ## Accessibility
 
 Contrast: `text2` on `card` must pass AA (it does at 0.64). Every icon-only control has a label. Dynamic Type is respected, and rows grow instead of truncating. Reduce Motion disables the pulse and fade animations. The swipe actions have accessible custom-action equivalents.
+
+## Setup: one place for everything (also the first-run onboarding)
+
+All configuration lives in **Settings**, which opens from the avatar. There are no settings anywhere else. The Jev status line on Today opens Settings too. The first time someone signs in, and while they have no commitments and haven't finished setup, the same sections run as a skippable step-by-step flow: *Welcome → Your day → Commitments → Chores → Focus → Nudges → Done*. Every step has one primary **Next** button and a quiet **Skip**. The final step says "Jev is planning your day" and lands on Today.
+
+Settings sections, in order:
+
+1. **Your day.** Four large choices: *Early bird* (6 AM–9 PM), *Regular* (8 AM–10 PM), *Night owl* (12 PM–3 AM) and *Custom*, which reveals two time pickers labeled "I wake up" and "I wind down". These write Jev's `startHour` and `endHour`, and an end before the start means after midnight. It also includes **Let Jev plan my day** (on/off).
+2. **Commitments.** Things you do most days that must fit around everything else. Each row shows the title, days and length, and tapping it opens the editor. There's a quiet `+ Add commitment` row. **Templates** appear as tappable chips when the list is empty and under the add row:
+   - *College study*: every day, 2 hr, Must do
+   - *Coursework*: weekdays, 1 hr, Must do
+   - *Gym*: Mon/Wed/Fri, 1 hr, Important
+   - *Walk*: every day, 20 min, Nice
+3. **Chores.** Things that keep life running. The row shows the title and rhythm ("Laundry · weekly"). Templates:
+   - *Laundry*: weekly, 30 min active, with guided steps (below)
+   - *Dishes*: daily, 15 min
+   - *Take out trash*: weekly, 5 min
+   - *Groceries*: weekly, 45 min
+   - *Clean bathroom*: weekly, 30 min
+   - *Change sheets*: every 2 weeks, 15 min
+4. **Focus mode.** iOS only. *Block distracting apps while I focus* (on/off), then *Choose apps* (the system app picker) and a default length (25 / 45 / 60 / 90 min).
+5. **Nudges.** *Gentle reminders* (on/off). This controls notifications for the next planned thing, "wrap up in 5 minutes", and wait steps finishing. Each is sent once and never repeated.
+6. **About me for Jev.** The free-text preferences field.
+7. Account, appearance and data: the existing settings, unchanged.
+
+**Commitment editor.** One sheet, top to bottom:
+- **Name:** large text.
+- **Days:** seven round chips (S M T W T F S), plus quick chips *Every day* and *Weekdays*.
+- **Time:** *Jev picks* (default) or *At a set time*, which reveals a time picker.
+- **How long:** chips for 15, 30, 45 min and 1, 1.5, 2, 3 hr.
+- **How important:** three big choices. *Must do* (always planned first), *Important*, *Nice to do*.
+- **Delete:** quiet, with undo.
+
+**Chore editor.**
+- **Name.**
+- **How often:** *Every day*, *Every few days* (3), *Weekly*, *Every 2 weeks*, *Monthly*.
+- **Best days (optional):** the seven day chips. None selected means any day.
+- **Active time:** the length chips.
+- **Steps:** an editable list. Each step has a title and an optional *wait* (minutes, for hands-off time like a washer). You can reorder, delete and add steps.
+
+**Server model:** `POST/PATCH/DELETE /api/life/commitments`, with commitments returned in the `GET /api/life` snapshot as `commitments`. Fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `title` | text | The name shown everywhere. |
+| `kind` | `commitment` or `chore` | Which section it lives in. |
+| `days` | bitmask | Sunday = 1, Monday = 2, … Saturday = 64. |
+| `everyDays` | number | Chores only: how many days between occurrences. |
+| `fixedStart` | `"HH:MM"` or null | Null means Jev picks the time. |
+| `durationMinutes` | number | Active time. |
+| `importance` | `must`, `high` or `normal` | *Must do*, *Important* or *Nice to do*. |
+| `steps` | list | Each step is `{ title, waitMinutes? }`. |
+
+The server turns each commitment into dated tasks for the next 7 days, linked by `commitmentId` and `occurrenceDate`:
+- **Commitments:** one task per matching day, due by the end of that day. Missed days are cleared quietly.
+- **Chores:** always exactly one open task, which comes back `everyDays` after it's done.
+- **Planning:** Jev plans these tasks with everything else, and *Must do* commitments always get a slot, first.
+
+## Laundry and other guided routines
+
+When a task has a `commitmentId` whose commitment has steps, **Start** opens lock-in mode in routine form. It shows one step at a time, as a big title with a `Next step` primary button, plus a progress line ("Step 2 of 7").
+
+A step with `waitMinutes` shows a countdown ("Washer running · 38 min left"). You can leave the app. A gentle notification fires when the wait ends: "Washer's done. Move clothes to the dryer." (the notification uses the next step's title). You can end a wait early with *It's done already*.
+
+Finishing the last step completes the task, and the chore comes back on its rhythm.
+
+**Default Laundry steps:**
+1. Gather dirty clothes
+2. Start the washer
+3. Washer running (wait 45)
+4. Move clothes to the dryer
+5. Dryer running (wait 50)
+6. Fold everything
+7. Put it all away
+
+## Lock-in mode (what Start opens)
+
+A full-screen view replaces the Now card's in-place timer. It holds:
+- **Task:** the title, and the current step (or the "Start with" first step).
+- **Get ready:** a checklist of three optional taps, *Phone face down*, *Water nearby* and *Close everything else*. It's hidden after the first minute.
+- **Countdown:** a large ring counting down the task's duration, since time blindness is real. Tap the ring to pause. When the time is up, the ring keeps counting up in the accent color and nothing alarms.
+- **Buttons:** a primary **Done**, a secondary **I'm stuck** (the existing Stuck sheet), and a quiet **Leave focus**, which you have to *press and hold for 3 seconds*.
+
+On iOS with Focus blocking on, starting applies a Screen Time shield to the chosen apps until the timer ends, Done, or Leave focus. A scheduled device-activity interval guarantees the shield lifts even if the app is closed. The web shows the same screen without blocking.
+
+After **Done**, a two-second win moment appears: the accent check and "Done. That's 3 today." Then it returns to Today.
+
+## Time estimates instead of 15 minutes for everything
+
+Quick add estimates duration when the text doesn't say. `estimateMinutes(title, history)` uses, in order:
+1. **Your history:** the median `actualMinutes` of the last three completed tasks with the same title (case-insensitive).
+2. **Known tasks:** whole-word, first match wins.
+
+   | Minutes | Words |
+   |---|---|
+   | 5 | text, trash, meds |
+   | 10 | email, call, pay, bills, rent, book |
+   | 15 | dishes, shower, tidy, water plants |
+   | 20 | walk, vacuum |
+   | 30 | laundry, run, clean, read, meeting |
+   | 40 | cook, dinner |
+   | 45 | groceries, errands |
+   | 60 | gym, workout, study, homework, meal prep, project, write |
+
+3. **Otherwise** 15.
+
+The preview chip shows `~30 min` when estimated, and `30 min` when typed.
