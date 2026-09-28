@@ -1340,6 +1340,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .now-label { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
 .now-title { margin: 0; font: 700 30px/1.15 var(--font-round); letter-spacing: -.015em; overflow-wrap: anywhere; }
 .now-sub { margin: -2px 0 0; color: var(--text2); font-size: 16px; line-height: 1.4; }
+.morning-steps { margin: 0; padding: 0; list-style: none; counter-reset: morning; display: grid; gap: 10px; }
+.morning-steps li { counter-increment: morning; display: flex; align-items: baseline; gap: 12px; color: var(--text2); font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+.morning-steps li::before { content: counter(morning); flex: none; width: 24px; height: 24px; border-radius: 999px; display: inline-grid; place-items: center; background: var(--card-raised); color: var(--accent); font-size: 13px; font-weight: 700; }
 .meta-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .meta-chips span { display: inline-flex; min-height: 30px; align-items: center; gap: 5px; padding: 0 12px; border-radius: 999px; background: var(--card-raised); color: var(--text2); font-size: 13px; font-weight: 500; }
 .now-reason { display: -webkit-box; overflow: hidden; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text3); font-size: 14px; font-style: italic; line-height: 1.45; text-align: left; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: 0; }

@@ -24,6 +24,8 @@ struct NowCard: View {
             // it is offered as "Now" so nothing starts without their say.
             if let active, timer.isTracking(active.id) {
                 doing(active)
+            } else if !compact, let offer = store.morningOffer {
+                morningOffer(offer)
             } else if let suggested {
                 next(suggested)
             } else if !compact {
@@ -47,9 +49,11 @@ struct NowCard: View {
     // MARK: Not started
 
     private func next(_ task: LifeTask) -> some View {
-        VStack(alignment: .leading, spacing: compact ? RememberDesign.spacingCompact : RememberDesign.spacing) {
-            eyebrow("NOW", pulsing: false)
-            titleBlock(task)
+        let morning = active == nil ? store.morningPick : nil
+        let bigOne = morning?.stage == .big
+        return VStack(alignment: .leading, spacing: compact ? RememberDesign.spacingCompact : RememberDesign.spacing) {
+            eyebrow(morning?.label ?? "NOW", pulsing: false)
+            titleBlock(task, note: bigOne ? "Just \(MorningFlow.bigMinutes) minutes. You can stop after." : nil)
             if !compact, let reason = jevReason(for: task) {
                 Button {
                     withAnimation(.snappy) { reasonIsExpanded.toggle() }
@@ -79,6 +83,7 @@ struct NowCard: View {
             .accessibilityIdentifier("remember.now.start")
             if !compact {
                 Button("Not now") {
+                    if bigOne { store.endMorning() }
                     Task { await store.setTaskAside(task) }
                 }
                 .buttonStyle(.rememberQuiet)
@@ -88,6 +93,55 @@ struct NowCard: View {
             }
         }
         .rememberCard(padding: compact ? RememberDesign.spacing : RememberDesign.spacingLarge)
+    }
+
+    // MARK: Morning
+
+    private func morningOffer(_ offer: MorningFlow.Candidates) -> some View {
+        let quick = min(MorningFlow.warmupCount, offer.small.count)
+        var steps: [String] = []
+        if quick > 0 { steps.append("\(quick == 1 ? "1 quick one" : "\(quick) quick ones") · \(MorningFlow.warmupMinutes) min max") }
+        if let big = offer.big { steps.append("\(MorningFlow.bigMinutes) min on \(big.title)") }
+        steps.append("Then anything you like")
+        let title = offer.big != nil && quick > 0 ? "Warm up, then the big one"
+            : offer.big != nil ? "Start with the big one" : "Warm up with quick ones"
+        return VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+            eyebrow("MORNING", pulsing: false)
+            Text(title)
+                .font(.rememberHero)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: RememberDesign.spacingCompact) {
+                        Text("\(index + 1)")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(RememberDesign.accent)
+                            .frame(width: 24, height: 24)
+                            .background(RememberDesign.cardRaised, in: .circle)
+                        Text(step)
+                            .font(.body)
+                            .foregroundStyle(RememberDesign.text2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            Button {
+                startFeedback += 1
+                withAnimation(.snappy) { store.startMorning() }
+            } label: {
+                Label("Start my morning", systemImage: "sunrise.fill")
+            }
+            .buttonStyle(.rememberPrimary)
+            .accessibilityIdentifier("remember.morning.start")
+            Button("Not today") {
+                withAnimation(.snappy) { store.skipMorning() }
+            }
+            .buttonStyle(.rememberQuiet)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("remember.morning.skip")
+        }
+        .rememberCard(padding: RememberDesign.spacingLarge)
     }
 
     // MARK: Doing
@@ -198,11 +252,17 @@ struct NowCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func titleBlock(_ task: LifeTask) -> some View {
+    private func titleBlock(_ task: LifeTask, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
             Text(task.title)
                 .font(compact ? .rememberSectionTitle : .rememberHero)
                 .fixedSize(horizontal: false, vertical: true)
+            if let note, !compact {
+                Text(note)
+                    .font(.body)
+                    .foregroundStyle(RememberDesign.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             let firstStep = store.firstStep(for: task)
             if !firstStep.isEmpty, !compact {
                 Text("Start with: \(firstStep)")

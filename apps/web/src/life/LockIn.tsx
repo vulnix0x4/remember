@@ -6,6 +6,7 @@ import { HoldButton } from "../ui/HoldButton";
 import { ModalBackdrop } from "../ui/Sheet";
 import { haptic, useToast } from "../ui/Toast";
 import { useLockIn } from "./lockInContext";
+import { BIG_MINUTES, endMorning, isBigStart, useMorningSession } from "./morning";
 import { doneToday } from "./planning";
 import { advanceRoutine, enterStep, readRoutine, startWait, waitDoneMessage, waitLeftLabel, waitRemainingMs, writeRoutine, type RoutineProgress } from "./routine";
 import { PracticeResultSheet, StuckSheet, clearFocusTimer, pauseFocusTimer, resumeFocusTimer, useFocusTimer, useTaskActions } from "./TaskViews";
@@ -48,11 +49,11 @@ const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /** A ring that empties as time passes. After zero it fills in the accent color and counts up. */
-function CountdownRing({ totalSeconds, elapsedSeconds, running, onToggle, spokenPrefix = "Time left" }: { totalSeconds: number; elapsedSeconds: number; running: boolean; onToggle?: () => void; spokenPrefix?: string }) {
+function CountdownRing({ totalSeconds, elapsedSeconds, running, onToggle, spokenPrefix = "Time left", overCaption = "Over time · no rush" }: { totalSeconds: number; elapsedSeconds: number; running: boolean; onToggle?: () => void; spokenPrefix?: string; overCaption?: string }) {
   const left = totalSeconds - elapsedSeconds;
   const over = left < 0;
   const used = over ? 0 : Math.min(1, Math.max(0, elapsedSeconds / Math.max(1, totalSeconds)));
-  const caption = over ? "Over time · no rush" : onToggle && !running ? "Paused · tap to go" : onToggle ? "Tap to pause" : "left";
+  const caption = over ? overCaption : onToggle && !running ? "Paused · tap to go" : onToggle ? "Tap to pause" : "left";
   const face = <>
     <svg viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true" focusable="false">
       <circle className="ring-track" cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} strokeWidth={STROKE} />
@@ -108,6 +109,11 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
   const timer = useFocusTimer(taskId);
   const [phase, setPhase] = useState<"focus" | "win">("focus");
   const [winCount, setWinCount] = useState(0);
+  /** Stopping the big one after its ten minutes is a win too, just a different one. */
+  const [stoppedEarly, setStoppedEarly] = useState(false);
+  const morning = useMorningSession();
+  // Locked when lock-in opens, so ending the morning mid-session doesn't change the ring.
+  const [bigStart] = useState(() => isBigStart(morning, taskId, new Date()));
   const [busy, setBusy] = useState(false);
   const [stuckOpen, setStuckOpen] = useState(false);
   const [practiceOpen, setPracticeOpen] = useState(false);
@@ -151,6 +157,7 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
     const ok = await actions.complete(task, minutesSpent, result);
     setBusy(false);
     if (!ok) { finishing.current = false; return false; }
+    if (bigStart) endMorning();
     writeRoutine(taskId, null);
     setWinCount(doneToday(lifeService.readLocalLife().tasks, new Date()).length);
     setPracticeOpen(false);
@@ -190,14 +197,25 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
     catch (reason) { toast.error(mutationMessage(reason)); }
   };
   const leave = () => { pauseFocusTimer(taskId); onClose(); };
+  /** The big one's ten minutes are up: put it back for later, with no guilt, and call it a win. */
+  const stopHere = async () => {
+    haptic([8, 40, 12]);
+    finishing.current = true;
+    clearFocusTimer(taskId);
+    endMorning();
+    setStoppedEarly(true);
+    setPhase("win");
+    try { await life.updateTask(taskId, { status: "queued" }); }
+    catch (reason) { toast.error(mutationMessage(reason)); }
+  };
 
   if (phase === "win") {
     return <ModalBackdrop className="lockin-backdrop" onClose={() => undefined} closeOnEscape={false} closeOnBackdrop={false}>
       <section className="lockin win" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="lockin-win" role="status">
           <span className="win-check" aria-hidden="true"><Check size={52} weight="bold" /></span>
-          <h2 id={titleId} className="win-title">Done.</h2>
-          <p className="win-sub">That’s {winCount} today.</p>
+          <h2 id={titleId} className="win-title">{stoppedEarly ? "You started." : "Done."}</h2>
+          <p className="win-sub">{stoppedEarly ? "That’s the hard part." : `That’s ${winCount} today.`}</p>
         </div>
       </section>
     </ModalBackdrop>;
@@ -208,13 +226,18 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
   const lastStep = routine && progress.step >= steps.length - 1;
   const waitToStart = routine && Boolean(step?.waitMinutes) && progress.waitEndsAt === null;
   const showReady = timer.elapsedSeconds < 60 && !backgroundWait && !waitToStart;
-  const stuckButton = <button className="btn secondary" type="button" onClick={() => setStuckOpen(true)}>I’m stuck</button>;
+  const targetSeconds = (bigStart ? BIG_MINUTES : Math.max(1, task.durationMinutes)) * 60;
+  const bigStartUp = bigStart && timer.elapsedSeconds >= targetSeconds;
+  const stuckButton = bigStartUp
+    ? <button className="btn secondary" type="button" onClick={() => void stopHere()}>Stop here</button>
+    : <button className="btn secondary" type="button" onClick={() => setStuckOpen(true)}>I’m stuck</button>;
 
   return <ModalBackdrop className="lockin-backdrop" onClose={() => undefined} closeOnEscape={false} closeOnBackdrop={false}>
     <section className={`lockin${routine ? " routine" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <header className="lockin-head">
         <span className="now-label">{timer.running && <i className="pulse-dot" aria-hidden="true" />}{routine ? `Step ${progress.step + 1} of ${steps.length}` : timer.running ? "Focus" : "Paused"}</span>
         <h2 id={titleId} className={routine ? "lockin-task" : "lockin-title"}>{task.title}</h2>
+        {!routine && bigStart && !bigStartUp && <p className="lockin-sub">Just {BIG_MINUTES} minutes. Then you can stop.</p>}
         {!routine && task.firstStep && <p className="lockin-sub">Start with: {task.firstStep}</p>}
         {routine && <span className="routine-progress" aria-hidden="true">{steps.map((_, index) => <i key={index} className={index < progress.step ? "done" : index === progress.step ? "current" : ""} />)}</span>}
       </header>
@@ -228,7 +251,7 @@ export function LockInView({ taskId, life, onClose, onFinished }: { taskId: stri
             <p className="lockin-note">It keeps running while you do other things.</p>
           </>}
           {waitOver && <p className="lockin-sub accent" role="status">{waitDoneMessage(steps, progress.step)}</p>}
-        </> : <CountdownRing totalSeconds={Math.max(1, task.durationMinutes) * 60} elapsedSeconds={timer.elapsedSeconds} running={timer.running} onToggle={timer.toggle} />}
+        </> : <CountdownRing totalSeconds={targetSeconds} elapsedSeconds={timer.elapsedSeconds} running={timer.running} onToggle={timer.toggle} overCaption={bigStart ? "You started · stop or keep going" : undefined} />}
         {showReady && <GetReady />}
       </div>
 

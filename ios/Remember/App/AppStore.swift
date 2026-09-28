@@ -42,6 +42,10 @@ final class AppStore {
     var lockInTask: LifeTask?
     /// Increments after each successful life load, so views can react once data is in.
     var lifeLoadCount = 0
+    /// Today's morning flow, if one was started or skipped. Kept on this device.
+    var morningSession: MorningSession? = MorningFlow.load() {
+        didSet { MorningFlow.save(morningSession) }
+    }
 
     /// One ordering for Today and Plan, so they never recommend different tasks.
     var queuedLifeTasks: [LifeTask] {
@@ -66,10 +70,51 @@ final class AppStore {
     }
 
     var suggestedLifeTask: LifeTask? {
-        queuedLifeTasks.first {
+        if let morning = morningPick { return morning.task }
+        return queuedLifeTasks.first {
             ($0.notBefore ?? .distantPast) <= .now &&
             ($0.scheduledStart ?? .distantPast) <= .now
         }
+    }
+
+    // MARK: Morning flow
+
+    /// Tasks that could happen today, in Jev's order: nothing held for later or planned for another day.
+    private var morningCandidates: MorningFlow.Candidates {
+        let available = queuedLifeTasks.filter { task in
+            (task.notBefore ?? .distantPast) <= .now &&
+            (task.scheduledStart.map { $0 <= .now || Calendar.current.isDateInToday($0) } ?? true)
+        }
+        return MorningFlow.candidates(available: available, commitments: lifeSnapshot.commitments ?? [])
+    }
+
+    /// The next warm-up task or the big one, while the morning flow runs and nothing is in progress.
+    var morningPick: MorningFlow.Pick? {
+        guard lifeSnapshot.activeTask == nil else { return nil }
+        return MorningFlow.pick(morningSession, tasks: lifeSnapshot.tasks, small: morningCandidates.small, now: .now)
+    }
+
+    /// The morning card's plan, when it's morning and there's something worth warming up for.
+    var morningOffer: MorningFlow.Candidates? {
+        let candidates = morningCandidates
+        let startHour = brain?.settings.startHour ?? 8
+        return MorningFlow.shouldOffer(morningSession, candidates: candidates, now: .now, startHour: startHour, hasActive: lifeSnapshot.activeTask != nil)
+            ? candidates : nil
+    }
+
+    func startMorning() {
+        morningSession = MorningFlow.start(morningCandidates, now: .now)
+    }
+
+    func skipMorning() {
+        morningSession = MorningFlow.skip(now: .now)
+    }
+
+    /// Hands the rest of the day back to Jev, after the big one is done, stopped, or moved aside.
+    func endMorning() {
+        guard var session = morningSession, session.stage != .done else { return }
+        session.stage = .done
+        morningSession = session
     }
 
     func firstStep(for task: LifeTask) -> String {

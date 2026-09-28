@@ -14,7 +14,8 @@ struct RememberApp: App {
         if ProcessInfo.processInfo.environment["REMEMBER_RESET_LOCAL_STATE"] == "1" {
             let defaults = UserDefaults.standard
             for key in defaults.dictionaryRepresentation().keys
-            where key.hasPrefix("remember.routine.") || key.hasPrefix("remember.focus.") || key.hasPrefix("remember.setup.") {
+            where key.hasPrefix("remember.routine.") || key.hasPrefix("remember.focus.") || key.hasPrefix("remember.setup.")
+                || key == "remember.morning" {
                 defaults.removeObject(forKey: key)
             }
         }
