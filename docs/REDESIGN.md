@@ -111,6 +111,17 @@ From top to bottom:
 
 Remove from Today: the "Saved ideas" disclosure, the autopilot section, the weekly synthesis card (it moves to Library → Patterns), welcome copy, and the date line (the Jev line replaces it).
 
+## Morning flow
+
+Starting with easy wins builds momentum, but quick tasks never run out, so the warm-up is capped and the big task always gets its turn while energy is high.
+
+- **When it's offered:** once a day, during your morning (from 2 hours before Jev's start hour until 4 hours after), when nothing is in progress and there's a big task or at least two quick ones. It replaces the Now card on Today: label `MORNING`, a title (`Warm up, then the big one`), three numbered lines (`3 quick ones · 20 min max`, `10 min on College study`, `Then anything you like`), Primary **Start my morning**, and Quiet **Not today**.
+- **Quick ones:** tasks that can happen now, 15 minutes or less, in Jev's order. **The big one:** the most important task of 30 minutes or more (first in Jev's order among ties). Guided routines like laundry are never either.
+- **Warm-up:** the Now card offers quick ones one at a time, labeled `Warm-up · 1 of 3`. It ends after 3 are done or 20 minutes have passed, whichever comes first, but never interrupts a task in progress.
+- **The big one:** labeled `The big one`, with `Just 10 minutes. You can stop after.` Start opens lock-in with a 10-minute ring and no wrap-up nudge. When the ten minutes are up, the ring reads `You started · stop or keep going` and **I'm stuck** becomes **Stop here**, which puts the task back for later and shows `You started. That's the hard part.` Done works as usual.
+- **Afterwards:** once the big one is done, stopped, or moved aside (Not now or Do something else), Jev picks as usual for the rest of the day.
+- The session lives on the device, one per day.
+
 ## Stuck sheet (replaces the blocker dialog and the task switcher)
 
 Bottom sheet, medium height. Title `What's getting in the way?`. Four large rows (icon + label, 64 tall, `card` background):

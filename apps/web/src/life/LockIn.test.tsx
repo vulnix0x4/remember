@@ -107,6 +107,23 @@ describe("lock-in mode", () => {
     expect(screen.getByRole("button", { name: "Resume timer" })).toBeInTheDocument();
   });
 
+  it("gives the morning's big one just ten minutes, then lets you stop without finishing", async () => {
+    lifeService.saveLocalLife({ ...emptyLifeSnapshot(), tasks: [task({ durationMinutes: 120, priority: "must" })] });
+    localStorage.setItem("remember-morning-v1", JSON.stringify({ day: "2026-09-23", startedAt: Date.now(), bigTaskId: "t1", stage: "big" }));
+    sessionStorage.setItem("remember-lock-in-v1", "t1");
+    renderLockIn();
+    expect(screen.getByRole("timer")).toHaveAccessibleName("Time left 10 minutes 0 seconds");
+    expect(screen.getByText("Just 10 minutes. Then you can stop.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop here" })).toBeNull();
+
+    advance(10 * 60_000);
+    fireEvent.click(screen.getByRole("button", { name: "Stop here" }));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole("heading", { name: "You started." })).toBeInTheDocument();
+    expect(lifeService.readLocalLife().tasks[0].status).toBe("queued");
+    expect(JSON.parse(localStorage.getItem("remember-morning-v1")!).stage).toBe("done");
+  });
+
   it("walks a routine one step at a time and sends a wait to the background so something else can happen", async () => {
     lifeService.saveLocalLife({ ...emptyLifeSnapshot(), commitments: [laundry], tasks: [task({ title: "Laundry", firstStep: "Gather dirty clothes", commitmentId: "laundry", occurrenceDate: "2026-09-23" }), task({ id: "t2", title: "Email the landlord", status: "queued" })] });
     sessionStorage.setItem("remember-lock-in-v1", "t1");

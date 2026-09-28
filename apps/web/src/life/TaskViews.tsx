@@ -7,6 +7,7 @@ import { AddBar } from "../ui/AddBar";
 import { Sheet } from "../ui/Sheet";
 import { haptic, useToast } from "../ui/Toast";
 import { dueLabel, durationLabel, isImportant, startLabel, planByTask, pickNow, taskMeta, timeLabel, todayTasks, laterTasks } from "./planning";
+import { BIG_MINUTES, WARMUP_COUNT, WARMUP_MINUTES, endMorning, morningCandidates, morningPick, shouldOfferMorning, skipMorning, startMorning, useMorningSession, writeMorning } from "./morning";
 import type { BlockerReason, LifeTask, PracticeOutcome, PracticeResult } from "./types";
 import type { LifeOSController } from "./useLifeOS";
 
@@ -98,6 +99,23 @@ function clockText(seconds: number) {
 
 export function mutationMessage(reason: unknown) {
   return reason instanceof Error && reason.message ? reason.message : "That didn’t save. Check your connection and try again.";
+}
+
+/**
+ * The one thing to do now. During the morning flow that's the next warm-up task or the big one;
+ * otherwise the active task or Jev's pick. Today, Plan, and Up next all agree on it.
+ */
+export function useNowPick(life: LifeOSController, now: Date) {
+  const { tasks, commitments } = life.snapshot;
+  const session = useMorningSession();
+  const plan = useMemo(() => planByTask(life.brain, tasks), [life.brain, tasks]);
+  const available = useMemo(() => todayTasks(tasks, plan, now), [tasks, plan, now]);
+  const candidates = useMemo(() => morningCandidates(available, commitments), [available, commitments]);
+  const hasActive = tasks.some((task) => task.status === "active");
+  const morning = hasActive ? null : morningPick(session, tasks, candidates.small, now);
+  const pick = morning ? { task: morning.task, block: plan.get(morning.task.id) } : pickNow(tasks, plan, now);
+  const offerMorning = shouldOfferMorning(session, candidates, now, life.brain?.settings.startHour, hasActive);
+  return { plan, pick, morning, candidates, offerMorning };
 }
 
 /* ---------- Task actions (optimistic, with Undo) ---------- */
@@ -211,8 +229,7 @@ export function TaskAddBar({ life }: { life: LifeOSController }) {
 export function NowCard({ life, compact = false, onOpenPlan, onOpenTask }: { life: LifeOSController; compact?: boolean; onOpenPlan?: () => void; onOpenTask?: (task: LifeTask) => void }) {
   const now = useNow();
   const { tasks } = life.snapshot;
-  const plan = useMemo(() => planByTask(life.brain, tasks), [life.brain, tasks]);
-  const pick = pickNow(tasks, plan, now);
+  const { pick, morning, candidates, offerMorning } = useNowPick(life, now);
   const later = useMemo(() => laterTasks(tasks, now), [tasks, now]);
   const task = pick?.task;
   const timer = useFocusTimer(task?.id);
@@ -225,6 +242,23 @@ export function NowCard({ life, compact = false, onOpenPlan, onOpenTask }: { lif
   useEffect(() => { setReasonOpen(false); }, [task?.id]);
 
   if (life.loading && !tasks.length) return <section className="now-card now-loading" aria-label="Now" aria-busy="true"><span className="skeleton wide" /><span className="skeleton" /></section>;
+
+  if (offerMorning && !compact) {
+    const quick = Math.min(WARMUP_COUNT, candidates.small.length);
+    return <section className="now-card morning-offer" aria-labelledby="now-title">
+      <span className="now-label">Morning</span>
+      <h2 id="now-title" className="now-title">{candidates.big && quick ? "Warm up, then the big one" : candidates.big ? "Start with the big one" : "Warm up with quick ones"}</h2>
+      <ol className="morning-steps">
+        {quick > 0 && <li>{quick === 1 ? "1 quick one" : `${quick} quick ones`} · {WARMUP_MINUTES} min max</li>}
+        {candidates.big && <li>{BIG_MINUTES} min on {candidates.big.title}</li>}
+        <li>Then anything you like</li>
+      </ol>
+      <div className="now-actions">
+        <button className="btn primary" type="button" onClick={() => { haptic(); writeMorning(startMorning(candidates, new Date())); }}>Start my morning</button>
+        <button className="btn quiet" type="button" onClick={() => writeMorning(skipMorning(new Date()))}>Not today</button>
+      </div>
+    </section>;
+  }
 
   if (!task) {
     if (compact) return null;
@@ -290,9 +324,11 @@ export function NowCard({ life, compact = false, onOpenPlan, onOpenTask }: { lif
     </section>;
   }
 
+  const bigOne = morning?.stage === "big";
   return <section className="now-card" aria-labelledby="now-title">
-    <span className="now-label">Now</span>
+    <span className="now-label">{morning?.label ?? "Now"}</span>
     <h2 id="now-title" className="now-title">{task.title}</h2>
+    {bigOne && <p className="now-sub">Just {BIG_MINUTES} minutes. You can stop after.</p>}
     {task.firstStep && <p className="now-sub">Start with: {task.firstStep}</p>}
     <div className="meta-chips">
       <span><Clock size={14} weight="bold" aria-hidden="true" />{durationLabel(task.durationMinutes)}</span>
@@ -303,7 +339,7 @@ export function NowCard({ life, compact = false, onOpenPlan, onOpenTask }: { lif
     {pick?.block?.reason && <button className={`now-reason${reasonOpen ? " open" : ""}`} type="button" aria-expanded={reasonOpen} onClick={() => setReasonOpen(!reasonOpen)}>{pick.block.reason}</button>}
     <div className="now-actions">
       <button className="btn primary" type="button" onClick={() => void actions.start(task)}>Start</button>
-      <button className="btn quiet" type="button" onClick={() => void actions.notNow(task)}>Not now</button>
+      <button className="btn quiet" type="button" onClick={() => { if (bigOne) endMorning(); void actions.notNow(task); }}>Not now</button>
     </div>
     {sheets}
   </section>;
@@ -397,8 +433,8 @@ export function TaskList({ tasks, life, now, onOpen, showStart = true }: { tasks
 /** Up to three tasks after the Now task. */
 export function UpNext({ life, onSeeAll, onOpen }: { life: LifeOSController; onSeeAll: () => void; onOpen: (task: LifeTask) => void }) {
   const now = useNow();
-  const plan = planByTask(life.brain, life.snapshot.tasks);
-  const current = pickNow(life.snapshot.tasks, plan, now)?.task.id;
+  const { plan, pick } = useNowPick(life, now);
+  const current = pick?.task.id;
   const next = todayTasks(life.snapshot.tasks, plan, now).filter((task) => task.id !== current);
   if (!next.length) return null;
   return <section className="today-section" aria-labelledby="up-next-title">

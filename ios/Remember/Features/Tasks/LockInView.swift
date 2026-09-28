@@ -40,11 +40,16 @@ struct LockInView: View {
     @State private var stepFeedback = 0
     /// Set while a routine hands off to the background, so the status change doesn't read as leaving.
     @State private var movingToBackground = false
+    /// The morning's big one gets a ten-minute start. Locked when lock-in opens.
+    @State private var lockedBigStart: Bool?
+    /// Stopping the big one after its ten minutes is a win too, just a different one.
+    @State private var stoppedEarly = false
 
     private var steps: [RoutineStep] { store.lifeSnapshot.commitment(for: task)?.steps ?? [] }
     private var isRoutine: Bool { !steps.isEmpty }
     private var currentStep: RoutineStep? { steps.indices.contains(progress.stepIndex) ? steps[progress.stepIndex] : nil }
-    private var targetSeconds: TimeInterval { TimeInterval(task.durationMinutes * 60) }
+    private var isBigStart: Bool { lockedBigStart ?? MorningFlow.isBigStart(store.morningSession, taskID: task.id, now: .now) }
+    private var targetSeconds: TimeInterval { TimeInterval((isBigStart ? MorningFlow.bigMinutes : task.durationMinutes) * 60) }
     private let readyItems = ["Phone face down", "Water nearby", "Close everything else"]
 
     var body: some View {
@@ -108,7 +113,14 @@ struct LockInView: View {
                             Text("Step \(min(progress.stepIndex + 1, steps.count)) of \(steps.count)")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(RememberDesign.text3)
-                        } else if !store.firstStep(for: task).isEmpty {
+                        }
+                        if !isRoutine, isBigStart {
+                            Text("Just \(MorningFlow.bigMinutes) minutes. Then you can stop.")
+                                .font(.body)
+                                .foregroundStyle(RememberDesign.accent)
+                                .multilineTextAlignment(.center)
+                        }
+                        if !isRoutine, !store.firstStep(for: task).isEmpty {
                             Text("Start with: \(store.firstStep(for: task))")
                                 .font(.body)
                                 .foregroundStyle(RememberDesign.text2)
@@ -152,13 +164,26 @@ struct LockInView: View {
                     .buttonStyle(.rememberPrimary)
                     .accessibilityIdentifier("remember.lockin.done")
                 }
-                Button {
-                    stuckTask = store.lifeSnapshot.tasks.first { $0.id == task.id } ?? task
-                } label: {
-                    Label("I’m stuck", systemImage: "hand.raised")
+                SwiftUI.TimelineView(.periodic(from: .now, by: 1)) { context in
+                    if isBigStart && timer.elapsed(for: task.id, at: context.date) >= targetSeconds {
+                        Button {
+                            stopHere()
+                        } label: {
+                            Label("Stop here", systemImage: "flag.checkered")
+                        }
+                        .buttonStyle(.rememberSecondary)
+                        .accessibilityHint("Puts it back for later. You started, and that counts.")
+                        .accessibilityIdentifier("remember.lockin.stopHere")
+                    } else {
+                        Button {
+                            stuckTask = store.lifeSnapshot.tasks.first { $0.id == task.id } ?? task
+                        } label: {
+                            Label("I’m stuck", systemImage: "hand.raised")
+                        }
+                        .buttonStyle(.rememberSecondary)
+                        .accessibilityIdentifier("remember.lockin.stuck")
+                    }
                 }
-                .buttonStyle(.rememberSecondary)
-                .accessibilityIdentifier("remember.lockin.stuck")
             }
             .padding(.horizontal, RememberDesign.spacing)
             .padding(.bottom, RememberDesign.spacingSmall)
@@ -185,7 +210,7 @@ struct LockInView: View {
                         Text(abs(remaining).clockLabel)
                             .font(.system(size: 52, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(remaining > 0 ? RememberDesign.text : RememberDesign.accent)
-                        Text(!timer.isRunning ? "Paused · tap to resume" : remaining > 0 ? "left" : "over · keep going")
+                        Text(!timer.isRunning ? "Paused · tap to resume" : remaining > 0 ? "left" : isBigStart ? "You started · stop or keep going" : "over · keep going")
                             .font(.subheadline)
                             .foregroundStyle(RememberDesign.text3)
                     }
@@ -350,6 +375,7 @@ struct LockInView: View {
     // MARK: Lifecycle
 
     private func begin() {
+        if lockedBigStart == nil { lockedBigStart = MorningFlow.isBigStart(store.morningSession, taskID: task.id, now: .now) }
         progress = RoutineProgress.load(task.id)
         if isRoutine {
             // Routines never block apps. A finished background wait moves straight on to the next step.
@@ -363,6 +389,8 @@ struct LockInView: View {
         if !timer.isTracking(task.id) || !timer.isRunning { timer.start(task.id) }
         // Block until Done, capped a little past the task's length so nobody is ever stuck.
         if !shield.isShielding { shield.begin(minutes: task.durationMinutes + 10) }
+        // Ten minutes on the big one is the whole ask, so there's nothing to wrap up.
+        guard !isBigStart else { return }
         let wrapUp = Date.now.addingTimeInterval(targetSeconds - timer.elapsed(for: task.id) - 5 * 60)
         nudges.wrapUp(taskID: task.id, title: task.title, at: wrapUp)
     }
@@ -374,10 +402,24 @@ struct LockInView: View {
             return
         }
         let doneToday = store.lifeSnapshot.tasks.count { $0.status == .done && ($0.completedAt.map(Calendar.current.isDateInToday) ?? false) } + 1
+        if isBigStart { store.endMorning() }
         finishCleanup()
         withAnimation(.snappy) { winCount = doneToday }
         Task {
             _ = await store.completeTask(task, minutesSpent: minutes)
+            try? await Task.sleep(for: .seconds(2))
+            dismiss()
+        }
+    }
+
+    /// The big one's ten minutes are up: put it back for later, with no guilt, and call it a win.
+    private func stopHere() {
+        finishCleanup()
+        store.endMorning()
+        stoppedEarly = true
+        withAnimation(.snappy) { winCount = 0 }
+        Task {
+            await store.patchTask(task.id, LifeTaskPatch(status: .queued), quietly: true)
             try? await Task.sleep(for: .seconds(2))
             dismiss()
         }
@@ -402,9 +444,9 @@ struct LockInView: View {
                 .font(.system(size: 88))
                 .foregroundStyle(RememberDesign.accent)
                 .symbolEffect(.bounce, options: .nonRepeating, value: count)
-            Text("Done.")
+            Text(stoppedEarly ? "You started." : "Done.")
                 .font(.rememberScreenTitle)
-            Text(count == 1 ? "That's your first today." : "That's \(count) today.")
+            Text(stoppedEarly ? "That's the hard part." : count == 1 ? "That's your first today." : "That's \(count) today.")
                 .font(.title3)
                 .foregroundStyle(RememberDesign.text2)
         }
