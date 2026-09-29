@@ -313,6 +313,16 @@ actor APIClient {
         return response.task
     }
 
+    func patchLifeTask(id: UUID, patch: LifeTaskPatch) async throws -> LifeTask {
+        struct Response: Decodable { let task: LifeTask }
+        let response: Response = try await request(
+            path: "api/life/tasks/\(id.uuidString.lowercased())",
+            method: "PATCH",
+            body: try encoder.encode(patch)
+        )
+        return response.task
+    }
+
     func completeLifeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws {
         struct Body: Encodable { let minutesSpent: Int; let result: PracticeResult? }
         struct Response: Decodable { let task: LifeTask; let next: LifeTask? }
@@ -347,6 +357,16 @@ actor APIClient {
         struct Response: Decodable { let goal: LifeGoal }
         let response: Response = try await request(path: "api/life/goals", method: "POST", body: try encoder.encode(goal))
         return response.goal
+    }
+
+    func updateLifeGoal(id: UUID, progress: Int?, status: String?) async throws {
+        struct Body: Encodable { let progress: Int?; let status: String? }
+        struct Response: Decodable { let goal: LifeGoal }
+        let _: Response = try await request(
+            path: "api/life/goals/\(id.uuidString.lowercased())",
+            method: "PATCH",
+            body: try encoder.encode(Body(progress: progress, status: status))
+        )
     }
 
     func createLifeFloorItem(_ item: CreateLifeFloorRequest) async throws -> LifeFloorItem {
@@ -435,6 +455,30 @@ actor APIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
         return data
+    }
+
+    func createCommitment(_ draft: CommitmentDraft) async throws -> Commitment {
+        struct Response: Decodable { let commitment: Commitment }
+        let response: Response = try await request(path: "api/life/commitments", method: "POST", body: try encoder.encode(draft))
+        return response.commitment
+    }
+
+    func updateCommitment(id: UUID, draft: CommitmentDraft) async throws -> Commitment {
+        struct Response: Decodable { let commitment: Commitment }
+        let response: Response = try await request(path: "api/life/commitments/\(id.uuidString.lowercased())", method: "PATCH", body: try encoder.encode(draft))
+        return response.commitment
+    }
+
+    func deleteCommitment(id: UUID) async throws {
+        var deletion = URLRequest(url: baseURL.appending(path: "api/life/commitments/\(id.uuidString.lowercased())"))
+        deletion.httpMethod = "DELETE"
+        deletion.timeoutInterval = 15
+        for (name, value) in credentials.headers(for: baseURL) {
+            deletion.setValue(value, forHTTPHeaderField: name)
+        }
+        let (_, response) = try await session.data(for: deletion)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.server(http.statusCode) }
     }
 
     func deleteVaultFile(id: UUID) async throws {

@@ -5,61 +5,47 @@ struct AskEmptyState: View {
     private let prompts = [
         "What have I saved about focus?",
         "What could help me this week?",
-        "Where do my saved sources disagree?"
+        "Where do my saves disagree?"
     ]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
+                Text("Answers come from your saves.")
+                    .font(.body)
+                    .foregroundStyle(RememberDesign.text2)
+
                 VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                    Text("Ask about your saves")
-                        .font(.title2)
-                        .bold()
-                    Text("Answers use your saved material and link back to supporting sources.")
-                        .font(.body)
-                        .foregroundStyle(RememberDesign.secondaryText)
+                    SectionHeading(title: "Try one")
+                    ForEach(prompts, id: \.self) { prompt in
+                        Button { selectPrompt(prompt) } label: {
+                            HStack(spacing: RememberDesign.spacingCompact) {
+                                Text(prompt)
+                                    .font(.rememberRowTitle)
+                                    .foregroundStyle(RememberDesign.text)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(RememberDesign.text3)
+                            }
+                            .padding(.horizontal, RememberDesign.spacing)
+                            .frame(maxWidth: .infinity, minHeight: RememberDesign.rowHeight + 8, alignment: .leading)
+                            .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+
                 NavigationLink {
                     DecisionView()
                 } label: {
-                    HStack(spacing: RememberDesign.spacingCompact) {
-                        Image(systemName: "signpost.right.and.left")
-                            .font(.title3)
-                            .foregroundStyle(RememberDesign.accent)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Think through a decision")
-                                .font(.headline)
-                            Text("See what your own memory says before you choose.")
-                                .font(.subheadline)
-                                .foregroundStyle(RememberDesign.secondaryText)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(RememberDesign.secondaryText)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                    Label("Think through a decision", systemImage: "signpost.right.and.left")
                 }
-                .buttonStyle(.plain)
-                .padding(RememberDesign.spacing)
-                .background(RememberDesign.accent.opacity(0.10), in: .rect(cornerRadius: RememberDesign.cornerRadius))
-                .overlay { RoundedRectangle(cornerRadius: RememberDesign.cornerRadius).stroke(RememberDesign.accent.opacity(0.45)) }
+                .buttonStyle(.rememberSecondary)
+                .accessibilityHint("See what your own saves say before you choose")
                 .accessibilityIdentifier("remember.ask.decision")
-                SectionHeader(eyebrow: "", title: "Try a question")
-                ForEach(prompts, id: \.self) { prompt in
-                    Button { selectPrompt(prompt) } label: {
-                        HStack {
-                            Text(prompt).multilineTextAlignment(.leading)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                    .rememberSurface()
-                }
-                Label("Answers only use your saves.", systemImage: "lock.shield")
-                    .font(.footnote)
-                    .foregroundStyle(RememberDesign.secondaryText)
             }
             .padding(RememberDesign.spacing)
         }

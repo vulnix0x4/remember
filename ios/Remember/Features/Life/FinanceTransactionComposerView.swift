@@ -13,41 +13,43 @@ struct FinanceTransactionComposerView: View {
     @State private var isSaving = false
     @State private var submissionError: String?
     @State private var accountSheetIsPresented = false
+    @State private var currencySheetIsPresented = false
     @AccessibilityFocusState private var submissionErrorIsFocused: Bool
 
     var body: some View {
         NavigationStack {
             Form {
+                SheetTitleRow(title: "Add transaction")
                 if let submissionError {
                     Section {
                         Label(submissionError, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(RememberDesign.danger)
                             .accessibilityFocused($submissionErrorIsFocused)
-                        Button("Try again", systemImage: "arrow.clockwise", action: save)
-                            .disabled(!isValid)
                     }
+                    .listRowBackground(RememberDesign.card)
                 }
                 Section("Transaction") {
                     TextField("Name or merchant", text: $name)
-                    Picker("Type", selection: $isExpense) {
-                        Text("Expense").tag(true)
-                        Text("Income").tag(false)
+                    ChoiceButtonGroup(selection: $isExpense, choices: [true, false], minimumButtonWidth: 120) { expense in
+                        Text(expense ? "Expense" : "Income")
                     }
-                    .pickerStyle(.segmented)
                     TextField("Amount", value: $amount, format: .number)
                         .keyboardType(.decimalPad)
                     CurrencySelectionRow(
                         currency: $currency,
                         additionalCodes: store.lifeSnapshot.accounts.map(\.currency),
                         isDisabled: accountId != nil
-                    )
+                    ) { currencySheetIsPresented = true }
                 }
+                .listRowBackground(RememberDesign.card)
                 if !store.lifeSnapshot.accounts.isEmpty {
                     Section("Account") {
                         if store.lifeSnapshot.accounts.count <= 4 {
                             ChoiceButtonGroup(selection: $accountId, choices: accountChoices, minimumButtonWidth: 132) { id in
                                 Label(accountLabel(for: id), systemImage: id == nil ? "minus.circle" : "wallet.bifold")
                             }
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init())
                         } else {
                             Button {
                                 accountSheetIsPresented = true
@@ -65,6 +67,7 @@ struct FinanceTransactionComposerView: View {
                                 .contentShape(.rect)
                             }
                             .buttonStyle(.plain)
+                            .listRowBackground(RememberDesign.card)
                             .accessibilityHint("Opens a searchable account list")
                         }
                     }
@@ -73,31 +76,24 @@ struct FinanceTransactionComposerView: View {
                     ChoiceButtonGroup(selection: $categoryChoice, choices: categoryChoices + ["Other"], minimumButtonWidth: 104) { choice in
                         Text(choice)
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init())
                     if categoryChoice == "Other" {
                         TextField("Coffee, travel, subscriptions…", text: $category)
                             .accessibilityLabel("Custom category")
+                            .listRowBackground(RememberDesign.card)
                     }
                 }
             }
+            .rememberFormStyle()
             .disabled(isSaving)
-            .navigationTitle("Add transaction")
-            .navigationBarTitleDisplayMode(.inline)
+            .rememberPrimaryFooter(isEnabled: isValid && !isSaving, accessibilityIdentifier: "remember.transaction.submit", action: save) {
+                if isSaving { ProgressView().tint(RememberDesign.canvas) } else { Text("Save") }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: dismiss.callAsFunction)
                         .disabled(isSaving)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Save")
-                        }
-                    }
-                        .accessibilityLabel(isSaving ? "Saving transaction" : "Save transaction")
-                        .disabled(!isValid || isSaving)
                 }
             }
             .interactiveDismissDisabled(isSaving)
@@ -109,6 +105,9 @@ struct FinanceTransactionComposerView: View {
             .onChange(of: categoryChoice) { _, choice in
                 category = choice == "Other" ? "" : choice
             }
+            .sheet(isPresented: $currencySheetIsPresented) {
+                CurrencyChoiceSheet(currency: $currency, additionalCodes: store.lifeSnapshot.accounts.map(\.currency))
+            }
             .sheet(isPresented: $accountSheetIsPresented) {
                 SearchableChoiceSheet(
                     title: "Account",
@@ -119,6 +118,7 @@ struct FinanceTransactionComposerView: View {
                 )
             }
         }
+        .rememberSheetPresentation()
     }
 
     private var isValid: Bool {
@@ -163,7 +163,7 @@ struct FinanceTransactionComposerView: View {
             if succeeded {
                 dismiss()
             } else {
-                submissionError = "Couldn’t save this transaction. Check your connection and try again. Your transaction details are still here."
+                submissionError = "Couldn’t save this. Your details are still here."
                 submissionErrorIsFocused = true
             }
         }

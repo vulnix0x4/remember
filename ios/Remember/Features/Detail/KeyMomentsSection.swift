@@ -5,23 +5,29 @@ struct KeyMomentsSection: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "", title: "Key moments")
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            SectionHeading(title: "Key moments")
             ForEach(imprint.moments) { moment in
                 Button { openURL(timestampURL(seconds: moment.seconds)) } label: {
                     HStack(alignment: .top, spacing: RememberDesign.spacing) {
                         Text(moment.timestamp)
-                            .font(.headline.monospacedDigit())
-                            .foregroundStyle(RememberDesign.accent)
-                        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                            Text(moment.title).font(.headline).foregroundStyle(.primary)
-                            Text(moment.detail).font(.subheadline).foregroundStyle(RememberDesign.secondaryText)
+                            .font(.subheadline.monospacedDigit().weight(.bold))
+                            .foregroundStyle(RememberDesign.text2)
+                        VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+                            Text(moment.title).font(.rememberRowTitle).foregroundStyle(RememberDesign.text)
+                            Text(moment.detail).font(.subheadline).foregroundStyle(RememberDesign.text2)
                         }
                         Spacer()
-                        Image(systemName: "play.circle.fill").foregroundStyle(RememberDesign.accent)
+                        Image(systemName: "play.fill")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(RememberDesign.text)
+                            .frame(width: 36, height: 36)
+                            .background(RememberDesign.cardRaised, in: .circle)
                     }
                     .padding(RememberDesign.spacing)
-                    .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 14))
+                    .frame(minHeight: RememberDesign.rowHeight)
+                    .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+                    .contentShape(.rect(cornerRadius: RememberDesign.cornerRadius))
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens the original video at \(moment.timestamp)")

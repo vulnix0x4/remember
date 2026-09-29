@@ -45,13 +45,20 @@ struct LifeFilesView: View {
                     accessibilityIdentifier: "remember.section.life",
                     title: { $0.rawValue }
                 )
+                if !store.lifeSnapshot.files.isEmpty {
+                    LibrarySearchField(text: $searchText)
+                        .padding(.horizontal, RememberDesign.spacing)
+                        .padding(.bottom, RememberDesign.spacingSmall)
+                }
                 Group {
                     if files.isEmpty {
-                    ContentUnavailableView {
-                        Label(searchText.isEmpty ? "No files yet" : "No matching files", systemImage: "folder")
-                    } description: {
-                        Text(searchText.isEmpty ? "Upload a document to keep it with the rest of your information." : "Try another name, folder, or tag.")
-                    }
+                        ScrollView {
+                            RememberEmptyState(
+                                systemImage: searchText.isEmpty ? "folder.fill" : "magnifyingglass",
+                                title: searchText.isEmpty ? "Keep important files here" : "No matching files",
+                                message: searchText.isEmpty ? "Tap the bar below to add a document." : "Try another name, folder, or tag."
+                            )
+                        }
                     } else {
                         List(files) { file in
                         Button {
@@ -60,9 +67,9 @@ struct LifeFilesView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: symbol(for: file.mimeType))
                                     .font(.title3)
-                                    .foregroundStyle(RememberDesign.accent)
-                                    .frame(width: 36, height: 36)
-                                    .background(RememberDesign.mutedFill, in: .rect(cornerRadius: 10))
+                                    .foregroundStyle(RememberDesign.text2)
+                                    .frame(width: 40, height: 40)
+                                    .background(RememberDesign.cardRaised, in: .circle)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(file.name)
                                         .font(.subheadline.weight(.semibold))
@@ -85,7 +92,7 @@ struct LifeFilesView: View {
                                         .accessibilityHidden(true)
                                 } else {
                                     Image(systemName: "arrow.down.circle")
-                                        .foregroundStyle(RememberDesign.accent)
+                                        .foregroundStyle(RememberDesign.text3)
                                         .accessibilityHidden(true)
                                 }
                             }
@@ -109,17 +116,15 @@ struct LifeFilesView: View {
                         }
                     }
                         .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
                         .refreshable { await store.loadLife() }
                     }
                 }
             }
-            .navigationTitle("Files")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: "Search files")
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .rememberBottomDock {
                 VStack(spacing: 0) {
                     if let importError { fileErrorView(importError) }
-                    QuickAddBar(title: isUploading ? "Uploading…" : "Upload a file", systemImage: "square.and.arrow.up") {
+                    QuickAddBar(title: isUploading ? "Uploading…" : "Add a file", systemImage: "plus") {
                         importerIsPresented = true
                     }
                     .disabled(isUploading)
@@ -168,20 +173,18 @@ struct LifeFilesView: View {
             actionLayout {
                 if canRetryFileAction {
                     Button(retryActionTitle, systemImage: "arrow.clockwise", action: retryFileAction)
-                        .buttonStyle(.borderedProminent)
-                        .tint(RememberDesign.accent)
-                        .foregroundStyle(RememberDesign.accentInk)
+                        .buttonStyle(.rememberSecondary)
                         .disabled(isUploading || downloadingID != nil)
                 }
                 Button("Dismiss") {
                     importError = nil
                     fileErrorIsFocused = false
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.rememberQuiet)
             }
         }
         .padding(RememberDesign.spacing)
-        .background(.bar, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+        .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
         .padding(RememberDesign.spacing)
     }
 

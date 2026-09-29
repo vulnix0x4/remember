@@ -35,7 +35,7 @@ struct ArchiveArtwork: View {
             }
             Image(systemName: artworkSymbol)
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(RememberDesign.text)
                 .frame(width: 44, height: 44)
                 .background(.black.opacity(0.58), in: .circle)
         }

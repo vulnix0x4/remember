@@ -66,4 +66,17 @@ describe("latestNightSleep", () => {
     expect(cumulativeHealthTotal(metrics, "steps", new Date("2026-08-31T18:00:00Z"))).toBe(2_440);
     expect(cumulativeHealthTotal(metrics.slice(0, 2).concat(metrics.at(-1)!), "steps", new Date("2026-08-31T18:00:00Z"))).toBe(1_929);
   });
+
+  it("never adds a saved night to Apple Health's hours, and uses it only for a night nothing else recorded", () => {
+    const local = (day: number, hour: number) => new Date(2026, 7, day, hour).toISOString();
+    const apple: HealthMetric = { ...sleep("union", 7, local(30, 23), local(31, 6)), metadata: { aggregation: "healthkit_sleep_union" } };
+    const saved: HealthMetric = {
+      id: "saved", externalId: "remember.night.2026-08-30", type: "sleep", value: 8.5, unit: "hr", startAt: local(30, 22), endAt: local(31, 7),
+      source: "Remember", metadata: { aggregation: "remember_night", bedAt: local(30, 21), latency: "60", rating: "great" }, createdAt: local(31, 8),
+    };
+    expect(latestNightSleep([apple, saved])).toBe(7);
+    expect(latestNightSleep([saved])).toBe(8.5);
+    // Raw stage samples still count on their own; the saved night doesn't stretch them.
+    expect(latestNightSleep([sleep("core", 4, local(31, 0), local(31, 4)), saved])).toBe(4);
+  });
 });

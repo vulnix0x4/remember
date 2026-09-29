@@ -8,7 +8,7 @@ enum AppConfiguration {
     static var initialTab: AppTab {
         switch initialRoute {
         case "tasks", "calendar", "goals", "plan": .plan
-        case "health", "money", "files", "life": .life
+        case "health", "sleep", "money", "files", "life": .life
         case "library", "evolution", "patterns": .library
         case "ask": .ask
         default: .home
@@ -25,6 +25,7 @@ enum AppConfiguration {
 
     static var initialLifeSection: LifeSection {
         switch initialRoute {
+        case "sleep": .sleep
         case "money": .money
         case "files": .files
         default: .health
@@ -40,6 +41,11 @@ enum AppConfiguration {
 
     static var presentsSettingsOnLaunch: Bool {
         initialRoute == "settings"
+    }
+
+    /// Opens the detailed save sheet (note + return moment) on launch.
+    static var presentsCaptureOnLaunch: Bool {
+        initialRoute == "capture"
     }
 
     static var apiURL: URL {
@@ -58,6 +64,13 @@ enum AppConfiguration {
         let environmentToken = ProcessInfo.processInfo.environment["REMEMBER_API_TOKEN"]
         return APICredentials(bearerToken: environmentToken ?? KeychainTokenStore.load())
     }
+
+    /// First-run setup appears automatically, except in preview data mode unless asked for.
+    static var offersSetup: Bool {
+        !usesMockFallback || ProcessInfo.processInfo.environment["REMEMBER_SHOW_SETUP"] == "1"
+    }
+
+    static var forcesSetup: Bool { ProcessInfo.processInfo.environment["REMEMBER_SHOW_SETUP"] == "1" }
 
     static var usesMockFallback: Bool {
         #if DEBUG

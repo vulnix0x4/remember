@@ -21,6 +21,6 @@ struct LibrarySearchField: View {
         }
         .padding(.horizontal, RememberDesign.spacing)
         .frame(minHeight: 48)
-        .background(RememberDesign.surfaceRaised, in: Capsule())
+        .background(RememberDesign.card, in: Capsule())
     }
 }

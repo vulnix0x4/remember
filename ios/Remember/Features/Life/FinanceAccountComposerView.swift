@@ -10,59 +10,56 @@ struct FinanceAccountComposerView: View {
     @State private var currency = Locale.current.currency?.identifier ?? "USD"
     @State private var isSaving = false
     @State private var submissionError: String?
+    @State private var currencySheetIsPresented = false
     @AccessibilityFocusState private var submissionErrorIsFocused: Bool
     private let types = ["checking", "savings", "credit", "investment", "cash", "loan", "other"]
 
     var body: some View {
         NavigationStack {
             Form {
+                SheetTitleRow(title: "Add account")
                 if let submissionError {
                     Section {
                         Label(submissionError, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(RememberDesign.danger)
                             .accessibilityFocused($submissionErrorIsFocused)
-                        Button("Try again", systemImage: "arrow.clockwise", action: save)
-                            .disabled(!isValid)
                     }
+                    .listRowBackground(RememberDesign.card)
                 }
                 Section("Account") {
                     TextField("Name", text: $name)
-                    TextField("Institution", text: $institution)
+                    TextField("Bank (optional)", text: $institution)
                 }
+                .listRowBackground(RememberDesign.card)
                 Section("Type") {
                     ChoiceButtonGroup(selection: $type, choices: types, minimumButtonWidth: 120) { choice in
                         Label(choice.capitalized, systemImage: symbol(for: choice))
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init())
                 }
-                Section("Current balance") {
+                Section("Balance") {
                     TextField("0.00", value: $balance, format: .number)
                         .keyboardType(.decimalPad)
-                    CurrencySelectionRow(currency: $currency)
+                    CurrencySelectionRow(currency: $currency) { currencySheetIsPresented = true }
                 }
+                .listRowBackground(RememberDesign.card)
             }
+            .rememberFormStyle()
             .disabled(isSaving)
-            .navigationTitle("Add account")
-            .navigationBarTitleDisplayMode(.inline)
+            .rememberPrimaryFooter(isEnabled: isValid && !isSaving, accessibilityIdentifier: "remember.account.submit", action: save) {
+                if isSaving { ProgressView().tint(RememberDesign.canvas) } else { Text("Add account") }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: dismiss.callAsFunction)
                         .disabled(isSaving)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(action: save) {
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Add")
-                        }
-                    }
-                        .accessibilityLabel(isSaving ? "Adding account" : "Add account")
-                        .disabled(!isValid || isSaving)
-                }
             }
             .interactiveDismissDisabled(isSaving)
+            .sheet(isPresented: $currencySheetIsPresented) { CurrencyChoiceSheet(currency: $currency) }
         }
+        .rememberSheetPresentation()
     }
 
     private var isValid: Bool {
@@ -80,7 +77,7 @@ struct FinanceAccountComposerView: View {
             if succeeded {
                 dismiss()
             } else {
-                submissionError = "Couldn’t add this account. Check your connection and try again. Your account details are still here."
+                submissionError = "Couldn’t add this account. Your details are still here."
                 submissionErrorIsFocused = true
             }
         }

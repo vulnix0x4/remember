@@ -34,6 +34,9 @@ struct LibraryView: View {
                             title: { $0.rawValue }
                         )
                         if !store.imprints.isEmpty {
+                            LibrarySearchField(text: $searchText)
+                                .padding(.horizontal, RememberDesign.spacing)
+                                .padding(.top, RememberDesign.spacingXXSmall)
                             LibraryFilterBar(filter: $filter, newestFirst: $newestFirst)
                         }
                     }
@@ -45,37 +48,48 @@ struct LibraryView: View {
                 if store.isLoading && store.imprints.isEmpty {
                     ForEach(0..<5, id: \.self) { _ in
                         ImprintCard(imprint: FixtureLibrary.imprints[0])
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 4, leading: RememberDesign.spacing, bottom: 4, trailing: RememberDesign.spacing))
                     }
                     .redacted(reason: .placeholder)
                     .allowsHitTesting(false)
                 } else if !searchText.isEmpty && filteredImprints.isEmpty {
-                    ContentUnavailableView.search
+                    RememberEmptyState(systemImage: "magnifyingglass", title: "No results", message: "Try a different word.")
+                        .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                 } else if !store.imprints.isEmpty && filteredImprints.isEmpty {
-                    ContentUnavailableView(
-                        "No matching saves",
+                    RememberEmptyState(
                         systemImage: "line.3.horizontal.decrease.circle",
-                        description: Text("Choose another status above to see more of your library.")
+                        title: "Nothing here",
+                        message: "Pick another filter above.",
+                        actionTitle: "Show all",
+                        action: { filter = .all }
                     )
+                    .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 } else if store.imprints.isEmpty {
-                    ContentUnavailableView {
-                        Label("Nothing saved yet", systemImage: "books.vertical")
-                    } description: {
-                        Text("Use the bar below to keep a link or one of your own thoughts.")
-                    }
+                    RememberEmptyState(
+                        systemImage: "books.vertical",
+                        title: "Nothing saved yet",
+                        message: "Paste a link or type a thought below."
+                    )
+                    .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 } else {
                     ForEach(filteredImprints) { imprint in
                         NavigationLink(value: imprint) {
                             ImprintCard(imprint: imprint)
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(.init(top: 4, leading: RememberDesign.spacing, bottom: 4, trailing: RememberDesign.spacing))
                         .swipeActions(edge: .leading, allowsFullSwipe: true) {
                             if imprint.sourceType != .note {
                                 Button("Open", systemImage: "arrow.up.right.square") {
                                     openURL(imprint.url)
                                 }
-                                .tint(RememberDesign.accent)
+                                .tint(RememberDesign.cardRaised)
                             }
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -83,13 +97,13 @@ struct LibraryView: View {
                                 ShareLink(item: imprint.url) {
                                     Label("Share", systemImage: "square.and.arrow.up")
                                 }
-                                .tint(RememberDesign.secondaryText)
+                                .tint(RememberDesign.cardRaised)
                             }
                             if imprint.state == .failed {
                                 Button("Try analysis again", systemImage: "arrow.clockwise") {
                                     Task { await store.retry(imprint) }
                                 }
-                                .tint(RememberDesign.accent)
+                                .tint(RememberDesign.cardRaised)
                             }
                         }
                         .contextMenu {
@@ -109,14 +123,13 @@ struct LibraryView: View {
                 }
             }
             .listStyle(.plain)
-            .navigationTitle("Library")
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: "Search saves")
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.immediately)
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
             .refreshable { await store.load() }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                QuickAddBar(title: "Save a link or thought", systemImage: "plus") {
-                    store.captureIsPresented = true
+            .rememberBottomDock {
+                AddBar(placeholder: "Save a link or thought…", accessibilityIdentifier: "remember.library.quickSave") {
+                    await store.quickSave($0)
                 }
             }
             .rememberPrimaryActions()

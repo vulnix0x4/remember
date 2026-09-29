@@ -6,11 +6,11 @@ struct ThemeChip: View {
 
     var body: some View {
         Text(name)
-            .font(emphasized ? .headline : .subheadline)
-            .padding(.horizontal, emphasized ? 18 : 14)
-            .padding(.vertical, emphasized ? 12 : 9)
-            .background(emphasized ? RememberDesign.accent : Color.secondary.opacity(0.12), in: .capsule)
-            .foregroundStyle(emphasized ? RememberDesign.accentInk : .primary)
+            .font(emphasized ? .subheadline.weight(.semibold) : .rememberMeta)
+            .foregroundStyle(emphasized ? .white : RememberDesign.text2)
+            .padding(.horizontal, emphasized ? 14 : 12)
+            .frame(minHeight: emphasized ? 36 : 30)
+            .background(RememberDesign.cardRaised, in: .capsule)
             .accessibilityLabel("Theme: \(name)")
     }
 }

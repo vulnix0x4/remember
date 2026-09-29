@@ -8,8 +8,14 @@ struct AskView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                WarmBackground()
+                RememberDesign.canvas.ignoresSafeArea()
                 VStack(spacing: 0) {
+                    RememberHeader("Ask") {
+                        if !model.messages.isEmpty || model.failureTitle != nil {
+                            Button("New conversation", systemImage: "square.and.pencil", action: startNewConversation)
+                                .buttonStyle(.rememberQuiet)
+                        }
+                    }
                     if model.messages.isEmpty && model.failureTitle == nil {
                         AskEmptyState(selectPrompt: selectPrompt)
                     } else {
@@ -45,20 +51,13 @@ struct AskView: View {
                             .onChange(of: model.failureMessage) { scrollToBottom(proxy) }
                         }
                     }
-                    AskComposer(input: $model.input, isResponding: model.isResponding, submit: submit)
-                        .focused($inputFocused)
                 }
             }
-            .navigationTitle("Ask")
-            .navigationBarTitleDisplayMode(.inline)
+            .rememberBottomDock {
+                AskComposer(input: $model.input, isResponding: model.isResponding, submit: submit)
+                    .focused($inputFocused)
+            }
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
-            .toolbar {
-                if !model.messages.isEmpty || model.failureTitle != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("New conversation", systemImage: "square.and.pencil", action: startNewConversation)
-                    }
-                }
-            }
             .rememberPrimaryActions()
             .onAppear(perform: performAskHandoff)
             .onChange(of: store.askDraft) { performAskHandoff() }

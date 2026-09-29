@@ -50,11 +50,13 @@ struct LifeMoneyView: View {
                 )
                 Group {
                     if store.lifeSnapshot.accounts.isEmpty {
-                    ContentUnavailableView {
-                        Label("No accounts yet", systemImage: "wallet.bifold")
-                    } description: {
-                        Text("Add an account to begin tracking balances and activity.")
-                    }
+                        ScrollView {
+                            RememberEmptyState(
+                                systemImage: "wallet.bifold.fill",
+                                title: "Track your money",
+                                message: "Add an account to see it all in one place."
+                            )
+                        }
                     } else {
                         ScrollView {
                         LazyVStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
@@ -72,9 +74,7 @@ struct LifeMoneyView: View {
                     }
                 }
             }
-            .navigationTitle("Money")
-            .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .rememberBottomDock {
                 QuickAddBar(
                     title: store.lifeSnapshot.accounts.isEmpty ? "Add an account" : "Add a transaction",
                     systemImage: "plus"
@@ -90,40 +90,38 @@ struct LifeMoneyView: View {
     }
 
     private var moneyActions: some View {
-        Button("Add another account", systemImage: "wallet.bifold") {
+        Button("Add another account", systemImage: "plus") {
             accountComposerIsPresented = true
         }
-        .font(.subheadline.weight(.semibold))
-        .frame(minHeight: 44)
+        .buttonStyle(.rememberQuiet)
     }
 
     private var balanceSummary: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
             Text(netWorth == nil ? "Balances" : "Net worth")
-                .font(.subheadline)
+                .font(.rememberMeta)
                 .foregroundStyle(RememberDesign.secondaryText)
             if let netWorth, let accountCurrency {
                 Text(netWorth, format: .currency(code: accountCurrency).precision(.fractionLength(0)))
-                    .font(.largeTitle.bold().monospacedDigit())
+                    .font(.system(.largeTitle, design: .rounded).weight(.bold).monospacedDigit())
                 Text("Across \(store.lifeSnapshot.accounts.count) accounts")
                     .font(.caption)
                     .foregroundStyle(RememberDesign.secondaryText)
             } else {
                 Text("Multiple currencies")
                     .font(.title2.bold())
-                Text("Totals stay separate so Remember does not show a misleading conversion.")
+                Text("Totals stay separate by currency.")
                     .font(.caption)
                     .foregroundStyle(RememberDesign.secondaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .rememberSurface()
+        .rememberCard(padding: RememberDesign.spacing + 4)
     }
 
     private var accountsSection: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-            Text("Accounts")
-                .font(.headline)
+            SectionHeading(title: "Accounts")
             VStack(spacing: 0) {
                 ForEach(store.lifeSnapshot.accounts) { account in
                     let rowLayout = dynamicTypeSize.isAccessibilitySize
@@ -132,7 +130,7 @@ struct LifeMoneyView: View {
                     rowLayout {
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "creditcard")
-                                .foregroundStyle(RememberDesign.accent)
+                                .foregroundStyle(RememberDesign.text2)
                                 .frame(width: 28)
                                 .accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 2) {
@@ -167,8 +165,7 @@ struct LifeMoneyView: View {
                 ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
                 : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
             headerLayout {
-                Text("Recent activity")
-                    .font(.headline)
+                SectionHeading(title: "Recent activity")
                 if !dynamicTypeSize.isAccessibilitySize {
                     Spacer()
                 }
@@ -200,7 +197,7 @@ struct LifeMoneyView: View {
                         }
                         Text(transaction.amount, format: .currency(code: transaction.currency))
                             .font(.subheadline.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(transaction.amount > 0 ? RememberDesign.accent : .primary)
+                            .foregroundStyle(transaction.amount > 0 ? .white : RememberDesign.text2)
                     }
                     .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                     .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? RememberDesign.spacingSmall : 0)

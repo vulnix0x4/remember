@@ -41,6 +41,10 @@ actor TestLifeOSRepository: LifeOSRepository {
         try failIfNeeded()
     }
 
+    func updateTask(id: UUID, patch: LifeTaskPatch) async throws {
+        try failIfNeeded()
+    }
+
     func completeTask(id: UUID, minutesSpent: Int, result: PracticeResult?) async throws {
         try failIfNeeded()
     }
@@ -50,6 +54,19 @@ actor TestLifeOSRepository: LifeOSRepository {
     }
 
     func blockTask(id: UUID, reason: LifeBlockerReason) async throws {
+        try failIfNeeded()
+    }
+
+    func saveCommitment(id: UUID?, draft: CommitmentDraft) async throws -> Commitment {
+        try failIfNeeded()
+        return Commitment(id: id ?? UUID(), title: draft.title, kind: draft.kind, days: draft.days, everyDays: draft.everyDays, fixedStart: draft.fixedStart, durationMinutes: draft.durationMinutes, importance: draft.importance, steps: draft.steps, notes: draft.notes, active: draft.active, createdAt: .now, updatedAt: .now)
+    }
+
+    func deleteCommitment(id: UUID) async throws {
+        try failIfNeeded()
+    }
+
+    func updateGoal(id: UUID, progress: Int?, status: String?) async throws {
         try failIfNeeded()
     }
 

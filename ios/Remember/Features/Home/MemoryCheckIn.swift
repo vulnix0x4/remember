@@ -11,60 +11,61 @@ struct MemoryCheckIn: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-            Divider()
-                .padding(.bottom, RememberDesign.spacingSmall)
+            Rectangle()
+                .fill(RememberDesign.line)
+                .frame(height: 1)
+                .padding(.vertical, RememberDesign.spacingXXSmall)
+                .accessibilityHidden(true)
 
             if let reflection {
                 HStack(alignment: .top, spacing: RememberDesign.spacingSmall) {
-                    Image(systemName: "checkmark")
-                        .font(.caption.bold())
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
                         .foregroundStyle(RememberDesign.accent)
-                        .frame(width: 30, height: 30)
-                        .background(RememberDesign.accent.opacity(0.12), in: .circle)
-                    VStack(alignment: .leading, spacing: 4) {
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(reflection.insightTitle)
-                            .font(.subheadline.bold())
+                            .font(.subheadline.weight(.semibold))
                         Text(reflection.insightBody)
-                            .font(.caption)
-                            .foregroundStyle(RememberDesign.secondaryText)
+                            .font(.rememberMeta)
+                            .foregroundStyle(RememberDesign.text2)
                     }
                 }
                 Button("See how I’m changing", systemImage: "arrow.right") {
                     store.selectedTab = .evolution
                 }
-                .font(.subheadline.bold())
-                .foregroundStyle(RememberDesign.accent)
-                .padding(.leading, 38)
+                .buttonStyle(.rememberQuiet)
                 .accessibilityIdentifier("remember.memory-check-in.compass")
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Where does this land now?")
-                        .font(.subheadline.bold())
-                    Text("Your answer teaches Remember what belongs in your life today.")
-                        .font(.caption)
-                        .foregroundStyle(RememberDesign.secondaryText)
-                }
+                Text("Where does this land now?")
+                    .font(.rememberMeta)
+                    .foregroundStyle(RememberDesign.text2)
 
                 LazyVGrid(columns: columns, spacing: RememberDesign.spacingSmall) {
                     ForEach(MemoryReflection.allCases) { choice in
                         Button {
                             choose(choice)
                         } label: {
-                            Label(choice.label, systemImage: choice.systemImage)
-                                .font(.caption.bold())
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            Text(choice.label)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(RememberDesign.text)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .padding(.horizontal, RememberDesign.spacingSmall)
+                                .background(RememberDesign.cardRaised, in: .capsule)
+                                .contentShape(.capsule)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.roundedRectangle(radius: RememberDesign.controlRadius))
+                        .buttonStyle(.plain)
                         .disabled(isSaving)
                         .accessibilityIdentifier("remember.memory-check-in.\(choice.rawValue)")
                     }
                 }
 
                 if saveFailed {
-                    Label("That answer was not saved. Please try again.", systemImage: "exclamationmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    Label("That didn’t save. Try again.", systemImage: "exclamationmark.circle")
+                        .font(.rememberMeta)
+                        .foregroundStyle(RememberDesign.danger)
                 }
             }
         }

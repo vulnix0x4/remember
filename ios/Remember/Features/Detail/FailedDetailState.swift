@@ -7,20 +7,21 @@ struct FailedDetailState: View {
     @State private var isRetrying = false
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Couldn’t analyze this save", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(imprint.uncertainties.first ?? "The original link remains safe. Try processing again later.")
-        } actions: {
-            Button(isRetrying ? "Trying again…" : "Try again", systemImage: "arrow.clockwise", action: retry)
-                .buttonStyle(.borderedProminent)
-                .foregroundStyle(RememberDesign.accentInk)
-                .disabled(isRetrying)
+        VStack(spacing: RememberDesign.spacingSmall) {
+            RememberEmptyState(
+                systemImage: "exclamationmark.triangle",
+                title: "Couldn’t read this one",
+                message: imprint.uncertainties.first ?? "The link is still safe.",
+                actionTitle: isRetrying ? "Trying again…" : "Try again",
+                action: retry
+            )
+            .disabled(isRetrying)
             if imprint.sourceType != .note {
                 Button("Open original", systemImage: "arrow.up.right.square", action: openOriginal)
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.rememberQuiet)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func retry() {

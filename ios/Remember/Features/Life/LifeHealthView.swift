@@ -36,27 +36,23 @@ struct LifeHealthView: View {
                 )
                 Group {
                     if store.lifeSnapshot.health.isEmpty {
-                    ContentUnavailableView {
-                        Label("Connect Apple Health", systemImage: "heart")
-                    } description: {
-                        Text("Choose which health categories Remember may read. Nothing is written back to Health.")
-                    } actions: {
-                        Button(action: sync) {
-                            Text(store.isSyncingHealth ? "Connecting…" : "Connect")
-                                .foregroundStyle(RememberDesign.accentInk)
+                        ScrollView {
+                            RememberEmptyState(
+                                systemImage: "heart.fill",
+                                title: "Connect Apple Health",
+                                message: "Sleep and movement help Jev plan around your energy. Remember only reads; nothing is written back.",
+                                actionTitle: store.isSyncingHealth ? "Connecting…" : "Connect Health",
+                                action: sync
+                            )
+                            .disabled(store.isSyncingHealth)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(store.isSyncingHealth)
-                    }
                     } else {
                         ScrollView {
                         LazyVStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
                             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                                Text("Steps today")
-                                    .font(.subheadline)
-                                    .foregroundStyle(RememberDesign.secondaryText)
+                                SectionHeading(title: "Steps today")
                                 Text(steps.formatted())
-                                    .font(.largeTitle.bold().monospacedDigit())
+                                    .font(.system(size: 48, weight: .bold, design: .rounded).monospacedDigit())
                                 if let lastHealthSync = store.lastHealthSync {
                                     Text("Updated \(lastHealthSync, format: .relative(presentation: .named))")
                                         .font(.caption)
@@ -64,13 +60,13 @@ struct LifeHealthView: View {
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .rememberSurface()
+                            .rememberCard()
 
                             VStack(spacing: 0) {
                                 metricRow("Active energy", value: energy.formatted(), unit: "kcal", symbol: "flame")
-                                Divider().padding(.leading, 48)
+                                Divider().overlay(RememberDesign.line).padding(.leading, 48)
                                 metricRow("Exercise", value: exercise.formatted(), unit: "min", symbol: "figure.run")
-                                Divider().padding(.leading, 48)
+                                Divider().overlay(RememberDesign.line).padding(.leading, 48)
                                 metricRow(
                                     "Latest sleep",
                                     value: latestSleep.map { $0.formatted(.number.precision(.fractionLength(1))) } ?? "—",
@@ -81,13 +77,12 @@ struct LifeHealthView: View {
                             .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
 
                             if !store.lifeSnapshot.health.isEmpty {
-                                Text("Recent measurements")
-                                    .font(.headline)
+                                SectionHeading(title: "Recent")
                                 VStack(spacing: 0) {
                                     ForEach(store.lifeSnapshot.health.prefix(20)) { item in
                                         HStack(spacing: 12) {
                                             Image(systemName: symbol(for: item.type))
-                                                .foregroundStyle(RememberDesign.accent)
+                                                .foregroundStyle(RememberDesign.text2)
                                                 .frame(width: 28)
                                             VStack(alignment: .leading, spacing: 2) {
                                                 Text(label(for: item.type))
@@ -102,7 +97,7 @@ struct LifeHealthView: View {
                                         }
                                         .frame(minHeight: 54)
                                         if item.id != store.lifeSnapshot.health.prefix(20).last?.id {
-                                            Divider().padding(.leading, 48)
+                                            Divider().overlay(RememberDesign.line).padding(.leading, 48)
                                         }
                                     }
                                 }
@@ -110,9 +105,14 @@ struct LifeHealthView: View {
                                 .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
                             }
 
-                            Label("Health access stays under your control in Settings.", systemImage: "lock.shield")
-                                .font(.footnote)
-                                .foregroundStyle(RememberDesign.secondaryText)
+                            Button {
+                                sync()
+                            } label: {
+                                Label(store.isSyncingHealth ? "Syncing…" : "Sync Health", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .buttonStyle(.rememberQuiet)
+                            .disabled(store.isSyncingHealth)
+                            .frame(maxWidth: .infinity)
                         }
                         .padding(RememberDesign.spacing)
                         .padding(.bottom, RememberDesign.spacingXLarge)
@@ -121,16 +121,7 @@ struct LifeHealthView: View {
                     }
                 }
             }
-            .navigationTitle("Health")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if !store.lifeSnapshot.health.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(store.isSyncingHealth ? "Syncing" : "Sync", systemImage: "arrow.triangle.2.circlepath", action: sync)
-                            .disabled(store.isSyncingHealth)
-                    }
-                }
-            }
+            .rememberBottomDock()
             .rememberPrimaryActions()
         }
     }
@@ -138,7 +129,7 @@ struct LifeHealthView: View {
     private func metricRow(_ title: String, value: String, unit: String, symbol: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
-                .foregroundStyle(RememberDesign.accent)
+                .foregroundStyle(RememberDesign.text2)
                 .frame(width: 28)
             Text(title)
                 .font(.subheadline)
