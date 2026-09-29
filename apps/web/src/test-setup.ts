@@ -1,5 +1,9 @@
-import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { expect, vi } from "vitest";
+
+// Register on this package's own vitest. The workspace also has vitest 4, and "@testing-library/jest-dom/vitest"
+// extends whichever copy is hoisted, which on a fresh install (like CI) isn't the one running these tests.
+expect.extend(matchers);
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
