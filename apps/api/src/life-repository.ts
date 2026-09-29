@@ -193,7 +193,7 @@ export class LifeRepository {
             ), authoritative AS (
               SELECT * FROM health_metrics
               WHERE user_id = ?1 AND start_at >= ?2
-                AND json_extract(metadata_json, '$.aggregation') IN ('healthkit_statistics', 'healthkit_sleep_union')
+                AND json_extract(metadata_json, '$.aggregation') IN ('healthkit_statistics', 'healthkit_sleep_union', 'remember_night')
             )
             SELECT * FROM recent
             UNION

@@ -8,7 +8,7 @@ enum AppConfiguration {
     static var initialTab: AppTab {
         switch initialRoute {
         case "tasks", "calendar", "goals", "plan": .plan
-        case "health", "money", "files", "life": .life
+        case "health", "sleep", "money", "files", "life": .life
         case "library", "evolution", "patterns": .library
         case "ask": .ask
         default: .home
@@ -25,6 +25,7 @@ enum AppConfiguration {
 
     static var initialLifeSection: LifeSection {
         switch initialRoute {
+        case "sleep": .sleep
         case "money": .money
         case "files": .files
         default: .health

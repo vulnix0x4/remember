@@ -301,6 +301,32 @@ enum FixtureLibrary {
         return snapshot
     }()
 
+    /// Six nights for previewing Sleep: some from Apple Health, some saved from Going to bed and I'm up.
+    static func sleepNights(now: Date = .now, calendar: Calendar = .current) -> [LifeHealthMetric] {
+        let bedtimes = [(23, 40), (0, 55), (23, 10), (1, 30), (23, 50), (0, 20)]
+        let hours = [7.2, 6.1, 7.8, 5.6, 7.4, 6.9]
+        return bedtimes.indices.compactMap { index in
+            guard let evening = calendar.date(byAdding: .day, value: -(index + 1), to: now),
+                  let day = calendar.date(byAdding: .day, value: bedtimes[index].0 < 12 ? 1 : 0, to: evening),
+                  let bedAt = calendar.date(bySettingHour: bedtimes[index].0, minute: bedtimes[index].1, second: 0, of: day) else { return nil }
+            let latency = [15, 60, 15, 90, 15, 60][index]
+            let asleep = bedAt.addingTimeInterval(TimeInterval(latency * 60))
+            let upAt = asleep.addingTimeInterval(hours[index] * 3600)
+            if index.isMultiple(of: 2) {
+                return LifeHealthMetric(
+                    id: UUID(), externalId: "fixture.sleep.\(index)", type: "sleep", value: hours[index], unit: "hr",
+                    startAt: asleep, endAt: upAt, source: "Apple Health",
+                    metadata: ["aggregation": HealthMetricAggregation.sleepUnionMarker], createdAt: now
+                )
+            }
+            let session = SleepSession(bedAt: bedAt, upAt: upAt, morningMinutes: 60)
+            guard let saved = SleepInsights.savedNight(session, rating: [.okay, .rough, .great][index % 3],
+                                                       latency: SleepLatency(rawValue: latency), calendar: calendar) else { return nil }
+            return LifeHealthMetric(id: UUID(), externalId: saved.externalId, type: saved.type, value: saved.value, unit: saved.unit,
+                                    startAt: saved.startAt, endAt: saved.endAt, source: saved.source, metadata: saved.metadata, createdAt: now)
+        }
+    }
+
     private static func uuid(_ value: String) -> UUID {
         guard let uuid = UUID(uuidString: value) else { fatalError("Invalid fixture UUID: \(value)") }
         return uuid

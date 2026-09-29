@@ -4,16 +4,17 @@ import type { LifeOSController } from "../life/useLifeOS";
 import { ModalBackdrop } from "../ui/Sheet";
 import { haptic } from "../ui/Toast";
 import { markSetupDone } from "./setupState";
-import { CommitmentSection, NudgesSection, YourDaySection } from "./SetupSections";
+import { CommitmentSection, NudgesSection, SleepSection, YourDaySection } from "./SetupSections";
 
 type SetupLife = Pick<LifeOSController, "brain" | "brainError" | "brainWorking" | "refreshBrain" | "snapshot" | "createCommitment" | "updateCommitment" | "deleteCommitment">;
 
-export const onboardingSteps = ["welcome", "day", "commitments", "chores", "nudges", "done"] as const;
+export const onboardingSteps = ["welcome", "day", "sleep", "commitments", "chores", "nudges", "done"] as const;
 type Step = typeof onboardingSteps[number];
 
 const copy: Record<Step, { title: string; detail?: string }> = {
   welcome: { title: "Let’s set up your day", detail: "A few taps. Jev plans the rest." },
   day: { title: "When is your day?", detail: "Jev only plans inside these hours." },
+  sleep: { title: "Phone-free nights?", detail: "Tap Going to bed when you’re done for the night. Remember keeps your phone quiet until you’re up." },
   commitments: { title: "What do you do most days?", detail: "Study, gym, anything that must fit." },
   chores: { title: "What keeps life running?", detail: "Jev brings these back on their rhythm." },
   nudges: { title: "Gentle reminders?", detail: "One nudge when a wait is over." },
@@ -45,6 +46,7 @@ export function Onboarding({ life, onFinish }: { life: SetupLife; onFinish: () =
         <h2 id={titleId} className="onboarding-title">{title}</h2>
         {detail && <p className="onboarding-detail">{detail}</p>}
         {step === "day" && <YourDaySection life={life} heading={false} />}
+        {step === "sleep" && <SleepSection life={life} heading={false} />}
         {step === "commitments" && <CommitmentSection life={life} kind="commitment" heading={false} />}
         {step === "chores" && <CommitmentSection life={life} kind="chore" heading={false} />}
         {step === "nudges" && <NudgesSection heading={false} />}

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CaretRight, Plus } from "@phosphor-icons/react";
-import { agoLabel } from "../life/planning";
-import { mutationMessage } from "../life/TaskViews";
+import { agoLabel, durationLabel } from "../life/planning";
+import { ChipGroup, mutationMessage } from "../life/TaskViews";
 import type { Commitment, CommitmentKind } from "../life/types";
 import type { LifeOSController } from "../life/useLifeOS";
+import { SLEEP_OFFLINE_MESSAGE, useSleepSettings } from "../life/useSleepSettings";
 import { nudgesEnabled, nudgesSupported, setNudgesEnabled } from "../services/nudges";
 import { haptic, useToast } from "../ui/Toast";
 import { CommitmentEditor } from "./CommitmentEditor";
@@ -94,6 +95,36 @@ export function YourDaySection({ life, heading = true }: { life: JevLife; headin
       ? <p className="setup-note" role="status">{brainWorking ? "Jev is updating your plan…" : brain.evaluatedAt ? `Last planned ${agoLabel(brain.evaluatedAt, new Date())}` : "Jev hasn’t planned yet"}</p>
       : <p className="setup-note">Connect your Remember server to let Jev plan.</p>}
     {life.brainError && <p role="alert" className="field-error">{life.brainError}</p>}
+  </section>;
+}
+
+const morningChoices = [{ label: "Off", value: 0 }, { label: "30 min", value: 30 }, { label: "1 hr", value: 60 }, { label: "1.5 hr", value: 90 }];
+
+/** Keeps a value set elsewhere (say, on the iPhone) visible among the chips. */
+function withValue(options: Array<{ label: string; value: number }>, value: number) {
+  return options.some((option) => option.value === value) ? options : [...options, { label: durationLabel(value), value }].sort((a, b) => a.value - b.value);
+}
+
+/** A switch row with a one-line description under its label. */
+function DescribedSwitch({ label, detail, on, disabled, onToggle }: { label: string; detail: string; on: boolean; disabled?: boolean; onToggle: () => void }) {
+  const detailId = useId();
+  return <div className="toggle-row described">
+    <span className="toggle-copy" aria-hidden="true"><span>{label}</span><small id={detailId}>{detail}</small></span>
+    <button className={`switch${on ? " on" : ""}`} type="button" role="switch" aria-checked={on} aria-label={label} aria-describedby={detailId} disabled={disabled} onClick={onToggle}><span /></button>
+  </div>;
+}
+
+/** Sleep: phone-free nights from Going to bed until I'm up (on the iPhone), and a caffeine reminder. */
+export function SleepSection({ life, heading = true }: { life: JevLife; heading?: boolean }) {
+  const { sleep, available, save } = useSleepSettings(life);
+  return <section className="setup-section" id={heading ? "settings-sleep" : undefined} aria-labelledby={heading ? "sleep-title" : undefined} aria-label={heading ? undefined : "Sleep"}>
+    {heading && <SectionHeading id="sleep-title">Sleep</SectionHeading>}
+    <DescribedSwitch label="Phone-free nights" detail="Tap Going to bed; get your phone back after you’re up" on={sleep.enabled} disabled={!available} onToggle={() => { haptic(); void save({ ...sleep, enabled: !sleep.enabled }); }} />
+    {!available && <p className="setup-note">{SLEEP_OFFLINE_MESSAGE}</p>}
+    {sleep.enabled && <>
+      <ChipGroup label="Phone-free after waking" options={withValue(morningChoices, sleep.morningMinutes)} value={sleep.morningMinutes} onChange={(morningMinutes) => void save({ ...sleep, morningMinutes })} />
+      <DescribedSwitch label="Caffeine reminder" detail="8 hours before your usual bedtime" on={sleep.caffeineReminder} onToggle={() => { haptic(); void save({ ...sleep, caffeineReminder: !sleep.caffeineReminder }); }} />
+    </>}
   </section>;
 }
 

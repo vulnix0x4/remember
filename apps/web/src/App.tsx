@@ -43,7 +43,7 @@ import { LockInHost } from "./life/LockIn";
 import { BackgroundSection, RoutineNudger } from "./life/BackgroundRoutines";
 import { Onboarding } from "./setup/Onboarding";
 import { shouldShowSetup } from "./setup/setupState";
-import { AboutMeSection, CommitmentSection, NudgesSection, YourDaySection } from "./setup/SetupSections";
+import { AboutMeSection, CommitmentSection, NudgesSection, SleepSection, YourDaySection } from "./setup/SetupSections";
 import type { LifeTask } from "./life/types";
 import { useLifeOS, type LifeOSController } from "./life/useLifeOS";
 import { DailyBasics, NowCard, TaskAddBar, TaskSheet, UpNext } from "./life/TaskViews";
@@ -68,6 +68,7 @@ const GoalsPage = lazy(() => import("./life/LifeOS").then((module) => ({ default
 const HealthPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.HealthPage })));
 const MoneyPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.MoneyPage })));
 const FilesPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.FilesPage })));
+const SleepPage = lazy(() => import("./life/SleepPage").then((module) => ({ default: module.SleepPage })));
 
 const navItems: { page: PrimaryPage; label: string; icon: typeof House }[] = [
   { page: "home", label: "Today", icon: House },
@@ -84,6 +85,7 @@ const pageTitles: Record<Page, string> = {
   goals: "Goals",
   calendar: "Calendar",
   health: "Health",
+  sleep: "Sleep",
   money: "Money",
   files: "Files",
   library: "Library",
@@ -94,7 +96,7 @@ const pageTitles: Record<Page, string> = {
 };
 
 const validPages = new Set<Page>([
-  "home", "plan", "tasks", "goals", "calendar", "library", "ask", "evolution", "you", "health", "money", "files", "settings",
+  "home", "plan", "tasks", "goals", "calendar", "library", "ask", "evolution", "you", "health", "sleep", "money", "files", "settings",
 ]);
 
 type AppRoute = { page: Page; detailId: string | null };
@@ -117,7 +119,7 @@ function primaryForPage(page: Page): PrimaryPage | null {
   if (page === "settings") return null;
   if (page === "plan" || page === "tasks" || page === "goals" || page === "calendar") return "plan";
   if (page === "library" || page === "evolution") return "library";
-  if (page === "you" || page === "health" || page === "money" || page === "files") return "you";
+  if (page === "you" || page === "health" || page === "sleep" || page === "money" || page === "files") return "you";
   return page;
 }
 
@@ -843,10 +845,13 @@ function EvolutionPage({ imprints, life, onOpen, onOpenPlan, onExplore, onSaved 
   );
 }
 
-function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut, onClose, onRunSetup, focusSection }: { imprints: Imprint[]; life: LifeOSController; theme: ThemePreference; onTheme: (theme: ThemePreference) => void; session: AppSession | null; onSignOut: () => void; onClose: () => void; onRunSetup: () => void; focusSection?: "day" | null }) {
+type SettingsFocus = "day" | "sleep" | null;
+
+function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut, onClose, onRunSetup, focusSection }: { imprints: Imprint[]; life: LifeOSController; theme: ThemePreference; onTheme: (theme: ThemePreference) => void; session: AppSession | null; onSignOut: () => void; onClose: () => void; onRunSetup: () => void; focusSection?: SettingsFocus }) {
   useEffect(() => {
-    if (focusSection !== "day") return;
-    const frame = window.requestAnimationFrame(() => document.getElementById("settings-your-day")?.scrollIntoView?.({ block: "start" }));
+    if (!focusSection) return;
+    const target = focusSection === "sleep" ? "settings-sleep" : "settings-your-day";
+    const frame = window.requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView?.({ block: "start" }));
     return () => window.cancelAnimationFrame(frame);
   }, [focusSection]);
   const [apiToken, setApiTokenValue] = useState(() => getApiToken());
@@ -877,6 +882,7 @@ function SettingsPage({ imprints, life, theme, onTheme, session, onSignOut, onCl
       <header className="screen-header"><div className="screen-title-row"><h1>Settings</h1></div></header>
       <div className="setup-sections">
         <YourDaySection life={life} />
+        <SleepSection life={life} />
         <CommitmentSection life={life} kind="commitment" />
         <CommitmentSection life={life} kind="chore" />
         <NudgesSection />
@@ -936,7 +942,7 @@ function ScreenHeader({ title, onAvatar, sections, active, onNavigate, children 
 
 const planSections: Array<{ page: Page; label: string }> = [{ page: "tasks", label: "Tasks" }, { page: "calendar", label: "Calendar" }, { page: "goals", label: "Goals" }];
 const librarySections: Array<{ page: Page; label: string }> = [{ page: "library", label: "Saved" }, { page: "evolution", label: "Patterns" }];
-const lifeSections: Array<{ page: Page; label: string }> = [{ page: "health", label: "Health" }, { page: "money", label: "Money" }, { page: "files", label: "Files" }];
+const lifeSections: Array<{ page: Page; label: string }> = [{ page: "health", label: "Health" }, { page: "sleep", label: "Sleep" }, { page: "money", label: "Money" }, { page: "files", label: "Files" }];
 
 export function App() {
   return <ToastProvider><LockInProvider><AppContent /></LockInProvider></ToastProvider>;
@@ -946,7 +952,7 @@ function AppContent() {
   const [route, setRoute] = useState<AppRoute>(() => routeFromHash());
   const { page, detailId } = route;
   const settingsReturnRef = useRef<Page>("home");
-  const [settingsFocus, setSettingsFocus] = useState<"day" | null>(null);
+  const [settingsFocus, setSettingsFocus] = useState<SettingsFocus>(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const setupChecked = useRef(false);
   const [authStatus, setAuthStatus] = useState<"loading" | "authenticated" | "anonymous">(apiConfig.authMode === "password" ? "loading" : "authenticated");
@@ -1046,7 +1052,7 @@ function AppContent() {
     scrollToTop();
     void loadImprint(id).then(({ item }) => { if (item) replaceImprint(item); });
   };
-  const openSettings = (focus: "day" | null = null) => { settingsReturnRef.current = page === "settings" ? "home" : page; setSettingsFocus(focus); navigate("settings"); };
+  const openSettings = (focus: SettingsFocus = null) => { settingsReturnRef.current = page === "settings" ? "home" : page; setSettingsFocus(focus); navigate("settings"); };
   const explore = (question: string) => { sessionStorage.setItem(ASK_SEED_STORAGE_KEY, question); navigate("ask"); };
   const saveCapture = async (draft: Imprint) => {
     const { item, synced } = await saveImprint(draft);
@@ -1057,7 +1063,7 @@ function AppContent() {
   const primaryPage = primaryForPage(page);
   const planSection: Page = page === "goals" || page === "calendar" ? page : "tasks";
   const librarySection: Page = page === "evolution" ? "evolution" : "library";
-  const youSection: Page = page === "money" || page === "files" ? page : "health";
+  const youSection: Page = page === "sleep" || page === "money" || page === "files" ? page : "health";
   const signOut = () => { void logout().finally(() => { clearAskStorage(); setSession(null); setImprints([]); setAuthStatus("anonymous"); }); };
   const loading = (label: string) => <FeatureLoading label={label} />;
   const screen = activeImprint
@@ -1080,11 +1086,11 @@ function AppContent() {
           : <LibraryPage imprints={imprints} onOpen={openDetail} loading={libraryLoading} onSaved={saveCapture} onExplore={explore} onSeeCompass={() => navigate("evolution")} />}
       </> : <>
         <ScreenHeader title="Life" onAvatar={() => openSettings()} sections={lifeSections} active={youSection} onNavigate={navigate} />
-        <Suspense fallback={loading("Opening Life…")}>{youSection === "money" ? <MoneyPage life={life} /> : youSection === "files" ? <FilesPage life={life} /> : <HealthPage life={life} />}</Suspense>
+        <Suspense fallback={loading("Opening Life…")}>{youSection === "sleep" ? <SleepPage life={life} onOpenSettings={() => openSettings("sleep")} /> : youSection === "money" ? <MoneyPage life={life} /> : youSection === "files" ? <FilesPage life={life} /> : <HealthPage life={life} />}</Suspense>
       </>}
     </div>;
   return (
-    <div className={cx("app-shell", youSection === "health" && primaryPage === "you" && "no-add-bar", (page === "settings" || activeImprint) && "no-add-bar")}>
+    <div className={cx("app-shell", (youSection === "health" || youSection === "sleep") && primaryPage === "you" && "no-add-bar", (page === "settings" || activeImprint) && "no-add-bar")}>
       <a className="skip-link" href="#main-content">Skip to content</a>
       <ConnectivityBanner remoteUnavailable={Boolean(apiConfig.baseUrl && librarySource === "local")} onRetry={() => void refreshLibrary(undefined, true)} />
       <aside className="sidebar">

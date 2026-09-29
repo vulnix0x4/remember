@@ -32,6 +32,7 @@ import { Empty } from "../ui/Empty";
 import { Sheet } from "../ui/Sheet";
 import { haptic, useToast } from "../ui/Toast";
 import { doneToday, laterTasks, pickNow, planByTask, timeLabel, todayTasks } from "./planning";
+import { isSavedNight } from "./sleep";
 import { DailyBasics, NowCard, TaskAddBar, TaskList, TaskSheet, mutationMessage, useNow } from "./TaskViews";
 
 export { focusTimerElapsedMs, focusTimerStorageKey } from "./TaskViews";
@@ -257,7 +258,10 @@ export function latestNightSleep(metrics: HealthMetric[]) {
     .sort((left, right) => new Date(left.endAt).getTime() - new Date(right.endAt).getTime());
   if (!sleep.length) return undefined;
   const latestDay = sleepDay(sleep.at(-1)!.endAt || sleep.at(-1)!.startAt);
-  const latestDayMetrics = sleep.filter((metric) => sleepDay(metric.endAt || metric.startAt) === latestDay);
+  const nightMetrics = sleep.filter((metric) => sleepDay(metric.endAt || metric.startAt) === latestDay);
+  // A night saved by Going to bed and I'm up stands in only when nothing else recorded it. It never adds to Apple Health's hours.
+  const latestDayMetrics = nightMetrics.filter((metric) => !isSavedNight(metric));
+  if (!latestDayMetrics.length) return [...nightMetrics].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0].value;
   const valid = latestDayMetrics
     .map((metric) => ({ metric, start: new Date(metric.startAt).getTime(), end: new Date(metric.endAt).getTime() }))
     .filter((entry) => Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start)

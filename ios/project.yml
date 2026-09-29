@@ -29,6 +29,7 @@ targets:
     sources:
       - path: Remember
       - path: Shared
+      - path: SleepShield
     resources:
       - path: Remember/Resources
     entitlements:
@@ -81,10 +82,13 @@ targets:
     sources:
       - path: RememberFocusMonitor
         excludes: [Info.plist]
+      - path: SleepShield
     entitlements:
       path: RememberFocusMonitor/RememberFocusMonitor.entitlements
       properties:
         com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - $(REMEMBER_APP_GROUP)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(REMEMBER_BUNDLE_ID).focus-monitor

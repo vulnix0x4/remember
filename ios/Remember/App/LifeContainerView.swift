@@ -12,6 +12,7 @@ struct LifeContainerView: View {
     private var content: some View {
         switch selection {
         case .health: LifeHealthView(lifeSection: $selection)
+        case .sleep: SleepView(lifeSection: $selection)
         case .money: LifeMoneyView(lifeSection: $selection)
         case .files: LifeFilesView(lifeSection: $selection)
         }

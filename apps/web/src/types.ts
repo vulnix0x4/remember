@@ -3,7 +3,7 @@ export type PrimaryPage = "home" | "plan" | "library" | "ask" | "you";
 // Legacy section routes stay valid so bookmarks, installed-PWA shortcuts, and
 // browser history continue to open the same data after the five-destination
 // navigation redesign.
-export type Page = PrimaryPage | "tasks" | "goals" | "calendar" | "health" | "money" | "files" | "evolution" | "settings";
+export type Page = PrimaryPage | "tasks" | "goals" | "calendar" | "health" | "sleep" | "money" | "files" | "evolution" | "settings";
 export type ImprintStatus = "ready" | "processing" | "partial" | "failed";
 export type ReturnCue = "stuck" | "focus" | "decision" | "date";
 

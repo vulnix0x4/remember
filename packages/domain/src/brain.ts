@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sleepSettingsSchema } from "./sleep";
 
 export const brainSettingsSchema = z.object({
   enabled: z.boolean().default(true),
@@ -6,6 +7,7 @@ export const brainSettingsSchema = z.object({
   startHour: z.number().int().min(0).max(23).default(8),
   endHour: z.number().int().min(1).max(24).default(21),
   preferences: z.string().trim().max(2000).default(""),
+  sleep: sleepSettingsSchema.prefault({}),
 // An end hour at or before the start hour means the day runs past midnight (for example 12 PM to 3 AM).
 }).refine((value) => value.endHour !== value.startHour, "Your day can't start and end at the same hour.");
 export const brainBlockSchema = z.object({

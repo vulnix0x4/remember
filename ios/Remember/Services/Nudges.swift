@@ -2,8 +2,8 @@ import Foundation
 import Observation
 import UserNotifications
 
-/// Gentle local notifications: the next planned thing, "wrap up in 5 minutes", and routine waits ending.
-/// Each is sent once and never repeated.
+/// Gentle local notifications: the next planned thing, "wrap up in 5 minutes", and routine waits ending,
+/// each sent once and never repeated. Sleep adds one daily nudge: last call for caffeine.
 @Observable @MainActor
 final class Nudges {
     var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Keys.enabled) } }
@@ -55,6 +55,15 @@ final class Nudges {
         center.removePendingNotificationRequests(withIdentifiers: ["remember.wait.\(taskID)", "remember.wrapup.\(taskID)"])
     }
 
+    /// The daily caffeine nudge, replaced whenever the usual bedtime moves. Nil turns it off.
+    func sleepReminders(caffeine: DateComponents?) {
+        center.removePendingNotificationRequests(withIdentifiers: [Keys.caffeine])
+        guard isEnabled, isAuthorized else { return }
+        if let caffeine {
+            daily(id: Keys.caffeine, at: caffeine, title: "Last call for caffeine", body: "Caffeine after now can keep you up tonight.")
+        }
+    }
+
     func cancelNextPlanned() {
         center.removePendingNotificationRequests(withIdentifiers: ["remember.next"])
     }
@@ -69,7 +78,17 @@ final class Nudges {
         center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 
+    private func daily(id: String, at time: DateComponents, title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let trigger = UNCalendarNotificationTrigger(dateMatching: DateComponents(hour: time.hour, minute: time.minute), repeats: true)
+        center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
+    }
+
     private enum Keys {
         static let enabled = "remember.nudges.enabled"
+        static let caffeine = "remember.sleep.caffeine"
     }
 }

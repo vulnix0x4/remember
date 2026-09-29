@@ -342,9 +342,13 @@ describe("Remember app", () => {
     expect(screen.getByRole("button", { name: "Open settings" })).toBeTruthy();
     await user.click(within(mobileNavigation).getByRole("button", { name: "Life" }));
     const lifeSections = screen.getByRole("navigation", { name: "Life sections" });
-    expect(within(lifeSections).getAllByRole("button").map((button) => button.textContent)).toEqual(["Health", "Money", "Files"]);
+    expect(within(lifeSections).getAllByRole("button").map((button) => button.textContent)).toEqual(["Health", "Sleep", "Money", "Files"]);
     expect(await screen.findByRole("button", { name: "Log weight" })).toBeTruthy();
-    await user.click(within(lifeSections).getByRole("button", { name: "Money" }));
+    await user.click(within(lifeSections).getByRole("button", { name: "Sleep" }));
+    expect(await screen.findByRole("button", { name: "Turn on" })).toBeTruthy();
+    expect(window.location.hash).toBe("#/sleep");
+    expect(screen.queryByRole("textbox")).toBeNull();
+    await user.click(within(screen.getByRole("navigation", { name: "Life sections" })).getByRole("button", { name: "Money" }));
     expect(await screen.findByRole("button", { name: "Add an account" })).toBeTruthy();
     expect(screen.getByLabelText("Add a transaction")).toBeTruthy();
     await user.click(within(screen.getByRole("navigation", { name: "Life sections" })).getByRole("button", { name: "Files" }));
@@ -364,6 +368,11 @@ describe("Remember app", () => {
     window.location.hash = "/you";
     fireEvent(window, new HashChangeEvent("hashchange"));
     expect(await screen.findByRole("button", { name: "Log weight" })).toBeTruthy();
+
+    window.location.hash = "/sleep";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    expect(await screen.findByText("Phone-free nights")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sleep" })).toHaveAttribute("aria-current", "page");
   });
 
   it("brings a kept idea back from a Library moment and records where it lands", async () => {

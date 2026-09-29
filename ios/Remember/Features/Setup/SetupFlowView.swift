@@ -15,7 +15,7 @@ struct SetupFlowView: View {
     @State private var step = Step.welcome
 
     private enum Step: Int, CaseIterable {
-        case welcome, day, commitments, chores, focus, nudges, done
+        case welcome, day, sleep, commitments, chores, focus, nudges, done
     }
 
     var body: some View {
@@ -81,6 +81,7 @@ struct SetupFlowView: View {
         switch step {
         case .welcome: "Let's take the thinking out of your day"
         case .day: "When is your day?"
+        case .sleep: "Phone-free nights?"
         case .commitments: "What do you do most days?"
         case .chores: "What keeps life running?"
         case .focus: "Stay locked in"
@@ -93,6 +94,7 @@ struct SetupFlowView: View {
         switch step {
         case .welcome: "Tell Remember what your life looks like once. Jev decides what to do and when, so you don't have to."
         case .day: "Jev only plans inside these hours."
+        case .sleep: "Tap Going to bed when you're done for the night. Remember keeps your phone quiet until you're up."
         case .commitments: "Like college or the gym. Jev fits them in every day, around everything else."
         case .chores: "They repeat on their own. Laundry walks you through each step."
         case .focus: "When you start a task, Remember can block distracting apps until you're done."
@@ -111,6 +113,7 @@ struct SetupFlowView: View {
                 bullet("lock", "Start a task and everything else goes quiet")
             }
         case .day: YourDaySection()
+        case .sleep: SleepSection()
         case .commitments: CommitmentsSection(kind: .commitment)
         case .chores: CommitmentsSection(kind: .chore)
         case .focus: FocusModeSection()

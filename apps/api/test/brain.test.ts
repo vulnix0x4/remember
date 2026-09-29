@@ -142,11 +142,14 @@ describe("persistent automatic planning", () => {
     await repository.completeTask(userId, current.id);
     expect((await repository.snapshot(userId)).tasks.some((task) => task.status === "active")).toBe(false);
   });
-  it("preserves preferences and pause when a device time zone changes", async () => {
+  it("preserves preferences, pause, and sleep when a device time zone changes", async () => {
     const { userId, brain } = await setup();
-    await brain.updateSettings(userId, { ...settings, preferences: "Chores after work", enabled: false });
+    await brain.updateSettings(userId, { ...settings, preferences: "Chores after work", enabled: false, sleep: { enabled: true, morningMinutes: 30, caffeineReminder: false } });
     await brain.initialize(userId, "Europe/London");
-    expect((await brain.read(userId))?.settings).toMatchObject({ enabled: false, preferences: "Chores after work", timeZone: "Europe/London" });
+    expect((await brain.read(userId))?.settings).toMatchObject({
+      enabled: false, preferences: "Chores after work", timeZone: "Europe/London",
+      sleep: { enabled: true, morningMinutes: 30, caffeineReminder: false },
+    });
   });
   it("requires authentication and rejects invalid planning hours", async () => {
     expect((await app.request("https://remember.test/api/life/brain/sync", { method: "POST" }, env)).status).toBe(401);

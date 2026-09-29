@@ -10,6 +10,7 @@
   <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
   <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
   <key>CFBundlePackageType</key><string>XPC!</string>
+  <key>RememberAppGroup</key><string>$(REMEMBER_APP_GROUP)</string>
   <key>NSExtension</key>
   <dict>
     <key>NSExtensionPointIdentifier</key><string>com.apple.deviceactivity.monitor-extension</string>

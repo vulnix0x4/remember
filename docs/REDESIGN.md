@@ -46,7 +46,7 @@ People with ADHD and attention difficulties who need to get through their day. A
 
 ## App structure (5 tabs, unchanged)
 
-Today · Plan · Library · Ask · Life. Plan keeps the segments **Tasks · Calendar · Goals**. Library keeps **Saved · Patterns**. Life keeps **Health · Money · Files**.
+Today · Plan · Library · Ask · Life. Plan keeps the segments **Tasks · Calendar · Goals**. Library keeps **Saved · Patterns**. Life has **Health · Sleep · Money · Files**.
 
 - **Header:** large left-aligned title plus the avatar button (profile and settings) on the right. Segment control sits directly below the title as a pill control (height 40, `card` background, selected segment white with black text).
 - **Add bar:** pinned above the tab bar on every screen.
@@ -122,6 +122,74 @@ Starting with easy wins builds momentum, but quick tasks never run out, so the w
 - **Afterwards:** once the big one is done, stopped, or moved aside (Not now or Do something else), Jev picks as usual for the rest of the day.
 - The session lives on the device, one per day.
 
+## Sleep
+
+Sleep is what everything else stands on. There are no set times. You tap **Going to bed** when you're done for the night and **I'm up** in the morning. Those two taps are the phone lock and the sleep log. The section is built from a few proven habits: a phone-free hour before sleep, a steady wake-up time, daylight soon after waking, no late caffeine, and getting up when you can't sleep. It gives no medical advice. Its one line about doctors is below.
+
+### Settings (synced)
+
+Sleep is stored in Jev's settings as `sleep`. Every client sends it back unchanged when it saves other settings. Jev keeps planning with *Your day*.
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | false | Phone-free nights. |
+| `morningMinutes` | 0–180 | 60 | Phone-free time after **I'm up**. |
+| `caffeineReminder` | bool | true | A nudge 8 hours before the usual bedtime. |
+
+The shared pieces live in `@remember/domain` (`sleepSettingsSchema`, `sleepTip`, `median`, `minutesAfterEvening`, `sleepDurationLabel`, and the constants), and iOS mirrors them exactly.
+
+### A night (iPhone)
+
+- **Going to bed** starts phone-free right away, with the toast `Phone-free until you're up · Undo`. It appears on Today's evening card and on Life → Sleep.
+- Remember shows one calm full-screen view instead of the app. It has three phases:
+  - **Wind down** (the first 60 minutes). Label `WIND DOWN`, title `Lights out around 11:40 PM` (an hour after the tap). A checklist that resets each night: *Park tomorrow's thoughts*, *Phone on the charger, away from bed*, *Lights low*, *Something calm: shower, read, stretch*. The add bar reads `Park a thought for tomorrow…`. Anything added waits until 6 AM, the toast says `Parked for tomorrow`, and adding one checks the first item.
+  - **Sleep time** (after that). The screen is nearly black. Title `Sleep time`, Primary **I'm up**, Secondary **Can't sleep?**, and the same add bar.
+  - **Morning** (after **I'm up**, for `morningMinutes`). Label `GOOD MORNING`, title `Phone-free until 8:30 AM`, the check-in, and a checklist: *Get daylight: 10 minutes outside or by a window*, *Drink a glass of water*, *Move a little*.
+- Every phase ends with Quiet **I need my phone**. It opens `Take a breath first`, a 60-second ring and the line `If you still need it after this, you get 15 minutes.` Then Primary **Unlock for 15 minutes** appears, with Quiet **Never mind**. Unlocking hides the screen and lifts the app block for 15 minutes, and then both come back.
+- **I'm up** saves the night and starts the phone-free morning, or ends phone-free when `morningMinutes` is 0. The toast reads `Good morning · Undo`, and Undo goes back to sleep time. If nobody taps **I'm up**, phone-free ends by itself 14 hours after **Going to bed** and that night isn't saved.
+- **Can't sleep?** is a sheet with three short steps: *Been awake a while? Get up.* / *Go somewhere else and keep the lights low.*; *Do something boring.* / *Read something dull or fold laundry. No screens.*; *Go back when you feel sleepy.* / *Not before. Your bed is for sleep.* Primary **Breathe with me** runs two minutes of slow breathing: in for 4 seconds, out for 6, with a circle that grows and shrinks (text only under Reduce Motion).
+
+**The saved night.** It's a `sleep` health metric with `externalId` `remember.night.<key>`, where the key is the local date of **I'm up** minus 12 hours. Source `Remember`, unit `hr`, and `metadata` `{ aggregation: "remember_night", bedAt, rating?, latency? }`. `bedAt` is the **Going to bed** time. The metric runs from falling asleep (**Going to bed** plus the check-in's answer, or plus 0 until there is one) to **I'm up**. Saving again for the same night replaces it.
+
+### Morning check-in (iPhone)
+
+It shows on the phone-free morning screen after **I'm up**, and on Today afterwards (above the Now card) until it's answered, for up to 8 hours.
+1. `How did you sleep?` with three equal buttons: **Rough**, **Okay**, **Great**.
+2. If Apple Health has that night, it saves right away. Otherwise it asks `How long until you fell asleep?` with chips `Under 30 min`, `About an hour`, `1–2 hr` and `2+ hr` (15, 60, 90 and 150 minutes after **Going to bed**), then saves.
+3. The toast reads `Saved · 7 hr 5 min`.
+
+### Today's evening card (iPhone)
+
+While phone-free nights are on and it isn't phone-free already, a card sits at the top of Today from 6 PM until 4 AM. Title `Done for the night?`, the line `Tap when you start winding down. Your phone stays quiet until you're up.`, and Secondary **Going to bed**.
+
+### Life → Sleep
+
+**Off:** the empty state (moon icon), title `Phone-free nights`, the line `Tap Going to bed when you're done for the night. Your phone stays quiet until you're up.`, and Secondary **Turn on**. That turns phone-free nights on and opens Settings.
+
+**On**, top to bottom:
+1. **Tonight card** (the hero). Label `TONIGHT`, title `Done for the night?`, and the line `Tap when you start winding down. Your phone stays quiet until you're up.` On iPhone it has Primary **Going to bed**. The web shows `Tap Going to bed on your iPhone.` instead. When last night is known (from the two taps or Apple Health), one more line reads `Last night 12:40 AM – 7:35 AM · 6 hr 55 min`.
+2. **Last 7 nights.** The newest 7 nights keyed 0 to 7 days before today. One row per night, labeled by the evening's weekday (`Sun`), with an accent bar from falling asleep to getting up on a shared time axis. The usual bedtime and usual wake-up (medians) show as two faint vertical lines once there are 3 nights. Below it are three stats: average sleep (`6.8 hr`, *average*), usual bedtime (`12:40 AM`, *usual bedtime*, `—` before 3 nights), and the wake-up range (`1 hr 20 min`, *wake-up range*). With no nights, it shows one line: `No nights yet. Tap Going to bed tonight and I'm up tomorrow.`
+3. **One tip** from `sleepTip`, as a card with a title and one line.
+4. Secondary **Sleep settings**, which opens Settings.
+5. A `text3` footer: `Trouble sleeping most nights for weeks? Bring it up with a doctor.`
+
+**Nights** come from `sleep` health metrics, keyed by the date of the end time minus 12 hours (a saved night uses the key in its `externalId`). Apple Health nights (`metadata.aggregation` `healthkit_sleep_union`) give the times and hours. Saved nights give the rating, the time to fall asleep and the **Going to bed** time, plus the times when Apple Health has nothing for that night. A saved night never adds to Apple Health's hours anywhere (the Health segment's *Latest sleep* included). The usual bedtime is the median of the **Going to bed** times (or where Apple Health saw sleep start) as minutes after 6 PM, and the bedtime range is the latest minus the earliest.
+
+### Settings → Sleep
+
+A section right after Your day, and a first-run setup step after Your day titled `Phone-free nights?` (`Tap Going to bed when you're done for the night. Remember keeps your phone quiet until you're up.`).
+- Toggle **Phone-free nights** (`Tap Going to bed; get your phone back after you're up`).
+- When on: **Phone-free after waking** chips Off / 30 min / 1 hr / 1.5 hr, and the toggle **Caffeine reminder** (`8 hours before your usual bedtime`).
+- iPhone only: toggle **Lock my phone** (`Blocks apps while phone-free. Calls and alarms still work.`), then **Apps you can still use** (the system app picker).
+
+### Lock my phone (iPhone)
+
+Screen Time. The app group holds the night's state: when **Going to bed** and **I'm up** were tapped, the phone-free morning length, any 15-minute unlock, and whether the lock is on. One rule decides the shield everywhere, including in the device-activity monitor when Remember is closed. Apps stay shielded from **Going to bed** until **I'm up** plus the phone-free morning (never more than 14 hours after **Going to bed**), except during an unlock. The shield covers every app category and website except the allowed apps. **Going to bed** starts a one-off interval that runs to the 14-hour cap, **I'm up** starts one that ends with the phone-free morning (at least 15 minutes, Screen Time's minimum), and an unlock starts one of 15 minutes. Each interval's start and end re-applies the rule.
+
+**Nudge** (iPhone, when Gentle reminders are on): `Last call for caffeine` / `Caffeine after now can keep you up tonight.` It repeats daily, 8 hours before the usual bedtime, once Remember knows it (3 nights).
+
+The web has Life → Sleep and Settings → Sleep. It doesn't have the lock, the phone-free screen, **Going to bed** or the check-in.
+
 ## Stuck sheet (replaces the blocker dialog and the task switcher)
 
 Bottom sheet, medium height. Title `What's getting in the way?`. Four large rows (icon + label, 64 tall, `card` background):
@@ -171,27 +239,28 @@ Contrast: `text2` on `card` must pass AA (it does at 0.64). Every icon-only cont
 
 ## Setup: one place for everything (also the first-run onboarding)
 
-All configuration lives in **Settings**, which opens from the avatar. There are no settings anywhere else. The Jev status line on Today opens Settings too. The first time someone signs in, and while they have no commitments and haven't finished setup, the same sections run as a skippable step-by-step flow: *Welcome → Your day → Commitments → Chores → Focus → Nudges → Done*. Every step has one primary **Next** button and a quiet **Skip**. The final step says "Jev is planning your day" and lands on Today.
+All configuration lives in **Settings**, which opens from the avatar. There are no settings anywhere else. The Jev status line on Today opens Settings too. The first time someone signs in, and while they have no commitments and haven't finished setup, the same sections run as a skippable step-by-step flow: *Welcome → Your day → Sleep → Commitments → Chores → Focus → Nudges → Done*. Every step has one primary **Next** button and a quiet **Skip**. The final step says "Jev is planning your day" and lands on Today.
 
 Settings sections, in order:
 
 1. **Your day.** Four large choices: *Early bird* (6 AM–9 PM), *Regular* (8 AM–10 PM), *Night owl* (12 PM–3 AM) and *Custom*, which reveals two time pickers labeled "I wake up" and "I wind down". These write Jev's `startHour` and `endHour`, and an end before the start means after midnight. It also includes **Let Jev plan my day** (on/off).
-2. **Commitments.** Things you do most days that must fit around everything else. Each row shows the title, days and length, and tapping it opens the editor. There's a quiet `+ Add commitment` row. **Templates** appear as tappable chips when the list is empty and under the add row:
+2. **Sleep.** See *Settings → Sleep* above.
+3. **Commitments.** Things you do most days that must fit around everything else. Each row shows the title, days and length, and tapping it opens the editor. There's a quiet `+ Add commitment` row. **Templates** appear as tappable chips when the list is empty and under the add row:
    - *College study*: every day, 2 hr, Must do
    - *Coursework*: weekdays, 1 hr, Must do
    - *Gym*: Mon/Wed/Fri, 1 hr, Important
    - *Walk*: every day, 20 min, Nice
-3. **Chores.** Things that keep life running. The row shows the title and rhythm ("Laundry · weekly"). Templates:
+4. **Chores.** Things that keep life running. The row shows the title and rhythm ("Laundry · weekly"). Templates:
    - *Laundry*: weekly, 30 min active, with guided steps (below)
    - *Dishes*: daily, 15 min
    - *Take out trash*: weekly, 5 min
    - *Groceries*: weekly, 45 min
    - *Clean bathroom*: weekly, 30 min
    - *Change sheets*: every 2 weeks, 15 min
-4. **Focus mode.** iOS only. *Block distracting apps while I focus* (on/off), then *Choose apps* (the system app picker). There is no length setting, because blocking follows the task (see Lock-in mode).
-5. **Nudges.** *Gentle reminders* (on/off). This controls notifications for the next planned thing, "wrap up in 5 minutes", and wait steps finishing. Each is sent once and never repeated.
-6. **About me for Jev.** The free-text preferences field.
-7. Account, appearance and data: the existing settings, unchanged.
+5. **Focus mode.** iOS only. *Block distracting apps while I focus* (on/off), then *Choose apps* (the system app picker). There is no length setting, because blocking follows the task (see Lock-in mode).
+6. **Nudges.** *Gentle reminders* (on/off). This controls notifications for the next planned thing, "wrap up in 5 minutes", and wait steps finishing. Each is sent once and never repeated.
+7. **About me for Jev.** The free-text preferences field.
+8. Account, appearance and data: the existing settings, unchanged.
 
 **Commitment editor.** One sheet, top to bottom:
 - **Name:** large text.
