@@ -172,7 +172,9 @@ export class LifeRepository {
     if ((result.meta.changes ?? 0) === 0) throw new ApiError(409, "plan_changed", "Your plan changed while Jev was deciding. Refresh and try again.");
   }
 
-  async snapshot(userId: string, options: { allHistory?: boolean } = {}): Promise<LifeSnapshot> {
+  /** `now` sets the recent-history windows, so planning for a given moment sees that moment's calendar. */
+  async snapshot(userId: string, options: { allHistory?: boolean; now?: Date } = {}): Promise<LifeSnapshot> {
+    const now = (options.now ?? new Date()).getTime();
     const allHistory = options.allHistory === true;
     const [goals, tasks, blockers, floor, events, health, accounts, transactions, files] = await Promise.all([
       this.db.prepare("SELECT * FROM life_goals WHERE user_id = ?1 ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'paused' THEN 1 ELSE 2 END, updated_at DESC").bind(userId).all<GoalRow>(),
@@ -181,7 +183,7 @@ export class LifeRepository {
       this.db.prepare("SELECT * FROM life_floor_items WHERE user_id = ?1 ORDER BY created_at").bind(userId).all<FloorRow>(),
       allHistory
         ? this.db.prepare("SELECT * FROM calendar_events WHERE user_id = ?1 ORDER BY start_at").bind(userId).all<EventRow>()
-        : this.db.prepare("SELECT * FROM calendar_events WHERE user_id = ?1 AND end_at >= ?2 ORDER BY start_at LIMIT 500").bind(userId, new Date(Date.now() - 7 * 86_400_000).toISOString()).all<EventRow>(),
+        : this.db.prepare("SELECT * FROM calendar_events WHERE user_id = ?1 AND end_at >= ?2 ORDER BY start_at LIMIT 500").bind(userId, new Date(now - 7 * 86_400_000).toISOString()).all<EventRow>(),
       allHistory
         ? this.db.prepare("SELECT * FROM health_metrics WHERE user_id = ?1 ORDER BY start_at DESC").bind(userId).all<HealthRow>()
         : this.db.prepare(`
@@ -199,7 +201,7 @@ export class LifeRepository {
             UNION
             SELECT * FROM authoritative
             ORDER BY start_at DESC
-          `).bind(userId, new Date(Date.now() - 90 * 86_400_000).toISOString()).all<HealthRow>(),
+          `).bind(userId, new Date(now - 90 * 86_400_000).toISOString()).all<HealthRow>(),
       this.db.prepare("SELECT * FROM finance_accounts WHERE user_id = ?1 ORDER BY updated_at DESC").bind(userId).all<AccountRow>(),
       this.db.prepare(`SELECT * FROM finance_transactions WHERE user_id = ?1 ORDER BY occurred_at DESC${allHistory ? "" : " LIMIT 2000"}`).bind(userId).all<TransactionRow>(),
       this.db.prepare(`SELECT * FROM vault_files WHERE user_id = ?1 ORDER BY created_at DESC${allHistory ? "" : " LIMIT 1000"}`).bind(userId).all<FileRow>(),
