@@ -1,24 +1,16 @@
 import SwiftUI
 
-private struct PrimaryActionsModifier: ViewModifier {
-    @Environment(AppStore.self) private var store
-
+private struct PrimaryScreenModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Profile and settings", systemImage: "person.crop.circle") {
-                        store.selectedTab = .settings
-                    }
-                    .accessibilityIdentifier("remember.global.settings")
-                    .accessibilityHint("Opens account, appearance, and data settings")
-                }
-            }
+            // Root screens draw their own large title and avatar (RememberHeader), so the system bar stays out of the way.
+            .toolbar(.hidden, for: .navigationBar)
+            .background(RememberDesign.canvas)
     }
 }
 
 extension View {
     func rememberPrimaryActions() -> some View {
-        modifier(PrimaryActionsModifier())
+        modifier(PrimaryScreenModifier())
     }
 }

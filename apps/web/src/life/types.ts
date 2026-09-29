@@ -1,3 +1,9 @@
+import type { Commitment, RoutineStep } from "@remember/domain";
+
+export type { Commitment, RoutineStep };
+export type CommitmentKind = Commitment["kind"];
+export type CommitmentImportance = Commitment["importance"];
+
 export type LifeArea = "health" | "work" | "relationships" | "environment" | "money" | "growth" | "direction";
 export type TaskStatus = "inbox" | "queued" | "active" | "waiting" | "done" | "removed";
 export type TaskPriority = "low" | "normal" | "high" | "must";
@@ -20,6 +26,10 @@ export interface LifeTask {
   practiceReflection?: string; reflectedAt?: string | null;
   completedAt: string | null; createdAt: string; updatedAt: string;
   repeatEveryDays?: number | null; notBefore?: string | null;
+  /** Set when the task is one day's occurrence of a commitment or chore. */
+  commitmentId?: string | null; occurrenceDate?: string | null;
+  /** Minutes the focus timer actually ran, recorded on completion. */
+  actualMinutes?: number | null;
 }
 
 export interface BlockerEvent {
@@ -65,9 +75,9 @@ export interface VaultFile {
 export interface LifeSnapshot {
   goals: Goal[]; tasks: LifeTask[]; blockers: BlockerEvent[]; floor: LifeFloorItem[];
   events: CalendarEvent[]; health: HealthMetric[]; accounts: FinanceAccount[];
-  transactions: FinanceTransaction[]; files: VaultFile[];
+  transactions: FinanceTransaction[]; files: VaultFile[]; commitments: Commitment[];
 }
 
 export const emptyLifeSnapshot = (): LifeSnapshot => ({
-  goals: [], tasks: [], blockers: [], floor: [], events: [], health: [], accounts: [], transactions: [], files: [],
+  goals: [], tasks: [], blockers: [], floor: [], events: [], health: [], accounts: [], transactions: [], files: [], commitments: [],
 });

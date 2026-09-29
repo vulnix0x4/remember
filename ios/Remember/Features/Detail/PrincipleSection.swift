@@ -9,28 +9,29 @@ struct PrincipleSection: View {
     private var isKept: Bool { imprint.principleStatus == "active" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            SectionHeader(eyebrow: "", title: "Takeaway")
+        VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
+            SectionHeading(title: "Takeaway")
             if let principle = imprint.candidatePrinciples.first {
-                Label(principle, systemImage: "compass.drawing")
-                    .font(.headline)
+                Text(principle)
+                    .font(.rememberSectionTitle)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if imprint.principleID != nil {
                 Button(isKept ? "Remove takeaway" : "Keep takeaway", systemImage: isKept ? "minus" : "plus") {
                     update()
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.rememberSecondary)
                 .disabled(isUpdating)
                 .sensoryFeedback(.success, trigger: isKept)
             }
             if let updateError {
                 Label(updateError, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.rememberMeta)
                     .foregroundStyle(RememberDesign.danger)
             }
         }
-        .padding(RememberDesign.spacing)
-        .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rememberCard(padding: RememberDesign.spacing + 4)
     }
 
     private func update() {

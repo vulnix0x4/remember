@@ -6,8 +6,18 @@ struct AdaptiveSectionControl<Value: Hashable>: View {
     let accessibilityIdentifier: String
     let title: (Value) -> String
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var namespace
 
+    /// Every sectioned tab shows its tab name as the large title, with the sections as pills below.
     var body: some View {
+        RememberHeader(screenTitle) { control }
+    }
+
+    private var screenTitle: String {
+        (accessibilityIdentifier.split(separator: ".").last.map(String.init) ?? "").capitalized
+    }
+
+    private var control: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 ScrollView(.horizontal) {
@@ -26,19 +36,12 @@ struct AdaptiveSectionControl<Value: Hashable>: View {
                                 }
                             }
                             .font(.headline)
-                            .foregroundStyle(isSelected ? RememberDesign.accentInk : .primary)
+                            .foregroundStyle(isSelected ? RememberDesign.canvas : .white)
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
                             .frame(minHeight: 44)
                             .padding(.horizontal, RememberDesign.spacingCompact)
-                            .background(
-                                isSelected ? RememberDesign.accent : RememberDesign.surfaceRaised,
-                                in: .capsule
-                            )
-                            .overlay {
-                                Capsule()
-                                    .stroke(isSelected ? RememberDesign.accent : RememberDesign.line, lineWidth: isSelected ? 2 : 1)
-                            }
+                            .background(isSelected ? RememberDesign.primaryFill : RememberDesign.card, in: .capsule)
                             .buttonStyle(.plain)
                             .accessibilityLabel(title(choice))
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -48,16 +51,34 @@ struct AdaptiveSectionControl<Value: Hashable>: View {
                 }
                 .scrollIndicators(.hidden)
             } else {
-                Picker("Section", selection: $selection) {
+                HStack(spacing: 4) {
                     ForEach(choices, id: \.self) { choice in
-                        Text(title(choice)).tag(choice)
+                        let isSelected = selection == choice
+                        Button {
+                            withAnimation(.snappy(duration: 0.2)) { selection = choice }
+                        } label: {
+                            Text(title(choice))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(isSelected ? RememberDesign.canvas : RememberDesign.text2)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, minHeight: 36)
+                                .background {
+                                    if isSelected {
+                                        Capsule().fill(RememberDesign.primaryFill).matchedGeometryEffect(id: "selection", in: namespace)
+                                    }
+                                }
+                                .contentShape(.capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(title(choice))
+                        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
                     }
                 }
-                .pickerStyle(.segmented)
+                .padding(4)
+                .background(RememberDesign.card, in: .capsule)
             }
         }
-        .padding(.horizontal, RememberDesign.spacing)
-        .padding(.vertical, RememberDesign.spacingSmall)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(accessibilityIdentifier)
         .sensoryFeedback(.selection, trigger: selection)
     }

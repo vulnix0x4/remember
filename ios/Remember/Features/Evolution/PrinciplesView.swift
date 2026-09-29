@@ -6,39 +6,33 @@ struct PrinciplesView: View {
 
     var body: some View {
         if principles.isEmpty {
-            ContentUnavailableView(
-                "No takeaways yet",
+            RememberEmptyState(
                 systemImage: "quote.bubble",
-                description: Text("Useful takeaways appear when a save clearly supports one.")
+                title: "No takeaways yet",
+                message: "They show up when a save has a clear one."
             )
         } else {
-            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-                Text("Takeaways worth revisiting")
-                    .font(.title2)
-                    .bold()
-                Text("Each takeaway comes directly from a saved source.")
-                    .font(.subheadline)
-                    .foregroundStyle(RememberDesign.secondaryText)
+            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                SectionHeading(title: "Takeaways")
                 ForEach(principles) { principle in
-                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
                         Text(principle.text)
-                            .font(.body)
-                            .fontWeight(.semibold)
+                            .font(.rememberRowTitle)
                         if let rationale = principle.rationale, !rationale.isEmpty {
                             Text(rationale)
                                 .font(.subheadline)
-                                .foregroundStyle(RememberDesign.secondaryText)
+                                .foregroundStyle(RememberDesign.text2)
                         }
                         if let imprint = imprint(for: principle.itemId) {
                             NavigationLink(value: imprint) {
                                 Label(imprint.title, systemImage: "bookmark")
-                                    .font(.footnote)
+                                    .lineLimit(1)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.rememberQuiet)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .rememberSurface()
+                    .rememberCard(padding: RememberDesign.spacing)
                 }
             }
         }

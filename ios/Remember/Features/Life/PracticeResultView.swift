@@ -16,81 +16,69 @@ struct PracticeResultView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                        Text("REAL-LIFE RESULT")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(RememberDesign.accent)
-                        Text("What happened when you tried it?")
-                            .font(.largeTitle.bold())
-                        Text("You tested “\(task.title).” This answer becomes evidence in your Personal Compass.")
-                            .foregroundStyle(RememberDesign.secondaryText)
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+                        Text("Did it help?")
+                            .font(.rememberHero)
+                            .accessibilityAddTraits(.isHeader)
+                        Text(task.title)
+                            .font(.subheadline)
+                            .foregroundStyle(RememberDesign.text2)
+                            .lineLimit(2)
                     }
 
                     VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                        Text("Did this help?")
-                            .font(.headline)
                         ForEach(PracticeOutcome.allCases, id: \.self) { choice in
+                            let isSelected = outcome == choice
                             Button {
                                 outcome = choice
                             } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: outcome == choice ? "checkmark.circle.fill" : "circle")
-                                        .font(.title3)
-                                        .foregroundStyle(outcome == choice ? RememberDesign.accent : RememberDesign.tertiaryText)
+                                HStack(spacing: RememberDesign.spacingCompact) {
+                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                        .font(.title2)
+                                        .foregroundStyle(isSelected ? RememberDesign.accent : RememberDesign.text3)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(choice.label)
-                                            .font(.headline)
+                                            .font(.rememberRowTitle)
+                                            .foregroundStyle(RememberDesign.text)
                                         Text(choice.meaning)
                                             .font(.subheadline)
-                                            .foregroundStyle(RememberDesign.secondaryText)
+                                            .foregroundStyle(RememberDesign.text2)
                                     }
-                                    Spacer()
+                                    Spacer(minLength: 0)
                                 }
-                                .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                                 .padding(.horizontal, RememberDesign.spacing)
-                                .background(outcome == choice ? RememberDesign.accent.opacity(0.1) : RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: RememberDesign.controlRadius)
-                                        .stroke(outcome == choice ? RememberDesign.accent : RememberDesign.line)
-                                }
+                                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                                .background(isSelected ? RememberDesign.cardRaised : RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+                                .contentShape(.rect(cornerRadius: RememberDesign.cornerRadius))
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier("remember.practice-result.\(choice.rawValue)")
-                            .accessibilityAddTraits(outcome == choice ? .isSelected : [])
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
                     }
+                    .sensoryFeedback(.selection, trigger: outcome)
 
                     VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                        Text("What did you notice?  Optional")
-                            .font(.headline)
-                        TextEditor(text: $reflection)
-                            .frame(minHeight: 120)
-                            .padding(RememberDesign.spacingSmall)
-                            .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: RememberDesign.controlRadius)
-                                    .stroke(RememberDesign.line)
-                            }
+                        SectionHeading(title: "What did you notice?", trailing: "Optional")
+                        TextField("One line is plenty", text: $reflection, axis: .vertical)
+                            .lineLimit(3...8)
+                            .padding(RememberDesign.spacing)
+                            .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.controlRadius))
                             .accessibilityLabel("What did you notice?")
                             .accessibilityIdentifier("remember.practice-result.note")
                     }
-
-                    Button(completesTask ? "Finish and remember this" : "Remember this result", systemImage: "checkmark") {
-                        save()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(RememberDesign.accent)
-                    .foregroundStyle(RememberDesign.accentInk)
-                    .controlSize(.large)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .disabled(outcome == nil || isSaving)
-                    .accessibilityIdentifier("remember.practice-result.save")
                 }
                 .padding(RememberDesign.spacing)
-                .padding(.bottom, RememberDesign.spacingLarge)
             }
-            .navigationTitle("Experiment result")
-            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .background(RememberDesign.canvas)
+            .rememberPrimaryFooter(
+                isEnabled: outcome != nil && !isSaving,
+                accessibilityIdentifier: "remember.practice-result.save",
+                action: save
+            ) {
+                Label(completesTask ? "Done" : "Save", systemImage: "checkmark")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Not now") { dismiss() }
@@ -99,6 +87,7 @@ struct PracticeResultView: View {
             }
         }
         .presentationDetents([.large])
+        .rememberSheetPresentation()
         .interactiveDismissDisabled(isSaving)
     }
 

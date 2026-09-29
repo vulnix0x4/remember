@@ -8,11 +8,13 @@ import {
   decisionRequestSchema,
   createGoalSchema,
   createLifeFloorItemSchema,
+  createCommitmentSchema,
   createTaskSchema,
   itemStatusSchema,
   practiceOutcomeSchema,
   returnCueUpdateSchema,
   updateGoalSchema,
+  updateCommitmentSchema,
   updateTaskSchema,
   upsertCalendarEventSchema,
   upsertFinanceAccountSchema,
@@ -366,9 +368,35 @@ api.post("/items/:id/contextual-return-feedback", async (context) => {
   return context.json({ recorded: true, feedback });
 });
 
-api.get("/life", async (context) =>
-  context.json(await new LifeRepository(context.env.DB).snapshot(context.get("user").id)),
-);
+api.get("/life", async (context) => {
+  const userId = context.get("user").id;
+  const repository = new LifeRepository(context.env.DB);
+  await repository.materializeCommitments(userId, await repository.timeZone(userId));
+  return context.json(await repository.snapshot(userId));
+});
+
+api.post("/life/commitments", async (context) => {
+  const userId = context.get("user").id;
+  const body = await readJson(context.req.raw, createCommitmentSchema);
+  const repository = new LifeRepository(context.env.DB);
+  return context.json({ commitment: await repository.createCommitment(userId, body, await repository.timeZone(userId)) }, 201);
+});
+
+api.patch("/life/commitments/:id", async (context) => {
+  const userId = context.get("user").id;
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const body = await readJson(context.req.raw, updateCommitmentSchema);
+  const repository = new LifeRepository(context.env.DB);
+  return context.json({ commitment: await repository.updateCommitment(userId, id, body, await repository.timeZone(userId)) });
+});
+
+api.delete("/life/commitments/:id", async (context) => {
+  const userId = context.get("user").id;
+  const id = uuidParamSchema.parse(context.req.param("id"));
+  const repository = new LifeRepository(context.env.DB);
+  await repository.deleteCommitment(userId, id, await repository.timeZone(userId));
+  return context.body(null, 204);
+});
 
 api.post("/life/autopilot", async (context) => {
   const userId = context.get("user").id;

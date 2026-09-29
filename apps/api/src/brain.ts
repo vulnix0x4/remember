@@ -50,6 +50,8 @@ export class BrainService {
   async run(userId: string, now = new Date()): Promise<BrainState | null> {
     const row = await this.row(userId); if (!row) return null;
     const settings = brainSettingsSchema.parse(JSON.parse(row.settings_json));
+    // Commitments become dated tasks before planning, so Jev sees today's college block and laundry.
+    await new LifeRepository(this.env.DB).materializeCommitments(userId, settings.timeZone, now);
     if (!settings.enabled) return this.read(userId);
     // Failed calls back off for five minutes, including after ordinary context changes.
     if (!row.dirty && row.next_check_at && row.next_check_at > now.toISOString()) return this.read(userId);
@@ -67,7 +69,7 @@ export class BrainService {
     }
     try {
       if (!this.env.OPENROUTER_API_KEY?.trim()) throw new ApiError(503, "jev_not_configured", "Connect your server’s OpenRouter key to let Jev keep your tasks planned.");
-      const snapshot = await new LifeRepository(this.env.DB).snapshot(userId);
+      const snapshot = await new LifeRepository(this.env.DB).snapshot(userId, { now });
       const [principles, thoughts] = await Promise.all([
         this.env.DB.prepare("SELECT text FROM candidate_principles WHERE user_id = ?1 AND status = 'active' ORDER BY updated_at DESC LIMIT 20").bind(userId).all<{ text: string }>(),
         this.env.DB.prepare("SELECT note_text FROM items WHERE user_id = ?1 AND memory_kind = 'thought' AND note_text IS NOT NULL ORDER BY saved_at DESC LIMIT 12").bind(userId).all<{ note_text: string }>(),

@@ -9,54 +9,42 @@ struct CarryForwardSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacing) {
-            Label("Carry it forward", systemImage: "flask")
-                .font(.subheadline)
-                .bold()
-                .foregroundStyle(RememberDesign.accent)
+            Text("Try it for real")
+                .font(.rememberSectionTitle)
+                .accessibilityAddTraits(.isHeader)
 
-            Text("Don’t just save the idea. Try it.")
-                .font(.title2)
-                .bold()
-
-            Text("Remember found a small way to test this in your own life. Add it to Plan when you want the idea to become more than something you agreed with.")
-                .font(.body)
-                .foregroundStyle(RememberDesign.secondaryText)
-
-            ForEach(imprint.experiments, id: \.self) { experiment in
-                VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            ForEach(Array(imprint.experiments.enumerated()), id: \.element) { index, experiment in
+                VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
+                    if index > 0 {
+                        Rectangle().fill(RememberDesign.line).frame(height: 1).accessibilityHidden(true)
+                    }
                     Text(experiment)
-                        .font(.headline)
+                        .font(.body)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if addedExperiments.contains(experiment) {
                         Button("Added to Plan", systemImage: "checkmark", action: openPlan)
-                            .buttonStyle(.bordered)
-                            .tint(RememberDesign.accent)
+                            .buttonStyle(.rememberQuiet)
+                    } else if index == 0 {
+                        Button("Try this", systemImage: "plus") { add(experiment) }
+                            .buttonStyle(.rememberPrimary)
+                            .disabled(addingExperiment != nil)
                     } else {
-                        Button("Try this", systemImage: "plus") {
-                            add(experiment)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(RememberDesign.accent)
-                        .disabled(addingExperiment != nil)
+                        Button("Try this", systemImage: "plus") { add(experiment) }
+                            .buttonStyle(.rememberSecondary)
+                            .disabled(addingExperiment != nil)
                     }
                 }
-                .padding(RememberDesign.spacing)
-                .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
-                    .font(.footnote)
+                    .font(.rememberMeta)
                     .foregroundStyle(RememberDesign.danger)
             }
         }
-        .padding(RememberDesign.spacing)
-        .background(RememberDesign.accent.opacity(0.08), in: .rect(cornerRadius: RememberDesign.cornerRadius))
-        .overlay {
-            RoundedRectangle(cornerRadius: RememberDesign.cornerRadius)
-                .stroke(RememberDesign.accent.opacity(0.28))
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rememberCard(padding: RememberDesign.spacing + 4)
         .sensoryFeedback(.success, trigger: addedExperiments.count)
     }
 
@@ -77,7 +65,7 @@ struct CarryForwardSection: View {
             if succeeded {
                 addedExperiments.insert(experiment)
             } else {
-                errorMessage = "This experiment could not be added to Plan. Try again."
+                errorMessage = "Couldn’t add that. Try again."
             }
             addingExperiment = nil
         }

@@ -20,194 +20,177 @@ struct DecisionView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(WarmBackground())
-        .navigationTitle("Decision")
+        .background(RememberDesign.canvas)
+        .rememberBottomDock()
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbarBackground(RememberDesign.canvas, for: .navigationBar)
         .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
         .task { decisionFocused = true }
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Image(systemName: "signpost.right.and.left")
-                    .font(.title2)
-                    .foregroundStyle(RememberDesign.accent)
-                    .frame(width: 48, height: 48)
-                    .background(RememberDesign.accent.opacity(0.12), in: .rect(cornerRadius: RememberDesign.controlRadius))
-                Text("Think through a decision")
-                    .font(.largeTitle)
-                    .bold()
-                Text("Bring your own memory into the choice. Remember will show what fits, what pulls the other way, and what you could test before committing.")
-                    .foregroundStyle(RememberDesign.secondaryText)
-            }
+            Text("Think it through")
+                .font(.rememberScreenTitle)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("remember.decision.title")
 
             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Text("What are you deciding?").font(.headline)
+                SectionHeading(title: "What are you deciding?")
                 TextField("Should I take the new role?", text: $decision, axis: .vertical)
-                    .lineLimit(3...6)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2...6)
                     .focused($decisionFocused)
                     .textFieldStyle(.plain)
-                    .padding(RememberDesign.spacing)
-                    .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
+                    .padding(RememberDesign.spacing + 4)
+                    .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
                     .accessibilityIdentifier("remember.decision.input")
             }
 
             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                HStack(spacing: 5) {
-                    Text("What makes it hard?").font(.headline)
-                    Text("Optional").font(.subheadline).foregroundStyle(RememberDesign.secondaryText)
-                }
-                TextField("What feels uncertain, costly, or important about it?", text: $context, axis: .vertical)
-                    .lineLimit(3...6)
+                SectionHeading(title: "What makes it hard?", trailing: "Optional")
+                TextField("Cost, risk, what matters…", text: $context, axis: .vertical)
+                    .lineLimit(2...6)
                     .textFieldStyle(.plain)
-                    .padding(RememberDesign.spacing)
-                    .background(RememberDesign.surface, in: .rect(cornerRadius: RememberDesign.controlRadius))
+                    .padding(RememberDesign.spacing + 4)
+                    .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle")
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(RememberDesign.danger)
                     .accessibilityIdentifier("remember.decision.error")
             }
 
             Button(action: think) {
-                HStack {
-                    Text(isThinking ? "Looking through your saves…" : "Think it through")
-                    Spacer()
-                    if isThinking { ProgressView().tint(RememberDesign.accentInk) }
-                    else { Image(systemName: "arrow.right") }
+                if isThinking {
+                    HStack(spacing: RememberDesign.spacingSmall) {
+                        ProgressView().tint(RememberDesign.canvas)
+                        Text("Reading your saves…")
+                    }
+                } else {
+                    Text("Think it through")
                 }
-                .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(RememberDesign.accent)
-            .foregroundStyle(RememberDesign.accentInk)
+            .buttonStyle(.rememberPrimary)
             .disabled(decision.trimmingCharacters(in: .whitespacesAndNewlines).count < 3 || isThinking)
             .accessibilityIdentifier("remember.decision.submit")
 
-            Label("Uses only your saved material", systemImage: "lock.shield")
-                .font(.footnote)
-                .foregroundStyle(RememberDesign.secondaryText)
+            Label("Uses only your saves", systemImage: "lock.fill")
+                .font(.rememberMeta)
+                .foregroundStyle(RememberDesign.text3)
+                .frame(maxWidth: .infinity)
         }
-        .padding(RememberDesign.spacing)
+        .padding(.horizontal, RememberDesign.spacing)
         .padding(.bottom, RememberDesign.spacingXLarge)
     }
 
     private func result(_ brief: DecisionBrief) -> some View {
         LazyVStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-            Button("Start over", systemImage: "arrow.left") {
-                self.brief = nil
-                wasAdded = false
-                errorMessage = nil
-            }
-            .font(.subheadline.bold())
-
             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Text("Your decision")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RememberDesign.secondaryText)
                 Text(brief.decision)
-                    .font(.largeTitle)
-                    .bold()
+                    .font(.rememberHero)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(brief.perspective)
-                    .font(.title3)
+                    .font(.body)
+                    .foregroundStyle(RememberDesign.text2)
             }
 
-            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Text("What seems to matter")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RememberDesign.secondaryText)
-                Text(brief.whatMatters)
-                    .font(.title3)
-            }
-            .padding(.leading, RememberDesign.spacing)
-            .overlay(alignment: .leading) { Rectangle().fill(RememberDesign.accent).frame(width: 2) }
-
-            VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                decisionPull("What pulls you toward it", brief.pullToward)
-                Divider()
-                decisionPull("What pulls the other way", brief.pullAgainst)
-            }
-            .padding(.vertical, RememberDesign.spacingSmall)
-
-            VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+            VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
                 Text("A small way to find out")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .font(.rememberMeta)
+                    .foregroundStyle(RememberDesign.text2)
                 Text(brief.smallTest)
-                    .font(.title3)
-                    .bold()
+                    .font(.rememberSectionTitle)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button(action: addTest) {
-                    Label(wasAdded ? "Added to Plan" : isAdding ? "Adding…" : "Try this", systemImage: wasAdded ? "checkmark" : "arrow.right")
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                    Label(wasAdded ? "Added to Plan" : isAdding ? "Adding…" : "Try this", systemImage: wasAdded ? "checkmark" : "plus")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(RememberDesign.accent)
-                .foregroundStyle(RememberDesign.accentInk)
+                .buttonStyle(.rememberPrimary)
                 .disabled(isAdding || wasAdded)
                 .accessibilityIdentifier("remember.decision.try")
             }
-            .rememberSurface()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .rememberCard(padding: RememberDesign.spacing + 4)
+
+            VStack(alignment: .leading, spacing: RememberDesign.spacingCompact) {
+                decisionPull("What seems to matter", brief.whatMatters)
+                Rectangle().fill(RememberDesign.line).frame(height: 1).accessibilityHidden(true)
+                decisionPull("What pulls you toward it", brief.pullToward)
+                Rectangle().fill(RememberDesign.line).frame(height: 1).accessibilityHidden(true)
+                decisionPull("What pulls the other way", brief.pullAgainst)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .rememberCard(padding: RememberDesign.spacing)
 
             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Text("One question worth answering")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(RememberDesign.secondaryText)
-                Text(brief.nextQuestion)
-                    .font(.title3)
+                decisionPull("One question worth answering", brief.nextQuestion)
                 Button("Take this to Ask", systemImage: "bubble.left.and.text.bubble.right") {
                     store.askDraft = brief.nextQuestion
                 }
-                .buttonStyle(.bordered)
-                .tint(RememberDesign.accent)
+                .buttonStyle(.rememberSecondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .rememberCard(padding: RememberDesign.spacing)
 
             if !brief.citations.isEmpty {
-                DisclosureGroup("The saves that shaped this") {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(brief.citations) { citation in
-                            if let imprint = store.imprint(withID: citation.itemID) {
-                                NavigationLink(value: imprint) {
-                                    HStack {
-                                        Text(citation.title).multilineTextAlignment(.leading)
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                    }
-                                    .frame(minHeight: 44)
+                VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+                    SectionHeading(title: "Saves that shaped this")
+                    ForEach(brief.citations) { citation in
+                        if let imprint = store.imprint(withID: citation.itemID) {
+                            NavigationLink(value: imprint) {
+                                HStack {
+                                    Text(citation.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(RememberDesign.text)
+                                        .multilineTextAlignment(.leading)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.bold))
+                                        .foregroundStyle(RememberDesign.text3)
                                 }
-                                .buttonStyle(.plain)
-                                Divider()
+                                .padding(.horizontal, RememberDesign.spacing)
+                                .frame(minHeight: RememberDesign.rowHeight)
+                                .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+                                .contentShape(.rect)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.top, RememberDesign.spacingSmall)
                 }
-                .font(.subheadline.bold())
             }
 
             if let limitation = brief.limitations.first {
                 Text(limitation)
-                    .font(.footnote)
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .font(.rememberMeta)
+                    .foregroundStyle(RememberDesign.text3)
             }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle")
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(RememberDesign.danger)
             }
+
+            Button("Start over", systemImage: "arrow.counterclockwise") {
+                self.brief = nil
+                wasAdded = false
+                errorMessage = nil
+            }
+            .buttonStyle(.rememberQuiet)
+            .frame(maxWidth: .infinity)
         }
-        .padding(RememberDesign.spacing)
+        .padding(.horizontal, RememberDesign.spacing)
         .padding(.bottom, RememberDesign.spacingXLarge)
         .accessibilityIdentifier("remember.decision.result")
     }
 
     private func decisionPull(_ title: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-            Text(title).font(.subheadline.bold()).foregroundStyle(RememberDesign.secondaryText)
-            Text(text).font(.body)
+        VStack(alignment: .leading, spacing: RememberDesign.spacingXXSmall) {
+            Text(title).font(.rememberMeta).foregroundStyle(RememberDesign.text2)
+            Text(text).font(.body).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -224,7 +207,7 @@ struct DecisionView: View {
                     context: context.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
             } catch {
-                errorMessage = "Remember could not think this through right now. Try again."
+                errorMessage = "Couldn’t think this through. Try again."
             }
         }
     }
@@ -245,7 +228,7 @@ struct DecisionView: View {
             )
             wasAdded = added
             isAdding = false
-            if !added { errorMessage = "This test could not be added to Plan. Try again." }
+            if !added { errorMessage = "Couldn’t add that. Try again." }
         }
     }
 }

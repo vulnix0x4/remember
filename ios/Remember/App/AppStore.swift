@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 @Observable @MainActor
 final class AppStore {
@@ -34,6 +35,17 @@ final class AppStore {
     var isSyncingCalendar = false
     var lastHealthSync: Date?
     var lastCalendarSync: Date?
+    var toast: AppToast?
+    @ObservationIgnored private var announcedToastID: UUID?
+    var setupIsPresented = false
+    /// The task shown in full-screen lock-in mode, from any Start button.
+    var lockInTask: LifeTask?
+    /// Increments after each successful life load, so views can react once data is in.
+    var lifeLoadCount = 0
+    /// Today's morning flow, if one was started or skipped. Kept on this device.
+    var morningSession: MorningSession? = MorningFlow.load() {
+        didSet { MorningFlow.save(morningSession) }
+    }
 
     /// One ordering for Today and Plan, so they never recommend different tasks.
     var queuedLifeTasks: [LifeTask] {
@@ -58,10 +70,83 @@ final class AppStore {
     }
 
     var suggestedLifeTask: LifeTask? {
-        queuedLifeTasks.first {
+        if let morning = morningPick { return morning.task }
+        return queuedLifeTasks.first {
             ($0.notBefore ?? .distantPast) <= .now &&
             ($0.scheduledStart ?? .distantPast) <= .now
         }
+    }
+
+    // MARK: Morning flow
+
+    /// Tasks that could happen today, in Jev's order: nothing held for later or planned for another day.
+    private var morningCandidates: MorningFlow.Candidates {
+        let available = queuedLifeTasks.filter { task in
+            (task.notBefore ?? .distantPast) <= .now &&
+            (task.scheduledStart.map { $0 <= .now || Calendar.current.isDateInToday($0) } ?? true)
+        }
+        return MorningFlow.candidates(available: available, commitments: lifeSnapshot.commitments ?? [])
+    }
+
+    /// The next warm-up task or the big one, while the morning flow runs and nothing is in progress.
+    var morningPick: MorningFlow.Pick? {
+        guard lifeSnapshot.activeTask == nil else { return nil }
+        return MorningFlow.pick(morningSession, tasks: lifeSnapshot.tasks, small: morningCandidates.small, now: .now)
+    }
+
+    /// The morning card's plan, when it's morning and there's something worth warming up for.
+    var morningOffer: MorningFlow.Candidates? {
+        let candidates = morningCandidates
+        let startHour = brain?.settings.startHour ?? 8
+        return MorningFlow.shouldOffer(morningSession, candidates: candidates, now: .now, startHour: startHour, hasActive: lifeSnapshot.activeTask != nil)
+            ? candidates : nil
+    }
+
+    func startMorning() {
+        morningSession = MorningFlow.start(morningCandidates, now: .now)
+    }
+
+    func skipMorning() {
+        morningSession = MorningFlow.skip(now: .now)
+    }
+
+    /// Hands the rest of the day back to Jev, after the big one is done, stopped, or moved aside.
+    func endMorning() {
+        guard var session = morningSession, session.stage != .done else { return }
+        session.stage = .done
+        morningSession = session
+    }
+
+    // MARK: Sleep
+
+    /// Sleep settings as Jev last saved them.
+    var sleep: SleepSettings { brain?.settings.sleep ?? SleepSettings() }
+
+    @discardableResult
+    func updateSleep(_ change: (inout SleepSettings) -> Void) async -> Bool {
+        await updateBrainSettings { change(&$0.sleep) }
+    }
+
+    /// Saves a night (from I'm up, or the check-in), showing it right away. Saving the same night again replaces it.
+    func saveSleepNight(_ metric: HealthMetricUpload, toast message: String? = nil, undo: (@MainActor () async -> Void)? = nil) async {
+        let local = LifeHealthMetric(id: UUID(), externalId: metric.externalId, type: metric.type, value: metric.value, unit: metric.unit,
+                                     startAt: metric.startAt, endAt: metric.endAt, source: metric.source, metadata: metric.metadata, createdAt: .now)
+        lifeSnapshot.health.removeAll { $0.source == metric.source && $0.externalId == metric.externalId }
+        lifeSnapshot.health.insert(local, at: 0)
+        if let message { showToast(message, undo: undo) }
+        do {
+            try await lifeRepository.syncHealth([metric])
+            await loadLife()
+        } catch {
+            presentLifeError("Last night didn’t save. Check your connection and try again.")
+        }
+    }
+
+    /// Brings in last nights from Apple Health without any prompt or error.
+    func syncSleepQuietly(_ metrics: [HealthMetricUpload]) async {
+        guard !metrics.isEmpty, (try? await lifeRepository.syncHealth(metrics)) != nil else { return }
+        lastHealthSync = .now
+        await loadLife()
     }
 
     func firstStep(for task: LifeTask) -> String {
@@ -363,6 +448,7 @@ final class AppStore {
         defer { isLoadingLife = false }
         do {
             lifeSnapshot = try await lifeRepository.load()
+            lifeLoadCount += 1
             Task { await refreshBrain() }
         }
         catch {
@@ -620,7 +706,240 @@ final class AppStore {
     }
 
     private func presentLifeError(_ message: String) {
-        errorMessage = message
-        errorIsPresented = true
+        showToast(message, isError: true)
     }
+
+    // MARK: - Toasts
+
+    func showToast(_ message: String, isError: Bool = false, undo: (@MainActor () async -> Void)? = nil) {
+        let next = AppToast(message: message, isError: isError, undo: undo)
+        toast = next
+        // One countdown per toast, owned here so screens appearing or closing never cut it short.
+        // Undo needs time to notice and reach; plain confirmations can go sooner.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(undo == nil ? 4 : 8))
+            self?.dismissToast(next.id)
+        }
+    }
+
+    /// Posts a VoiceOver announcement once per toast, however many places show it.
+    func announceToast(_ id: UUID) {
+        guard let toast, toast.id == id, announcedToastID != id else { return }
+        announcedToastID = id
+        AccessibilityNotification.Announcement(toast.message).post()
+    }
+
+    func dismissToast(_ id: UUID) {
+        if toast?.id == id { toast = nil }
+    }
+
+    // MARK: - Effortless task actions (optimistic, undoable)
+
+    /// Adds a task from one typed or spoken line. Jev decides when it happens. `parkedUntil` holds it back
+    /// (a thought parked at bedtime waits for the morning).
+    @discardableResult
+    func quickAddTask(_ text: String, goalId: UUID? = nil, parkedUntil: Date? = nil) async -> Bool {
+        let parsed = QuickTaskParser.parse(text, history: taskHistory)
+        guard !parsed.title.isEmpty else { return false }
+        let notBefore = [parsed.notBefore, parkedUntil].compactMap { $0 }.max()
+        do {
+            let task = try await lifeRepository.createTask(CreateLifeTaskRequest(
+                title: parsed.title, firstStep: "", notes: "", area: .direction, status: .queued,
+                priority: parsed.priority ?? .normal, energy: .any,
+                durationMinutes: parsed.durationMinutes ?? 15, goalId: goalId, source: "manual", sourceItemId: nil,
+                repeatEveryDays: parsed.repeatEveryDays, dueAt: parsed.dueAt, notBefore: notBefore
+            ))
+            await loadLife()
+            let message = parkedUntil != nil ? "Parked for tomorrow" : brain?.settings.enabled == true ? "Added · Jev will fit it in" : "Added"
+            showToast(message) { [weak self] in
+                await self?.patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Past tasks the quick-add parser learns repeat rhythms from.
+    var taskHistory: [QuickTaskParser.HistoryEntry] {
+        lifeSnapshot.tasks.map { QuickTaskParser.HistoryEntry(title: $0.title, completedAt: $0.completedAt, actualMinutes: $0.actualMinutes) }
+    }
+
+    func startTask(_ task: LifeTask) async {
+        let previousActive = lifeSnapshot.activeTask
+        replaceLocally(task.id) { $0.status = .active }
+        if let previousActive, previousActive.id != task.id {
+            replaceLocally(previousActive.id) { $0.status = .queued }
+        }
+        do {
+            try await lifeRepository.activateTask(id: task.id)
+            await loadLife()
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t start that task. Try again.")
+        }
+    }
+
+    func completeTask(_ task: LifeTask, minutesSpent: Int) async -> Bool {
+        let previousStatus = task.status
+        let completedAt = Date.now
+        replaceLocally(task.id) { $0.status = .done; $0.completedAt = completedAt }
+        do {
+            try await lifeRepository.completeTask(id: task.id, minutesSpent: minutesSpent, result: nil)
+            await loadLife()
+            showToast("Done. Nice work.") { [weak self] in
+                guard let self else { return }
+                // Finishing a repeating task spawns its one allowed next copy. Reopening the original would
+                // orphan the repeat, so undo instead brings that copy back in the original's place.
+                if task.repeatEveryDays != nil,
+                   let spawned = self.lifeSnapshot.tasks.first(where: {
+                       $0.id != task.id && $0.title == task.title && $0.repeatEveryDays == task.repeatEveryDays
+                           && $0.status != .done && $0.status != .removed && $0.createdAt >= completedAt.addingTimeInterval(-5)
+                   }) {
+                    await self.patchTask(spawned.id, LifeTaskPatch(
+                        firstStep: task.firstStep, status: .queued, notBefore: .some(task.notBefore), dueAt: .some(task.dueAt)
+                    ), quietly: true)
+                    await self.patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
+                } else {
+                    await self.patchTask(task.id, LifeTaskPatch(status: previousStatus == .active ? .queued : previousStatus), quietly: true)
+                }
+            }
+            return true
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t mark that done. Try again.")
+            return false
+        }
+    }
+
+    func deleteTask(_ task: LifeTask) async {
+        let previousStatus = task.status == .active ? LifeTaskStatus.queued : task.status
+        await patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
+        showToast("Deleted") { [weak self] in
+            await self?.patchTask(task.id, LifeTaskPatch(status: previousStatus), quietly: true)
+        }
+    }
+
+    /// "Not now" / "Do something else": moves the task aside for an hour and lets Jev choose again.
+    func setTaskAside(_ task: LifeTask) async {
+        let original = task
+        if await blockLifeTask(task.id, reason: .different) {
+            showToast("Moved aside for an hour") { [weak self] in
+                await self?.patchTask(original.id, LifeTaskPatch(status: .queued, notBefore: .some(original.notBefore)), quietly: true)
+            }
+        }
+    }
+
+    /// Adapts a task that feels hard. Undo restores its original wording and length.
+    func adaptTask(_ task: LifeTask, reason: LifeBlockerReason) async {
+        let original = task
+        guard await blockLifeTask(task.id, reason: reason) else { return }
+        let message = switch reason {
+        case .big: "Made it smaller"
+        case .unclear: "Here’s a clear first step"
+        case .time: "Cut to five minutes"
+        default: "Updated"
+        }
+        showToast(message) { [weak self] in
+            await self?.patchTask(original.id, LifeTaskPatch(
+                title: original.title, firstStep: original.firstStep, durationMinutes: original.durationMinutes
+            ), quietly: true)
+        }
+    }
+
+    /// Saves edits from the task sheet.
+    func patchTask(_ id: UUID, _ patch: LifeTaskPatch, quietly: Bool = false) async {
+        guard !patch.isEmpty else { return }
+        replaceLocally(id) { $0 = patch.applied(to: $0) }
+        do {
+            try await lifeRepository.updateTask(id: id, patch: patch)
+            await loadLife()
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t save that change. Try again.")
+        }
+    }
+
+    // MARK: - Commitments and chores
+
+    @discardableResult
+    func saveCommitment(id: UUID? = nil, _ draft: CommitmentDraft) async -> Bool {
+        do {
+            _ = try await lifeRepository.saveCommitment(id: id, draft: draft)
+            await loadLife()
+            return true
+        } catch {
+            presentLifeError("Couldn’t save that. Try again.")
+            return false
+        }
+    }
+
+    func deleteCommitment(_ commitment: Commitment) async {
+        do {
+            try await lifeRepository.deleteCommitment(id: commitment.id)
+            await loadLife()
+            showToast("Removed \(commitment.title)") { [weak self] in
+                await self?.saveCommitment(CommitmentDraft(commitment))
+            }
+        } catch {
+            presentLifeError("Couldn’t remove that. Try again.")
+        }
+    }
+
+    /// Jev's settings, changed from Settings. Returns false when nothing could be saved.
+    @discardableResult
+    func updateBrainSettings(_ change: (inout BrainSettings) -> Void) async -> Bool {
+        guard var settings = brain?.settings else { return false }
+        change(&settings)
+        return await refreshBrain(settings: settings)
+    }
+
+    /// Library add bar: a link becomes a saved link, anything else a thought.
+    @discardableResult
+    func quickSave(_ text: String) async -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLikeLink = !trimmed.contains(" ") && trimmed.contains(".")
+        let url = URLValidator.validatedWebURL(from: trimmed)
+            ?? (looksLikeLink && !trimmed.contains("://") ? URLValidator.validatedWebURL(from: "https://\(trimmed)") : nil)
+        do {
+            if let url {
+                let alreadySaved = imprints.contains { $0.url == url }
+                try await capture(url)
+                showToast(alreadySaved ? "Already in your library" : "Link saved · analyzing")
+            } else {
+                try await captureThought(trimmed)
+                showToast("Thought saved")
+            }
+            return true
+        } catch {
+            presentLifeError("Couldn’t save that. Your words are still in the bar.")
+            return false
+        }
+    }
+
+    func updateGoal(_ goal: LifeGoal, progress: Int? = nil, status: String? = nil) async {
+        if let index = lifeSnapshot.goals.firstIndex(where: { $0.id == goal.id }) {
+            if let progress { lifeSnapshot.goals[index].progress = progress }
+            if let status { lifeSnapshot.goals[index].status = status }
+        }
+        do {
+            try await lifeRepository.updateGoal(id: goal.id, progress: progress, status: status)
+            await loadLife()
+        } catch {
+            await loadLife()
+            presentLifeError("Couldn’t update that goal. Try again.")
+        }
+    }
+
+    private func replaceLocally(_ id: UUID, _ change: (inout LifeTask) -> Void) {
+        guard let index = lifeSnapshot.tasks.firstIndex(where: { $0.id == id }) else { return }
+        change(&lifeSnapshot.tasks[index])
+    }
+}
+
+struct AppToast: Identifiable {
+    let id = UUID()
+    let message: String
+    let isError: Bool
+    let undo: (@MainActor () async -> Void)?
 }

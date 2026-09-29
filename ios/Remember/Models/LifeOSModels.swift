@@ -90,6 +90,123 @@ struct LifeTask: Codable, Identifiable, Hashable, Sendable {
     var updatedAt: Date
     var repeatEveryDays: Int? = nil
     var notBefore: Date? = nil
+    /// Set when this task is one day's occurrence of a commitment or chore.
+    var commitmentId: UUID? = nil
+    var occurrenceDate: String? = nil
+    /// Minutes the focus timer actually ran, recorded on completion.
+    var actualMinutes: Int? = nil
+}
+
+enum CommitmentKind: String, Codable, CaseIterable, Hashable, Sendable { case commitment, chore }
+
+enum CommitmentImportance: String, Codable, CaseIterable, Hashable, Sendable {
+    case must, high, normal
+
+    var label: String {
+        switch self {
+        case .must: "Must do"
+        case .high: "Important"
+        case .normal: "Nice to do"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .must: "Always planned, first"
+        case .high: "Planned when there's room"
+        case .normal: "Fits into open time"
+        }
+    }
+}
+
+struct RoutineStep: Codable, Hashable, Sendable, Identifiable {
+    var id = UUID()
+    var title: String
+    /// Hands-off time, like a washer running. The app times it and nudges when it ends.
+    var waitMinutes: Int?
+
+    private enum CodingKeys: String, CodingKey { case title, waitMinutes }
+
+    init(title: String, waitMinutes: Int? = nil) {
+        self.title = title
+        self.waitMinutes = waitMinutes
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        waitMinutes = try container.decodeIfPresent(Int.self, forKey: .waitMinutes)
+    }
+}
+
+/// Something that recurs on its own and is planned with everything else:
+/// a commitment (college study, gym) or a chore (laundry).
+struct Commitment: Codable, Identifiable, Hashable, Sendable {
+    let id: UUID
+    var title: String
+    var kind: CommitmentKind
+    /// Weekdays as a bitmask: Sunday = 1, Monday = 2 … Saturday = 64.
+    var days: Int
+    /// For chores: repeat this many days after the last time it was done.
+    var everyDays: Int?
+    /// "HH:MM" local time, or nil to let Jev choose.
+    var fixedStart: String?
+    var durationMinutes: Int
+    var importance: CommitmentImportance
+    var steps: [RoutineStep]
+    var notes: String
+    var active: Bool
+    var createdAt: Date
+    var updatedAt: Date
+}
+
+/// The editable fields of a commitment, used for create and update.
+struct CommitmentDraft: Encodable, Hashable, Sendable {
+    var title: String
+    var kind: CommitmentKind
+    var days: Int = 127
+    var everyDays: Int?
+    var fixedStart: String?
+    var durationMinutes: Int = 60
+    var importance: CommitmentImportance = .high
+    var steps: [RoutineStep] = []
+    var notes: String = ""
+    var active = true
+
+    private enum CodingKeys: String, CodingKey { case title, kind, days, everyDays, fixedStart, durationMinutes, importance, steps, notes, active }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(days, forKey: .days)
+        try container.encode(everyDays, forKey: .everyDays)
+        try container.encode(fixedStart, forKey: .fixedStart)
+        try container.encode(durationMinutes, forKey: .durationMinutes)
+        try container.encode(importance, forKey: .importance)
+        try container.encode(steps, forKey: .steps)
+        try container.encode(notes, forKey: .notes)
+        try container.encode(active, forKey: .active)
+    }
+
+    init(title: String, kind: CommitmentKind, days: Int = 127, everyDays: Int? = nil, fixedStart: String? = nil, durationMinutes: Int = 60, importance: CommitmentImportance = .high, steps: [RoutineStep] = []) {
+        self.title = title
+        self.kind = kind
+        self.days = days
+        self.everyDays = everyDays
+        self.fixedStart = fixedStart
+        self.durationMinutes = durationMinutes
+        self.importance = importance
+        self.steps = steps
+    }
+
+    init(_ commitment: Commitment) {
+        self.init(title: commitment.title, kind: commitment.kind, days: commitment.days, everyDays: commitment.everyDays,
+                  fixedStart: commitment.fixedStart, durationMinutes: commitment.durationMinutes,
+                  importance: commitment.importance, steps: commitment.steps)
+        notes = commitment.notes
+        active = commitment.active
+    }
 }
 
 struct LifeBlockerEvent: Codable, Identifiable, Hashable, Sendable {
@@ -194,9 +311,16 @@ struct LifeSnapshot: Codable, Hashable, Sendable {
     var accounts: [LifeFinanceAccount]
     var transactions: [LifeFinanceTransaction]
     var files: [LifeVaultFile]
+    var commitments: [Commitment]? = nil
 
     static let empty = LifeSnapshot(goals: [], tasks: [], blockers: [], floor: [], events: [], health: [], accounts: [], transactions: [], files: [])
     var activeTask: LifeTask? { tasks.first { $0.status == .active } }
+    var allCommitments: [Commitment] { commitments ?? [] }
+
+    func commitment(for task: LifeTask) -> Commitment? {
+        guard let id = task.commitmentId else { return nil }
+        return allCommitments.first { $0.id == id }
+    }
 }
 
 struct CreateLifeTaskRequest: Encodable, Sendable {
@@ -212,6 +336,52 @@ struct CreateLifeTaskRequest: Encodable, Sendable {
     let source: String
     let sourceItemId: UUID?
     var repeatEveryDays: Int? = nil
+    var dueAt: Date? = nil
+    var notBefore: Date? = nil
+}
+
+/// A partial task update. Double optionals distinguish "leave unchanged" (nil) from "clear" (.some(nil)).
+struct LifeTaskPatch: Encodable, Sendable, Equatable {
+    var title: String?
+    var firstStep: String?
+    var status: LifeTaskStatus?
+    var priority: LifeTaskPriority?
+    var durationMinutes: Int?
+    var notBefore: Date??
+    var dueAt: Date??
+    var repeatEveryDays: Int??
+
+    private enum CodingKeys: String, CodingKey {
+        case title, firstStep, status, priority, durationMinutes, notBefore, dueAt, repeatEveryDays
+    }
+
+    var isEmpty: Bool { self == LifeTaskPatch() }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(firstStep, forKey: .firstStep)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(priority, forKey: .priority)
+        try container.encodeIfPresent(durationMinutes, forKey: .durationMinutes)
+        if let notBefore { try container.encode(notBefore, forKey: .notBefore) }
+        if let dueAt { try container.encode(dueAt, forKey: .dueAt) }
+        if let repeatEveryDays { try container.encode(repeatEveryDays, forKey: .repeatEveryDays) }
+    }
+
+    func applied(to task: LifeTask) -> LifeTask {
+        var task = task
+        if let title { task.title = title }
+        if let firstStep { task.firstStep = firstStep }
+        if let status { task.status = status }
+        if let priority { task.priority = priority }
+        if let durationMinutes { task.durationMinutes = durationMinutes }
+        if let notBefore { task.notBefore = notBefore }
+        if let dueAt { task.dueAt = dueAt }
+        if let repeatEveryDays { task.repeatEveryDays = repeatEveryDays }
+        task.updatedAt = .now
+        return task
+    }
 }
 
 struct PracticeResult: Codable, Hashable, Sendable {

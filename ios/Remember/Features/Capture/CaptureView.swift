@@ -32,19 +32,17 @@ struct CaptureView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                WarmBackground()
+            Group {
                 if didSave {
                     successView
                 } else {
                     composer
                 }
             }
-            .navigationTitle("Save something")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(RememberDesign.canvas)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: dismiss.callAsFunction)
+                    Button(didSave ? "Close" : "Cancel", action: dismiss.callAsFunction)
                 }
             }
             .task { focusCurrentField() }
@@ -56,36 +54,34 @@ struct CaptureView: View {
             .sensoryFeedback(.success, trigger: didSave)
             .interactiveDismissDisabled(isSaving)
         }
+        .presentationDragIndicator(.visible)
+        .presentationBackground(RememberDesign.canvas)
+        .presentationCornerRadius(RememberDesign.sheetRadius)
     }
 
     private var composer: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
-                VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                    Text("What do you want to keep?")
-                        .font(.title2.bold())
-                    Text("Save something you found, or a thought you don’t want to lose.")
-                        .foregroundStyle(RememberDesign.secondaryText)
-                }
+                Text("Save something")
+                    .font(.rememberScreenTitle)
+                    .accessibilityAddTraits(.isHeader)
 
-                Picker("What are you saving?", selection: $captureKind) {
-                    ForEach(CaptureKind.allCases) { kind in
-                        Label(kind.rawValue, systemImage: kind.systemImage)
-                            .tag(kind)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("remember.capture.kind")
+                kindPicker
 
                 inputSurface
 
-                DisclosureGroup(isExpanded: $optionsAreExpanded) {
-                    VStack(alignment: .leading, spacing: RememberDesign.spacing) {
+                if optionsAreExpanded {
+                    VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
                         if captureKind == .link {
-                            TextField("Why did this matter? (optional)", text: $personalReaction, axis: .vertical)
+                            SectionHeading(title: "Why it matters")
+                            TextField("Optional", text: $personalReaction, axis: .vertical)
                                 .lineLimit(2...5)
+                                .padding(RememberDesign.spacing)
+                                .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.controlRadius))
                                 .accessibilityLabel("Why this mattered")
+                                .padding(.bottom, RememberDesign.spacingSmall)
                         }
+                        SectionHeading(title: "Bring it back when…")
                         ReturnCuePicker(
                             selection: returnCue,
                             returnDate: returnDate,
@@ -93,45 +89,64 @@ struct CaptureView: View {
                             onDateChange: { returnDate = $0 }
                         )
                     }
-                    .padding(.top, RememberDesign.spacing)
-                } label: {
-                    Label("Add context or a reminder", systemImage: "slider.horizontal.3")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                } else {
+                    Button("Add a note or reminder", systemImage: "plus") {
+                        withAnimation(.snappy(duration: 0.2)) { optionsAreExpanded = true }
+                    }
+                    .buttonStyle(.rememberQuiet)
+                    .accessibilityIdentifier("remember.capture.options")
                 }
-                .rememberSurface()
 
                 if let validationMessage {
                     Label(validationMessage, systemImage: "exclamationmark.circle.fill")
-                        .font(.footnote)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(RememberDesign.danger)
                         .accessibilityFocused($validationMessageIsFocused)
-                        .rememberSurface()
                 }
             }
-            .padding(RememberDesign.spacing)
-            .padding(.bottom, 92)
+            .padding(.horizontal, RememberDesign.spacing)
+            .padding(.bottom, RememberDesign.spacingLarge)
         }
-        .safeAreaInset(edge: .bottom) {
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             Button(action: save) {
-                Group {
-                    if isSaving {
-                        ProgressView()
-                    } else {
-                        Text(captureKind == .thought ? "Save thought" : "Save link")
-                            .bold()
-                    }
+                if isSaving {
+                    ProgressView().tint(RememberDesign.canvas)
+                } else {
+                    Text(captureKind == .thought ? "Save thought" : "Save link")
                 }
-                .frame(maxWidth: .infinity, minHeight: 48)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(RememberDesign.accent)
-            .foregroundStyle(RememberDesign.accentInk)
+            .buttonStyle(.rememberPrimary)
             .disabled(isSaving || !canSave)
             .padding(.horizontal, RememberDesign.spacing)
             .padding(.vertical, RememberDesign.spacingSmall)
-            .background(.ultraThinMaterial)
+            .background(RememberDesign.canvas)
         }
+    }
+
+    private var kindPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(CaptureKind.allCases) { kind in
+                let isSelected = captureKind == kind
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) { captureKind = kind }
+                } label: {
+                    Label(kind.rawValue, systemImage: kind.systemImage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isSelected ? RememberDesign.canvas : RememberDesign.text2)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(isSelected ? RememberDesign.primaryFill : Color.clear, in: .capsule)
+                        .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(kind.rawValue)
+                .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+            }
+        }
+        .padding(4)
+        .background(RememberDesign.card, in: .capsule)
+        .accessibilityIdentifier("remember.capture.kind")
+        .sensoryFeedback(.selection, trigger: captureKind)
     }
 
     @ViewBuilder
@@ -139,9 +154,8 @@ struct CaptureView: View {
         switch captureKind {
         case .link:
             VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Label("Paste a link", systemImage: "link")
-                    .font(.headline)
-                TextField("https://…", text: $linkInput)
+                TextField("Paste a link", text: $linkInput)
+                    .font(.title3.weight(.semibold))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
@@ -150,41 +164,37 @@ struct CaptureView: View {
                     .accessibilityLabel("Link to save")
                     .submitLabel(.go)
                     .onSubmit(save)
-                Text("YouTube, TikTok, X, and public web links are supported.")
-                    .font(.footnote)
-                    .foregroundStyle(RememberDesign.secondaryText)
+                    .padding(RememberDesign.spacing + 4)
+                    .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+                Text("YouTube, TikTok, X, or any web page.")
+                    .font(.rememberMeta)
+                    .foregroundStyle(RememberDesign.text3)
+                    .padding(.horizontal, RememberDesign.spacingXXSmall)
             }
-            .rememberSurface()
         case .thought:
-            VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
-                Label("Your thought", systemImage: "quote.bubble")
-                    .font(.headline)
-                TextField(
-                    "A realization, question, decision, or idea…",
-                    text: $thoughtInput,
-                    axis: .vertical
-                )
+            TextField("What’s on your mind?", text: $thoughtInput, axis: .vertical)
+                .font(.title3.weight(.semibold))
                 .lineLimit(5...12)
                 .focused($focusedField, equals: .thought)
                 .accessibilityLabel("Thought to remember")
-                Text("It will join your Library, shape Ask and Patterns, and return when it can help.")
-                    .font(.footnote)
-                    .foregroundStyle(RememberDesign.secondaryText)
-            }
-            .rememberSurface()
+                .padding(RememberDesign.spacing + 4)
+                .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
         }
     }
 
     private var successView: some View {
-        ContentUnavailableView {
-            Label(wasAlreadySaved ? "Already saved" : "Saved", systemImage: "checkmark.circle.fill")
-        } description: {
-            Text(successMessage)
-        } actions: {
+        VStack {
+            Spacer()
+            RememberEmptyState(
+                systemImage: "checkmark",
+                title: wasAlreadySaved ? "Already saved" : "Saved",
+                message: successMessage
+            )
+            Spacer()
             Button("Done", action: dismiss.callAsFunction)
-                .buttonStyle(.borderedProminent)
-                .tint(RememberDesign.accent)
-                .foregroundStyle(RememberDesign.accentInk)
+                .buttonStyle(.rememberPrimary)
+                .padding(.horizontal, RememberDesign.spacing)
+                .padding(.bottom, RememberDesign.spacingSmall)
         }
     }
 
@@ -236,7 +246,7 @@ struct CaptureView: View {
 
     private func saveThought() {
         guard !normalizedThought.isEmpty else {
-            presentValidation("Write the thought you want to remember.")
+            presentValidation("Write something first.")
             return
         }
         wasAlreadySaved = false
@@ -271,12 +281,8 @@ struct CaptureView: View {
     }
 
     private var successMessage: String {
-        if wasAlreadySaved { return "This link is already in your Library." }
-        if captureKind == .thought {
-            if let returnCue { return "Your thought is part of Remember now, and will come back \(returnCue.label.lowercased())." }
-            return "Your thought can now shape answers, patterns, and useful returns."
-        }
-        if let returnCue { return "Remember will bring it back \(returnCue.label.lowercased())." }
-        return "Analysis will continue in the background."
+        if wasAlreadySaved { return "It’s already in your Library." }
+        if let returnCue { return "It’ll come back \(returnCue.label.lowercased())." }
+        return captureKind == .thought ? "It’s in your Library now." : "Reading it in the background."
     }
 }

@@ -9,35 +9,31 @@ struct ImprintCard: View {
             if dynamicTypeSize.isAccessibilitySize {
                 details
             } else {
-                HStack(alignment: .top, spacing: RememberDesign.spacing) {
-                    ArchiveArtwork(imprint: imprint, width: 76, height: 76)
+                HStack(alignment: .center, spacing: RememberDesign.spacingCompact) {
+                    ArchiveArtwork(imprint: imprint, width: 64, height: 64)
                     details
                 }
             }
         }
-        .padding(.vertical, 10)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(RememberDesign.line)
-                .frame(height: 1)
-                .accessibilityHidden(true)
-        }
+        .padding(RememberDesign.spacingCompact)
+        .frame(minHeight: RememberDesign.rowHeight)
+        .background(RememberDesign.card, in: .rect(cornerRadius: RememberDesign.cornerRadius))
+        .contentShape(.rect(cornerRadius: RememberDesign.cornerRadius))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("remember.library.imprint.\(imprint.id.uuidString)")
         .accessibilityLabel("\(imprint.title). \(imprint.essence). \(imprint.state.label)")
     }
 
     private var details: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 4) {
             ImprintCardMetadata(imprint: imprint)
             Text(imprint.title)
-                .font(.headline)
-                .bold()
-                .foregroundStyle(.primary)
+                .font(.rememberRowTitle)
+                .foregroundStyle(RememberDesign.text)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
             Text("\(imprint.creator) · \(imprint.savedAt.formatted(.relative(presentation: .named)))")
-                .font(.caption)
-                .foregroundStyle(RememberDesign.secondaryText)
+                .font(.rememberMeta)
+                .foregroundStyle(RememberDesign.text2)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
