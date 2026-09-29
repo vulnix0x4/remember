@@ -1847,3 +1847,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .background-list li.over .background-main strong { color: var(--accent); }
 .background-dot { width: 8px; height: 8px; flex: none; margin-right: 6px; border-radius: 50%; background: var(--accent); animation: pulse-dot 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .background-dot { animation: none; } }
+
+/* ---------- Sleep: Life → Sleep and Settings ---------- */
+.sleep-week { display: grid; gap: 4px; padding: 18px 16px 16px; }
+.sleep-chart { position: relative; }
+.sleep-guides { position: absolute; top: -4px; right: 0; bottom: 24px; left: 52px; pointer-events: none; }
+.sleep-guides i { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+.sleep-rows { position: relative; display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.sleep-rows li { display: grid; min-height: 22px; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: 12px; }
+.sleep-day { color: var(--text2); font-size: 13px; font-weight: 600; }
+.sleep-track { position: relative; height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+.sleep-bar { position: absolute; top: 0; bottom: 0; min-width: 6px; border-radius: 999px; background: var(--accent); }
+.sleep-axis { position: relative; height: 18px; margin: 6px 0 0 52px; color: var(--text3); font-size: 12px; font-weight: 500; }
+.sleep-axis span { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
+.sleep-axis span.start { transform: none; }
+.sleep-axis span.end { transform: translateX(-100%); }
+.sleep-week .stat-row { margin-top: 12px; }
+.sleep-empty { margin: 0; color: var(--text2); font-size: 15px; line-height: 1.4; }
+.sleep-hint { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; color: var(--text); font-size: 15px; font-weight: 600; }
+.sleep-hint svg { flex: none; color: var(--text2); }
+.sleep-last { margin: 0; color: var(--text2); font-size: 15px; font-variant-numeric: tabular-nums; }
+.sleep-page > .btn.secondary { margin-top: 4px; }
+.sleep-footer { margin: 0; padding: 0 4px; color: var(--text3); font-size: 13px; line-height: 1.4; }
+.toggle-row.described { padding: 10px 16px; }
+.toggle-copy { display: grid; min-width: 0; gap: 2px; }
+.toggle-copy small { color: var(--text2); font-size: 13px; font-weight: 500; }
+.sleep-week .stat-row strong, .sleep-empty, .sleep-footer { text-wrap: balance; }

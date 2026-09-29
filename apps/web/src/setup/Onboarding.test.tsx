@@ -19,7 +19,7 @@ beforeEach(() => { localStorage.clear(); sessionStorage.clear(); window.location
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("setup flow", () => {
-  it("runs Welcome → Your day → Commitments → Chores → Nudges → Done with one Next and a quiet Skip", async () => {
+  it("runs Welcome → Your day → Sleep → Commitments → Chores → Nudges → Done with one Next and a quiet Skip", async () => {
     const life = fakeLife();
     const finish = vi.fn();
     render(<Onboarding life={life} onFinish={finish} />);
@@ -31,6 +31,11 @@ describe("setup flow", () => {
     expect(within(dialog()).getByRole("heading", { name: "When is your day?" })).toBeInTheDocument();
     expect(within(dialog()).getByRole("button", { name: /Early bird/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+
+    expect(within(dialog()).getByRole("heading", { name: "Phone-free nights?" })).toBeInTheDocument();
+    expect(within(dialog()).getByText("Tap Going to bed when you’re done for the night. Remember keeps your phone quiet until you’re up.")).toBeInTheDocument();
+    expect(within(dialog()).getByRole("switch", { name: "Phone-free nights" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     expect(within(dialog()).getByRole("heading", { name: "What do you do most days?" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add Gym" }));

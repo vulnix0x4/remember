@@ -70,7 +70,7 @@ final class RememberUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What you’re carrying now"].waitForExistence(timeout: timeout))
 
         selectPrimaryTab("Life", in: app)
-        assertSectionPicker("remember.section.life", labels: ["Health", "Money", "Files"], selected: "Health", in: app)
+        assertSectionPicker("remember.section.life", labels: ["Health", "Sleep", "Money", "Files"], selected: "Health", in: app)
         selectSection("Money", in: app)
         selectSection("Files", in: app)
     }

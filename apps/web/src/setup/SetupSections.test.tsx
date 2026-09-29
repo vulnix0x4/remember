@@ -1,8 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { brainSettingsSchema, type BrainState } from "@remember/domain";
+import { brainSettingsSchema, type BrainSettings, type BrainState } from "@remember/domain";
 import type { Commitment } from "../life/types";
-import { AboutMeSection, CommitmentSection, YourDaySection } from "./SetupSections";
+import { ToastProvider } from "../ui/Toast";
+import { AboutMeSection, CommitmentSection, SleepSection, YourDaySection } from "./SetupSections";
 import { LAUNDRY_STEPS } from "./templates";
 
 const brain: BrainState = {
@@ -140,5 +142,93 @@ describe("Commitments and chores", () => {
     fireEvent.click(screen.getByRole("button", { name: /Gym/ }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(life.deleteCommitment).toHaveBeenCalledWith("c1"));
+  });
+});
+
+/** Your day and Sleep together, with Jev's settings kept in state the way the server hands them back. */
+function renderSleepSettings(settings: Record<string, unknown> = {}, { fail = false, connected = true } = {}) {
+  const saved: BrainSettings[] = [];
+  const initial: BrainState | null = connected ? { ...brain, settings: brainSettingsSchema.parse({ timeZone: "America/Denver", preferences: "Chores after work", ...settings }) } : null;
+  function Harness() {
+    const [current, setCurrent] = useState(initial);
+    const life = {
+      brain: current, brainError: "", brainWorking: false,
+      refreshBrain: async (next?: BrainSettings) => {
+        if (!next) return;
+        if (fail) throw new Error("Your automatic plan could not sync.");
+        saved.push(next);
+        setCurrent((value) => value ? { ...value, settings: next } : value);
+      },
+    };
+    return <><YourDaySection life={life} /><SleepSection life={life} /></>;
+  }
+  render(<ToastProvider><Harness /></ToastProvider>);
+  return saved;
+}
+const sleepOn = (extra: Record<string, unknown> = {}) => ({ sleep: { enabled: true, ...extra } });
+/** A labeled row of chips (a fieldset whose legend names it). */
+const chips = (name: string) => screen.getAllByRole("group", { name })[0];
+
+describe("Sleep settings", () => {
+  it("turns phone-free nights on and off, keeping the rest of Jev's settings", async () => {
+    const saved = renderSleepSettings({ startHour: 6, endHour: 21 });
+    const toggle = screen.getByRole("switch", { name: "Phone-free nights" });
+    expect(toggle).toHaveAccessibleDescription("Tap Going to bed; get your phone back after you’re up");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("switch", { name: "Caffeine reminder" })).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toEqual({ ...brainSettingsSchema.parse({ timeZone: "America/Denver", preferences: "Chores after work", startHour: 6, endHour: 21 }), sleep: { enabled: true, morningMinutes: 60, caffeineReminder: true } });
+    expect(screen.getByRole("switch", { name: "Caffeine reminder" })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(saved.at(-1)?.sleep.enabled).toBe(false));
+    expect(screen.queryByRole("switch", { name: "Caffeine reminder" })).toBeNull();
+  });
+
+  it("leaves Your day alone: Jev keeps planning with its presets", () => {
+    renderSleepSettings({ startHour: 6, endHour: 21, ...sleepOn() });
+    expect(screen.getByRole("button", { name: /Early bird/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Follows your sleep")).toBeNull();
+  });
+
+  it("sets the phone-free morning and the caffeine reminder in one tap each", async () => {
+    const saved = renderSleepSettings(sleepOn());
+    const morning = chips("Phone-free after waking");
+    expect(within(morning).getAllByRole("button").map((chip) => chip.textContent)).toEqual(["Off", "30 min", "1 hr", "1.5 hr"]);
+    expect(within(morning).getByRole("button", { name: "1 hr" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(morning).getByRole("button", { name: "Off" }));
+    expect(within(morning).getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(saved.at(-1)?.sleep.morningMinutes).toBe(0));
+
+    const caffeine = screen.getByRole("switch", { name: "Caffeine reminder" });
+    expect(caffeine).toHaveAccessibleDescription("8 hours before your usual bedtime");
+    fireEvent.click(caffeine);
+    await waitFor(() => expect(saved.at(-1)?.sleep).toEqual({ enabled: true, morningMinutes: 0, caffeineReminder: false }));
+    expect(saved.at(-1)?.preferences).toBe("Chores after work");
+  });
+
+  it("keeps a phone-free morning set on another device", () => {
+    renderSleepSettings(sleepOn({ morningMinutes: 45 }));
+    const morning = chips("Phone-free after waking");
+    expect(within(morning).getAllByRole("button").map((chip) => chip.textContent)).toEqual(["Off", "30 min", "45 min", "1 hr", "1.5 hr"]);
+    expect(within(morning).getByRole("button", { name: "45 min" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("rolls back when a change doesn't save", async () => {
+    renderSleepSettings({}, { fail: true });
+    const toggle = screen.getByRole("switch", { name: "Phone-free nights" });
+    fireEvent.click(toggle);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sleep settings didn’t save. Try again.");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("switch", { name: "Caffeine reminder" })).toBeNull();
+  });
+
+  it("explains what's missing without a server", () => {
+    renderSleepSettings({}, { connected: false });
+    expect(screen.getByRole("switch", { name: "Phone-free nights" })).toBeDisabled();
+    expect(screen.getByText("Connect your Remember server to use sleep.")).toBeInTheDocument();
   });
 });

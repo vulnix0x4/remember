@@ -61,7 +61,11 @@ enum HealthMetricAggregation {
         let dayMetrics = sleepMetrics.filter {
             sleepDay(for: $0.endAt, calendar: calendar) == latestDay
         }
-        let manualTotal = dayMetrics.lazy.filter { !isHealthKitManaged($0) }.reduce(0) { $0 + $1.value }
+        // A night saved from Going to bed and I'm up only stands in for Apple Health; it never adds to Health's hours.
+        let hasHealthKit = dayMetrics.contains(where: isHealthKitManaged)
+        let manualTotal = dayMetrics.lazy
+            .filter { !isHealthKitManaged($0) && !(hasHealthKit && $0.metadata["aggregation"] == "remember_night") }
+            .reduce(0) { $0 + $1.value }
         let unionMetrics = dayMetrics.filter { $0.metadata["aggregation"] == sleepUnionMarker }
 
         let healthKitHours: Double
@@ -168,6 +172,38 @@ final class HealthSyncService {
 
     private let store = HKHealthStore()
 
+    /// Last nights from Apple Health, only when Health access was already asked for, so it never prompts.
+    /// Used to keep Sleep and the morning check-in current without a tap.
+    func readSleepQuietly(days: Int = 14) async -> [HealthMetricUpload] {
+        guard HKHealthStore.isHealthDataAvailable(),
+              let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis),
+              (try? await store.statusForAuthorizationRequest(toShare: [], read: [sleepType])) == .unnecessary else { return [] }
+        let end = Date.now
+        let start = Calendar.current.date(byAdding: .day, value: -max(1, days), to: end) ?? .distantPast
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        guard let samples = try? await categorySamples(type: sleepType, predicate: predicate) else { return [] }
+        return HealthMetricAggregation.mergedSleepMetrics(from: sleepIntervals(samples))
+    }
+
+    private func sleepIntervals(_ samples: [HKCategorySample]) -> [HealthSleepIntervalSample] {
+        let asleepValues: Set<Int> = [
+            HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
+        ]
+        return samples.filter { asleepValues.contains($0.value) }.map { sample in
+            HealthSleepIntervalSample(
+                externalID: sample.uuid.uuidString,
+                startAt: sample.startDate,
+                endAt: sample.endDate,
+                sourceName: sample.sourceRevision.source.name,
+                bundleIdentifier: sample.sourceRevision.source.bundleIdentifier,
+                stage: sample.value
+            )
+        }
+    }
+
     func readApprovedMetrics(days: Int = 30) async throws -> [HealthMetricUpload] {
         guard HKHealthStore.isHealthDataAvailable() else { throw HealthSyncError.unavailable }
         let quantityDefinitions = [
@@ -224,23 +260,7 @@ final class HealthSyncService {
 
         if let sleepType {
             let samples = try await categorySamples(type: sleepType, predicate: predicate)
-            let asleepValues: Set<Int> = [
-                HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
-                HKCategoryValueSleepAnalysis.asleepCore.rawValue,
-                HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
-                HKCategoryValueSleepAnalysis.asleepREM.rawValue,
-            ]
-            let intervals = samples.filter { asleepValues.contains($0.value) }.map { sample in
-                HealthSleepIntervalSample(
-                    externalID: sample.uuid.uuidString,
-                    startAt: sample.startDate,
-                    endAt: sample.endDate,
-                    sourceName: sample.sourceRevision.source.name,
-                    bundleIdentifier: sample.sourceRevision.source.bundleIdentifier,
-                    stage: sample.value
-                )
-            }
-            metrics.append(contentsOf: HealthMetricAggregation.mergedSleepMetrics(from: intervals))
+            metrics.append(contentsOf: HealthMetricAggregation.mergedSleepMetrics(from: sleepIntervals(samples)))
         }
 
         if let mindfulType {

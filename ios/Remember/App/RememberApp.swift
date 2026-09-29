@@ -7,6 +7,7 @@ struct RememberApp: App {
     @State private var focusTimer = FocusTimer()
     @State private var focusShield = FocusShield()
     @State private var nudges = Nudges()
+    @State private var sleepGuard = SleepGuard()
 
     init() {
         #if DEBUG
@@ -15,7 +16,7 @@ struct RememberApp: App {
             let defaults = UserDefaults.standard
             for key in defaults.dictionaryRepresentation().keys
             where key.hasPrefix("remember.routine.") || key.hasPrefix("remember.focus.") || key.hasPrefix("remember.setup.")
-                || key == "remember.morning" {
+                || key.hasPrefix("remember.sleep.") || key == "remember.morning" {
                 defaults.removeObject(forKey: key)
             }
         }
@@ -36,6 +37,7 @@ struct RememberApp: App {
                 .environment(focusTimer)
                 .environment(focusShield)
                 .environment(nudges)
+                .environment(sleepGuard)
                 .tint(RememberDesign.accent)
                 .foregroundStyle(RememberDesign.text)
                 .preferredColorScheme(.dark)

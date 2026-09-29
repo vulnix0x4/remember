@@ -117,6 +117,38 @@ final class AppStore {
         morningSession = session
     }
 
+    // MARK: Sleep
+
+    /// Sleep settings as Jev last saved them.
+    var sleep: SleepSettings { brain?.settings.sleep ?? SleepSettings() }
+
+    @discardableResult
+    func updateSleep(_ change: (inout SleepSettings) -> Void) async -> Bool {
+        await updateBrainSettings { change(&$0.sleep) }
+    }
+
+    /// Saves a night (from I'm up, or the check-in), showing it right away. Saving the same night again replaces it.
+    func saveSleepNight(_ metric: HealthMetricUpload, toast message: String? = nil, undo: (@MainActor () async -> Void)? = nil) async {
+        let local = LifeHealthMetric(id: UUID(), externalId: metric.externalId, type: metric.type, value: metric.value, unit: metric.unit,
+                                     startAt: metric.startAt, endAt: metric.endAt, source: metric.source, metadata: metric.metadata, createdAt: .now)
+        lifeSnapshot.health.removeAll { $0.source == metric.source && $0.externalId == metric.externalId }
+        lifeSnapshot.health.insert(local, at: 0)
+        if let message { showToast(message, undo: undo) }
+        do {
+            try await lifeRepository.syncHealth([metric])
+            await loadLife()
+        } catch {
+            presentLifeError("Last night didn’t save. Check your connection and try again.")
+        }
+    }
+
+    /// Brings in last nights from Apple Health without any prompt or error.
+    func syncSleepQuietly(_ metrics: [HealthMetricUpload]) async {
+        guard !metrics.isEmpty, (try? await lifeRepository.syncHealth(metrics)) != nil else { return }
+        lastHealthSync = .now
+        await loadLife()
+    }
+
     func firstStep(for task: LifeTask) -> String {
         if !task.firstStep.isEmpty { return task.firstStep }
         if brain?.settings.enabled == true,
@@ -703,20 +735,23 @@ final class AppStore {
 
     // MARK: - Effortless task actions (optimistic, undoable)
 
-    /// Adds a task from one typed or spoken line. Jev decides when it happens.
+    /// Adds a task from one typed or spoken line. Jev decides when it happens. `parkedUntil` holds it back
+    /// (a thought parked at bedtime waits for the morning).
     @discardableResult
-    func quickAddTask(_ text: String, goalId: UUID? = nil) async -> Bool {
+    func quickAddTask(_ text: String, goalId: UUID? = nil, parkedUntil: Date? = nil) async -> Bool {
         let parsed = QuickTaskParser.parse(text, history: taskHistory)
         guard !parsed.title.isEmpty else { return false }
+        let notBefore = [parsed.notBefore, parkedUntil].compactMap { $0 }.max()
         do {
             let task = try await lifeRepository.createTask(CreateLifeTaskRequest(
                 title: parsed.title, firstStep: "", notes: "", area: .direction, status: .queued,
                 priority: parsed.priority ?? .normal, energy: .any,
                 durationMinutes: parsed.durationMinutes ?? 15, goalId: goalId, source: "manual", sourceItemId: nil,
-                repeatEveryDays: parsed.repeatEveryDays, dueAt: parsed.dueAt, notBefore: parsed.notBefore
+                repeatEveryDays: parsed.repeatEveryDays, dueAt: parsed.dueAt, notBefore: notBefore
             ))
             await loadLife()
-            showToast(brain?.settings.enabled == true ? "Added · Jev will fit it in" : "Added") { [weak self] in
+            let message = parkedUntil != nil ? "Parked for tomorrow" : brain?.settings.enabled == true ? "Added · Jev will fit it in" : "Added"
+            showToast(message) { [weak self] in
                 await self?.patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
             }
             return true

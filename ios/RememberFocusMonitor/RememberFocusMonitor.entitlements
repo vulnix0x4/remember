@@ -4,5 +4,9 @@
 <dict>
 	<key>com.apple.developer.family-controls</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(REMEMBER_APP_GROUP)</string>
+	</array>
 </dict>
 </plist>

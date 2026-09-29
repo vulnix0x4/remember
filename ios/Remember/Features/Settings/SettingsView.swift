@@ -22,6 +22,7 @@ struct SettingsView: View {
                         .accessibilityAddTraits(.isHeader)
 
                     settingsSection("Your day", detail: "When Jev can plan things") { YourDaySection() }
+                    settingsSection("Sleep", detail: "Phone-free from Going to bed until you're up") { SleepSection() }
                     settingsSection("Commitments", detail: "Things you do most days, like college or the gym") { CommitmentsSection(kind: .commitment) }
                     settingsSection("Chores", detail: "Things that keep life running. They repeat on their own.") { CommitmentsSection(kind: .chore) }
                     settingsSection("Focus mode", detail: nil) { FocusModeSection() }

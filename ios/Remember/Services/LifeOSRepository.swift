@@ -40,6 +40,13 @@ actor LiveLifeOSRepository: LifeOSRepository {
     init(client: APIClient, usesMockFallback: Bool = false) {
         self.client = client
         self.usesMockFallback = usesMockFallback
+        #if DEBUG
+        // Preview data only: REMEMBER_MOCK_SLEEP=1 turns phone-free nights on and adds a week of nights.
+        if usesMockFallback, ProcessInfo.processInfo.environment["REMEMBER_MOCK_SLEEP"] == "1" {
+            mockBrainSettings.sleep = SleepSettings(enabled: true)
+            mockSnapshot.health = FixtureLibrary.sleepNights()
+        }
+        #endif
     }
 
     func decideNextMove(_ input: EverydayDecisionRequest) async throws -> EverydayDecision {

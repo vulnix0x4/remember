@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(AppStore.self) private var store
+    @Environment(SleepGuard.self) private var sleepGuard
     @State private var dismissedContextualIDs: Set<UUID> = []
     @State private var completedReturn: TodayReturn?
     @State private var completedReturnIDs: Set<UUID> = []
@@ -11,6 +12,12 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: RememberDesign.spacingLarge) {
                     BackgroundRoutinesStrip()
+                    if store.sleep.enabled, let night = SleepInsights.dueCheckIn(sleepGuard.session, metrics: store.lifeSnapshot.health, at: .now) {
+                        SleepCheckInCard(night: night)
+                    }
+                    if showsEveningCard {
+                        eveningCard
+                    }
                     NowCard()
                     upNext
                     DailyBasicsStrip()
@@ -45,6 +52,27 @@ struct HomeView: View {
     }
 
     @State private var openTask: LifeTask?
+
+    /// From 6 PM until 4 AM, while phone-free nights are on and tonight hasn't started.
+    private var showsEveningCard: Bool {
+        let hour = Calendar.current.component(.hour, from: .now)
+        return store.sleep.enabled && !sleepGuard.isNight && (hour >= 18 || hour < 4)
+    }
+
+    private var eveningCard: some View {
+        VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
+            Text("Done for the night?")
+                .font(.rememberSectionTitle)
+            Text("Tap when you start winding down. Your phone stays quiet until you're up.")
+                .font(.subheadline)
+                .foregroundStyle(RememberDesign.text2)
+                .fixedSize(horizontal: false, vertical: true)
+            GoingToBedButton(style: .secondary)
+                .padding(.top, RememberDesign.spacingXXSmall)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rememberCard(padding: RememberDesign.spacing)
+    }
 
     private var upNextTasks: [LifeTask] {
         let current = store.lifeSnapshot.activeTask?.id ?? store.suggestedLifeTask?.id
