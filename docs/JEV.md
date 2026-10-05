@@ -8,7 +8,7 @@ The server calls OpenRouter's [Decisions endpoint](https://openrouter.ai/docs/ap
 
 For development, put the key in ignored `apps/api/.dev.vars`, apply local migrations with `pnpm --filter @remember/api db:migrate`, and run the API. Point web `VITE_API_BASE` or the iPhone API configuration to that server. Never put the key in a web environment variable or iPhone bundle.
 
-Before production release, apply migration `0008_jev_planning.sql` with the other pending migrations to the intended production database, ensure the Worker has its OpenRouter secret, and deploy the API plus clients. The Worker configuration includes a planning cron every fifteen minutes. If the key is already configured for analysis, reuse it. Otherwise, from `apps/api`:
+Before production release, apply migrations `0008_jev_planning.sql` and `0010_jev_call_budget.sql` with the other pending migrations to the intended production database, ensure the Worker has its OpenRouter secret, and deploy the API plus clients. The Worker configuration includes a planning cron every fifteen minutes. If the key is already configured for analysis, reuse it. Otherwise, from `apps/api`:
 
 ```sh
 pnpm exec wrangler secret put OPENROUTER_API_KEY --env production
@@ -17,7 +17,8 @@ pnpm exec wrangler secret put OPENROUTER_API_KEY --env production
 ## Automatic decisions
 
 - The first authenticated client sync enables planning with the device's time zone. The Today switch pauses or resumes it; preferences and planning hours persist on the server. Device time-zone changes update the planning zone.
-- Relevant task, calendar, goal, health, and memory changes invalidate the saved plan. API mutations request a refresh immediately, visible clients sync every minute, and the Worker checks due plans every fifteen minutes while the app is closed. This is periodic scheduling, not an exact-time alarm or push notification.
+- Relevant task, calendar, goal, health, and memory changes invalidate the saved plan. API mutations request a refresh once edits have been quiet for fifteen seconds, so a burst of changes costs one Jev call. Visible clients sync every minute, and the Worker checks due plans every fifteen minutes while the app is closed. This is periodic scheduling, not an exact-time alarm or push notification.
+- Jev is only called when context changed, a task Jev hasn't judged becomes plannable, or its answers are over six hours old. Other periodic checks rerun the local scheduler with Jev's saved answers, which costs nothing.
 - Jev scores up to forty unscheduled tasks per pass and chooses morning, afternoon, evening, or any time. The scheduler respects task duration, release dates, future deadlines, local planning hours, timed calendar events with five-minute buffers, and existing manual slots. Tasks outside the seven-day horizon or without a suitable slot stay visible as unscheduled. All-day events are context, not hard time blocks.
 - Scores below one or confidence below 0.65 are not scheduled. Automatic focus requires at least 0.8 confidence. These are conservative product thresholds, not calibrated guarantees. Manually assigned slots stay fixed; conflicting commitments prevent automatic focus activation.
 - Set a task to repeat daily, weekly, or every thirty days in the task composer. Completing it atomically creates exactly one next occurrence, released that interval after completion. Jev then finds an opening. This is completion-based repetition, not a fixed weekday recurrence. Add laundry once with a duration and repeat interval; later occurrences need no re-entry.

@@ -149,8 +149,11 @@ api.use("*", async (context, next) => {
   if (!["POST", "PATCH", "DELETE"].includes(context.req.method) || context.res.status >= 400
     || /\/life\/(brain|autopilot)/.test(context.req.path)) return;
   if (!/\/api\/(life|items|principles)/.test(context.req.path)) return;
-  const work = new BrainService(context.env).run(context.get("user").id).catch(() => undefined);
-  try { context.executionCtx.waitUntil(work); } catch { await work; }
+  const brain = new BrainService(context.env); const userId = context.get("user").id;
+  let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
+  try { executionCtx = context.executionCtx; } catch { /* Outside a Worker request (tests), plan inline. */ }
+  if (executionCtx) executionCtx.waitUntil(brain.runAfterQuiet(userId).catch(() => undefined));
+  else await brain.run(userId).catch(() => undefined);
 });
 
 api.get("/life/brain", async (context) => context.json({ brain: await new BrainService(context.env).read(context.get("user").id) }));
