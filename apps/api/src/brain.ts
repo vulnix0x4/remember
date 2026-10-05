@@ -1,14 +1,20 @@
 import { brainSettingsSchema, brainStateSchema, type BrainSettings, type BrainState } from "@remember/domain";
 import { ApiError } from "./http";
 import { LifeRepository } from "./life-repository";
-import { judgeTasks, scheduleTasks } from "./brain-planner";
+import { judgeTasks, planCandidates, scheduleTasks, type TaskJudgment } from "./brain-planner";
 
 interface BrainRow {
   user_id: string; settings_json: string; state_json: string | null;
   revision: number; dirty: number; next_check_at: string | null;
   lease_id: string | null; lease_until: string | null; committed_run: string | null;
+  judgments_json: string | null; judged_at: string | null; changed_at: string | null;
 }
 type BrainEnv = Pick<Env, "DB" | "OPENROUTER_API_KEY">;
+
+/** Edits closer together than this share one Jev call. */
+export const QUIET_PERIOD_MS = 15_000;
+/** Unchanged context reuses Jev's answers this long; only the free local scheduler reruns. */
+export const JUDGMENT_MAX_AGE_MS = 6 * 3_600_000;
 
 export class BrainService {
   constructor(private readonly env: BrainEnv, private readonly fetcher: typeof fetch = fetch) {}
@@ -47,7 +53,18 @@ export class BrainService {
     return this.read(userId);
   }
 
-  async run(userId: string, now = new Date()): Promise<BrainState | null> {
+  /** Called after API mutations: waits for edits to settle, then plans once for the whole burst. */
+  async runAfterQuiet(userId: string) {
+    const stamp = new Date().toISOString();
+    await this.env.DB.prepare("UPDATE life_brain SET changed_at = ?2 WHERE user_id = ?1").bind(userId, stamp).run();
+    await new Promise((resolve) => setTimeout(resolve, QUIET_PERIOD_MS));
+    const latest = await this.env.DB.prepare("SELECT changed_at FROM life_brain WHERE user_id = ?1").bind(userId).first<{ changed_at: string | null }>();
+    // A later edit restarted the wait; its own run will plan.
+    if (latest?.changed_at !== stamp) return null;
+    return this.run(userId, new Date(), { settled: true });
+  }
+
+  async run(userId: string, now = new Date(), options: { settled?: boolean } = {}): Promise<BrainState | null> {
     const row = await this.row(userId); if (!row) return null;
     const settings = brainSettingsSchema.parse(JSON.parse(row.settings_json));
     // Commitments become dated tasks before planning, so Jev sees today's college block and laundry.
@@ -56,6 +73,8 @@ export class BrainService {
     // Failed calls back off for five minutes, including after ordinary context changes.
     if (!row.dirty && row.next_check_at && row.next_check_at > now.toISOString()) return this.read(userId);
     if (row.state_json && JSON.parse(row.state_json).status === "unavailable" && row.next_check_at && row.next_check_at > now.toISOString()) return this.read(userId);
+    // Someone is still editing; the pending runAfterQuiet will plan once they stop.
+    if (!options.settled && row.dirty && row.changed_at && Date.parse(row.changed_at) > now.getTime() - QUIET_PERIOD_MS) return this.read(userId);
     const lease = crypto.randomUUID();
     const locked = await this.env.DB.prepare(`UPDATE life_brain SET lease_id = ?2, lease_until = ?3
       WHERE user_id = ?1 AND (lease_until IS NULL OR lease_until <= ?4)`)
@@ -74,7 +93,15 @@ export class BrainService {
         this.env.DB.prepare("SELECT text FROM candidate_principles WHERE user_id = ?1 AND status = 'active' ORDER BY updated_at DESC LIMIT 20").bind(userId).all<{ text: string }>(),
         this.env.DB.prepare("SELECT note_text FROM items WHERE user_id = ?1 AND memory_kind = 'thought' AND note_text IS NOT NULL ORDER BY saved_at DESC LIMIT 12").bind(userId).all<{ note_text: string }>(),
       ]);
-      const { judgments, model } = await judgeTasks(snapshot, settings, { principles: principles.results.map((row) => row.text.slice(0, 400)), thoughts: thoughts.results.map((row) => row.note_text.slice(0, 400)) }, this.env.OPENROUTER_API_KEY, now, this.fetcher);
+      // When nothing changed, the clock moving on only needs a fresh schedule, not fresh judgments.
+      const cached = !captured.dirty && captured.judgments_json && captured.judged_at && Date.parse(captured.judged_at) > now.getTime() - JUDGMENT_MAX_AGE_MS
+        ? JSON.parse(captured.judgments_json) as TaskJudgment[] : null;
+      const reuse = cached && planCandidates(snapshot, now).every((task) => cached.some((judgment) => judgment.taskId === task.id));
+      const previousModel = row.state_json ? brainStateSchema.parse(JSON.parse(row.state_json)).model : null;
+      const { judgments, model } = reuse
+        ? { judgments: cached, model: previousModel }
+        : await judgeTasks(snapshot, settings, { principles: principles.results.map((row) => row.text.slice(0, 400)), thoughts: thoughts.results.map((row) => row.note_text.slice(0, 400)) }, this.env.OPENROUTER_API_KEY, now, this.fetcher);
+      const judgedAt = reuse ? captured.judged_at : now.toISOString();
       const plan = scheduleTasks(snapshot, settings, judgments, now);
       const soonest = plan.find((block) => Date.parse(block.startAt) > now.getTime());
       const nextCheckAt = new Date(Math.max(now.getTime() + 60_000, Math.min(now.getTime() + 15 * 60_000, soonest ? Date.parse(soonest.startAt) : Infinity))).toISOString();
@@ -92,9 +119,9 @@ export class BrainService {
       // All changes are committed atomically. Database triggers invalidate a
       // decision if any task/calendar/context row changed during inference.
       await this.env.DB.batch([
-        this.env.DB.prepare(`UPDATE life_brain SET state_json = ?4, next_check_at = ?5, committed_run = ?2, updated_at = ?6
+        this.env.DB.prepare(`UPDATE life_brain SET state_json = ?4, next_check_at = ?5, committed_run = ?2, updated_at = ?6, judgments_json = ?7, judged_at = ?8
           WHERE user_id = ?1 AND lease_id = ?2 AND revision = ?3 AND json_extract(settings_json,'$.enabled') = 1`)
-          .bind(userId, lease, captured.revision, JSON.stringify(state), nextCheckAt, now.toISOString()),
+          .bind(userId, lease, captured.revision, JSON.stringify(state), nextCheckAt, now.toISOString(), JSON.stringify(judgments), judgedAt),
         this.env.DB.prepare(`UPDATE life_tasks SET status = 'active', updated_at = ?4
           WHERE user_id = ?1 AND id = ?2 AND status IN ('queued','inbox')
             AND NOT EXISTS (SELECT 1 FROM life_tasks WHERE user_id = ?1 AND status = 'active')

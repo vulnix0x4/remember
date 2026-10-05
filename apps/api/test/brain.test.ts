@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 import { brainSettingsSchema, createTaskSchema, type LifeSnapshot, type Task } from "@remember/domain";
 import { judgeTasks, scheduleTasks, type TaskJudgment } from "../src/brain-planner";
-import { BrainService } from "../src/brain";
+import { BrainService, JUDGMENT_MAX_AGE_MS } from "../src/brain";
 import { LifeRepository } from "../src/life-repository";
 import { app } from "../src/app";
 
@@ -132,6 +132,28 @@ describe("persistent automatic planning", () => {
       .bind(crypto.randomUUID(), userId, now.toISOString(), "2026-09-19T17:00:00Z").run();
     await brain.run(userId, now);
     expect((await repository.snapshot(userId)).tasks[0]!.status).toBe("queued");
+  });
+  it("reuses Jev's answers when only time has passed", async () => {
+    const { userId, brain, fetcher, repository } = await setup();
+    await repository.createTask(userId, createTaskSchema.parse({ title: "Laundry", notBefore: "2026-09-20T16:00:00Z" }));
+    await brain.run(userId, now);
+    const later = new Date(now.getTime() + 30 * 60_000);
+    expect((await brain.run(userId, later))?.status).toBe("ready");
+    expect(fetcher).toHaveBeenCalledOnce();
+    await repository.createTask(userId, createTaskSchema.parse({ title: "Dishes", notBefore: "2026-09-20T16:00:00Z" }));
+    await brain.run(userId, later);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await brain.run(userId, new Date(later.getTime() + JUDGMENT_MAX_AGE_MS + 60_000));
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+  it("waits for edits to settle before calling Jev", async () => {
+    const { userId, brain, fetcher, repository } = await setup();
+    await repository.createTask(userId, createTaskSchema.parse({ title: "Laundry" }));
+    await env.DB.prepare("UPDATE life_brain SET changed_at = ?2 WHERE user_id = ?1").bind(userId, new Date(now.getTime() - 5_000).toISOString()).run();
+    expect((await brain.run(userId, now))?.status).toBe("waiting");
+    expect(fetcher).not.toHaveBeenCalled();
+    expect((await brain.run(userId, now, { settled: true }))?.status).toBe("ready");
+    expect(fetcher).toHaveBeenCalledOnce();
   });
   it("does not activate a future recurrence when automatic planning is paused", async () => {
     const { userId, brain, repository } = await setup();
