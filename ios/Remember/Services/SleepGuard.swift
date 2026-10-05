@@ -155,10 +155,16 @@ final class SleepGuard {
     func syncLock(now: Date = .now) {
         let center = DeviceActivityCenter()
         guard isLocking, isAuthorized, let session, session.phase(at: now) != nil else {
-            center.stopMonitoring([.rememberSleep, .rememberSleepMorning, .rememberSleepPause])
-            SleepShieldCore.lift()
+            // Only undo a lock that was set up: someone who never turned it on has nothing to lift,
+            // and Screen Time calls without permission just fail (slowly) on every launch.
+            if defaults.bool(forKey: Keys.armed) {
+                center.stopMonitoring([.rememberSleep, .rememberSleepMorning, .rememberSleepPause])
+                SleepShieldCore.lift()
+                defaults.set(false, forKey: Keys.armed)
+            }
             return
         }
+        defaults.set(true, forKey: Keys.armed)
         if session.upAt == nil {
             startInterval(.rememberSleep, from: now, to: session.cap)
         } else {
@@ -186,5 +192,6 @@ final class SleepGuard {
         static let settings = "remember.sleep.settings"
         static let locking = "remember.sleep.locking"
         static let checked = "remember.sleep.checked"
+        static let armed = "remember.sleep.armed"
     }
 }
