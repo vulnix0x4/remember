@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
-import { ArrowUp, CalendarBlank, Flag, Microphone, Repeat, Timer, Warning } from "@phosphor-icons/react";
+import { ArrowUp, CalendarBlank, Flag, FolderSimple, ListChecks, Microphone, Repeat, Timer, Warning } from "@phosphor-icons/react";
 import type { QuickChipKind } from "../services/quickTask";
 
-export interface AddBarChip { kind: QuickChipKind; label: string }
+export interface AddBarChip { kind: QuickChipKind | "count" | "project"; label: string }
 
-const chipIcons: Record<QuickChipKind, typeof Timer> = { duration: Timer, when: CalendarBlank, due: CalendarBlank, repeat: Repeat, priority: Flag };
+const chipIcons: Record<AddBarChip["kind"], typeof Timer> = { duration: Timer, when: CalendarBlank, due: CalendarBlank, repeat: Repeat, priority: Flag, count: ListChecks, project: FolderSimple };
 
 interface SpeechRecognitionLike {
   lang: string; interimResults: boolean; continuous: boolean;
@@ -35,10 +35,12 @@ export interface AddBarProps {
   inputRef?: React.RefObject<HTMLInputElement | null>;
   /** Extra line shown above the bar, e.g. a validation message. */
   notice?: ReactNode;
+  /** A chip that is a button (the project chip), shown first while there's text. */
+  leading?: ReactNode;
 }
 
 /** The one big white add bar, pinned above the tab bar on every screen. */
-export function AddBar({ label, placeholder, onSubmit, value, onValueChange, chips, sendLabel = "Add", busy = false, inputProps, inputRef, notice }: AddBarProps) {
+export function AddBar({ label, placeholder, onSubmit, value, onValueChange, chips, sendLabel = "Add", busy = false, inputProps, inputRef, notice, leading }: AddBarProps) {
   const [internal, setInternal] = useState("");
   const text = value ?? internal;
   const setText = (next: string) => { if (value === undefined) setInternal(next); onValueChange?.(next); };
@@ -84,7 +86,8 @@ export function AddBar({ label, placeholder, onSubmit, value, onValueChange, chi
   return <div className="add-dock">
     <div className="toast-slot" />
     {notice && <div className="add-notice"><Warning size={15} /> {notice}</div>}
-    {recognized.length > 0 && <ul className="parse-chips" aria-label="Understood">
+    {(recognized.length > 0 || (leading && text.trim())) && <ul className="parse-chips" aria-label="Understood">
+      {text.trim() && leading}
       {recognized.map((chip) => { const Icon = chipIcons[chip.kind]; return <li key={`${chip.kind}-${chip.label}`}><Icon size={13} weight="bold" aria-hidden="true" />{chip.label}</li>; })}
     </ul>}
     <form className="add-bar" onSubmit={(event) => void submit(event)} noValidate>

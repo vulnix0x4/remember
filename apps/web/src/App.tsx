@@ -40,6 +40,7 @@ import type { AskMessage, Imprint, Page, PrimaryPage, ReturnCue } from "./types"
 import { JevStatusLine } from "./components/JevSheet";
 import { LockInProvider } from "./life/lockInContext";
 import { LockInHost } from "./life/LockIn";
+import { ProjectBlockHost } from "./life/ProjectBlockView";
 import { BackgroundSection, RoutineNudger } from "./life/BackgroundRoutines";
 import { Onboarding } from "./setup/Onboarding";
 import { shouldShowSetup } from "./setup/setupState";
@@ -64,7 +65,7 @@ import { ToastProvider, haptic, useToast } from "./ui/Toast";
 
 const TasksPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.TasksPage })));
 const CalendarPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.CalendarPage })));
-const GoalsPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.GoalsPage })));
+const ProjectsPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.ProjectsPage })));
 const HealthPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.HealthPage })));
 const MoneyPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.MoneyPage })));
 const FilesPage = lazy(() => import("./life/LifeOS").then((module) => ({ default: module.FilesPage })));
@@ -82,7 +83,7 @@ const pageTitles: Record<Page, string> = {
   home: "Today",
   plan: "Plan",
   tasks: "Tasks",
-  goals: "Goals",
+  goals: "Projects",
   calendar: "Calendar",
   health: "Health",
   sleep: "Sleep",
@@ -940,7 +941,7 @@ function ScreenHeader({ title, onAvatar, sections, active, onNavigate, children 
   </header>;
 }
 
-const planSections: Array<{ page: Page; label: string }> = [{ page: "tasks", label: "Tasks" }, { page: "calendar", label: "Calendar" }, { page: "goals", label: "Goals" }];
+const planSections: Array<{ page: Page; label: string }> = [{ page: "tasks", label: "Tasks" }, { page: "calendar", label: "Calendar" }, { page: "goals", label: "Projects" }];
 const librarySections: Array<{ page: Page; label: string }> = [{ page: "library", label: "Saved" }, { page: "evolution", label: "Patterns" }];
 const lifeSections: Array<{ page: Page; label: string }> = [{ page: "health", label: "Health" }, { page: "sleep", label: "Sleep" }, { page: "money", label: "Money" }, { page: "files", label: "Files" }];
 
@@ -1078,7 +1079,7 @@ function AppContent() {
         <AskPage imprints={imprints} life={life} onOpen={openDetail} onOpenPlan={() => navigate("tasks")} onUpdate={replaceImprint} />
       </> : primaryPage === "plan" ? <>
         <ScreenHeader title="Plan" onAvatar={() => openSettings()} sections={planSections} active={planSection} onNavigate={navigate} />
-        <Suspense fallback={loading("Opening your plan…")}>{planSection === "goals" ? <GoalsPage life={life} /> : planSection === "calendar" ? <CalendarPage life={life} /> : <TasksPage life={life} />}</Suspense>
+        <Suspense fallback={loading("Opening your plan…")}>{planSection === "goals" ? <ProjectsPage life={life} /> : planSection === "calendar" ? <CalendarPage life={life} /> : <TasksPage life={life} />}</Suspense>
       </> : primaryPage === "library" ? <>
         <ScreenHeader title="Library" onAvatar={() => openSettings()} sections={librarySections} active={librarySection} onNavigate={navigate} />
         {librarySection === "evolution"
@@ -1102,6 +1103,7 @@ function AppContent() {
         {screen}
       </main>
       <LockInHost life={life} onFinished={() => navigate("home")} />
+      <ProjectBlockHost life={life} />
       <RoutineNudger life={life} />
       {setupOpen && <Onboarding life={life} onFinish={() => { setSetupOpen(false); navigate("home"); }} />}
       <nav className="bottom-nav" aria-label="Mobile navigation">{navItems.map(({ page: itemPage, label, icon: Icon }) => { const active = primaryPage === itemPage; return <button className={cx(active && "active")} type="button" key={itemPage} onClick={() => navigate(itemPage)} aria-current={active ? "page" : undefined}><Icon size={24} weight={active ? "fill" : "regular"} /><span>{label}</span></button>; })}</nav>

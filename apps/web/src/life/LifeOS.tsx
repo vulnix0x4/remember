@@ -7,6 +7,7 @@ import {
   DownloadSimple,
   File,
   FolderOpen,
+  FolderSimple,
   Heartbeat,
   ListChecks,
   MagnifyingGlass,
@@ -31,9 +32,11 @@ import { AddBar, AddBarButton } from "../ui/AddBar";
 import { Empty } from "../ui/Empty";
 import { Sheet } from "../ui/Sheet";
 import { haptic, useToast } from "../ui/Toast";
-import { doneToday, laterTasks, pickNow, planByTask, timeLabel, todayTasks } from "./planning";
+import { doneToday, durationLabel, isOpen, laterTasks, pickNow, planByTask, timeLabel, todayTasks } from "./planning";
 import { isSavedNight } from "./sleep";
-import { DailyBasics, NowCard, TaskAddBar, TaskList, TaskSheet, mutationMessage, useNow } from "./TaskViews";
+import { ChipGroup, DailyBasics, NowCard, TaskAddBar, TaskList, TaskSheet, mutationMessage, useNow } from "./TaskViews";
+import { activeProjects } from "../services/projects";
+import { BLOCK_LENGTHS, BLOCK_MINUTES, writeBlock } from "./projectBlock";
 
 export { focusTimerElapsedMs, focusTimerStorageKey } from "./TaskViews";
 
@@ -285,100 +288,122 @@ export function latestNightSleep(metrics: HealthMetric[]) {
 
 /* ---------- Plan → Tasks ---------- */
 
+const FILTER_KEY = "remember-plan-filter-v1";
+function readFilter() { try { return sessionStorage.getItem(FILTER_KEY) ?? "all"; } catch { return "all"; } }
+
 export function TasksPage({ life }: { life: LifeOSController }) {
   const now = useNow();
   const [openTask, setOpenTask] = useState<LifeTask | null>(null);
-  const { tasks } = life.snapshot;
+  const [storedFilter, setStoredFilter] = useState(readFilter);
+  const { tasks, goals } = life.snapshot;
+  const projects = activeProjects(goals);
+  // "all", "other" (loose tasks), or a project's id. A project that's gone falls back to all.
+  const filter = storedFilter === "all" || storedFilter === "other" || projects.some((project) => project.id === storedFilter) ? storedFilter : "all";
+  const setFilter = (value: string) => { haptic(6); setStoredFilter(value); try { sessionStorage.setItem(FILTER_KEY, value); } catch { /* Just for this view. */ } };
+  const shown = (task: LifeTask) => filter === "all" || (filter === "other" ? !task.goalId || !projects.some((project) => project.id === task.goalId) : task.goalId === filter);
   const plan = planByTask(life.brain, tasks);
   const current = pickNow(tasks, plan, now)?.task;
-  const today = todayTasks(tasks, plan, now).filter((task) => task.id !== current?.id);
-  const later = laterTasks(tasks, now);
+  const today = todayTasks(tasks, plan, now).filter((task) => task.id !== current?.id && shown(task));
+  const later = laterTasks(tasks, now).filter(shown);
   const done = doneToday(tasks, now);
+  const focusProject = projects.find((project) => project.id === filter);
   return <div className="screen-body tasks-page">
     <NowCard life={life} compact onOpenTask={setOpenTask} />
-    {today.length > 0 && <section className="today-section" aria-labelledby="tasks-today"><h2 id="tasks-today" className="section-label">Today</h2><TaskList tasks={today} life={life} now={now} onOpen={setOpenTask} /></section>}
-    {later.length > 0 && <section className="today-section" aria-labelledby="tasks-later"><h2 id="tasks-later" className="section-label">Later</h2><TaskList tasks={later} life={life} now={now} onOpen={setOpenTask} /></section>}
-    {!current && !later.length && !life.loading && <Empty icon={ListChecks} title="Nothing planned yet" detail="Type anything below. Jev will fit it in." />}
+    {projects.length > 0 && <div className="chip-row scroll project-filter" role="group" aria-label="Show tasks for">
+      {[{ id: "all", label: "All" }, ...projects.map((project) => ({ id: project.id, label: project.title })), { id: "other", label: "Other" }].map((option) =>
+        <button key={option.id} className={`chip${filter === option.id ? " selected" : ""}`} type="button" aria-pressed={filter === option.id} onClick={() => setFilter(option.id)}>{option.label}</button>)}
+    </div>}
+    {today.length > 0 && <section className="today-section" aria-labelledby="tasks-today"><h2 id="tasks-today" className="section-label">Today</h2><TaskList tasks={today} life={life} now={now} onOpen={setOpenTask} showProject={filter === "all"} /></section>}
+    {later.length > 0 && <section className="today-section" aria-labelledby="tasks-later"><h2 id="tasks-later" className="section-label">Later</h2><TaskList tasks={later} life={life} now={now} onOpen={setOpenTask} showProject={filter === "all"} /></section>}
+    {filter === "all" && !current && !later.length && !life.loading && <Empty icon={ListChecks} title="Nothing planned yet" detail="Type anything below. Jev will fit it in." />}
+    {filter !== "all" && !today.length && !later.length && <Empty icon={ListChecks} title={focusProject ? `Nothing in ${focusProject.title}` : "No other tasks"} detail={focusProject ? "Add what's next below." : "Everything has a project."} />}
     <DailyBasics life={life} />
     {done.length > 0 && <details className="done-today">
       <summary><span className="section-label">Done today · {done.length}</span><CaretDown size={14} aria-hidden="true" /></summary>
       <ul>{done.map((task) => <li key={task.id}><Check size={16} weight="bold" aria-hidden="true" /><span>{task.title}</span></li>)}</ul>
     </details>}
     {openTask && <TaskSheet key={openTask.id} task={openTask} life={life} onClose={() => setOpenTask(null)} />}
-    <TaskAddBar life={life} />
+    <TaskAddBar life={life} focusProjectId={focusProject?.id ?? null} placeholder={focusProject ? `Add to ${focusProject.title}…` : "Add a task…"} />
   </div>;
 }
 
-/* ---------- Plan → Goals ---------- */
+/* ---------- Plan → Projects ---------- */
 
-export function GoalsPage({ life }: { life: LifeOSController }) {
+function projectSummary(project: Goal, tasks: LifeTask[], plan: ReturnType<typeof planByTask>, now: Date) {
+  const open = tasks.filter((task) => task.goalId === project.id && isOpen(task));
+  const next = todayTasks(tasks, plan, now).find((task) => task.goalId === project.id) ?? null;
+  const minutes = open.reduce((total, task) => total + task.durationMinutes, 0);
+  const meta = open.length ? `${open.length === 1 ? "1 task" : `${open.length} tasks`} · ${durationLabel(minutes)}` : "No tasks yet";
+  return { open, next, meta };
+}
+
+export function ProjectsPage({ life }: { life: LifeOSController }) {
   const toast = useToast();
-  const [editing, setEditing] = useState<Goal | null>(null);
-  const [stepFor, setStepFor] = useState<Goal | null>(null);
-  const goals = life.snapshot.goals.filter((goal) => goal.status !== "archived");
-  const addGoal = async (text: string) => {
-    try { await life.createGoal({ title: text, area: "direction" }); haptic([8, 30, 8]); toast.show({ message: "Goal added" }); }
+  const now = useNow();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const plan = planByTask(life.brain, life.snapshot.tasks);
+  const projects = life.snapshot.goals.filter((goal) => goal.status === "active" || goal.status === "paused")
+    .sort((a, b) => (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1) || a.createdAt.localeCompare(b.createdAt));
+  const open = life.snapshot.goals.find((goal) => goal.id === openId);
+  const addProject = async (text: string) => {
+    try { await life.createGoal({ title: text, area: "direction" }); haptic([8, 30, 8]); toast.show({ message: `${text} added` }); }
     catch (reason) { toast.error(mutationMessage(reason)); return false; }
   };
   return <div className="screen-body goals-page">
-    {goals.length ? <ul className="goal-list">{goals.map((goal) => <li key={goal.id} className={`goal-card${goal.status !== "active" ? " paused" : ""}`}>
-      <button className="goal-main" type="button" onClick={() => setEditing(goal)}>
-        <strong>{goal.title}</strong>
-        <small>{goal.status === "active" ? `${goal.progress}%` : goal.status === "completed" ? "Complete" : `Paused · ${goal.progress}%`}</small>
-        <span className="progress" aria-hidden="true"><i style={{ width: `${goal.progress}%` }} /></span>
-      </button>
-      {goal.status === "active" && <button className="btn quiet" type="button" onClick={() => setStepFor(goal)}>Add a step</button>}
-    </li>)}</ul> : <Empty icon={Target} title="No goals yet" detail="Add one below, in a few words." />}
-    {editing && <GoalSheet key={editing.id} goal={editing} life={life} onClose={() => setEditing(null)} />}
-    {stepFor && <GoalStepSheet goal={stepFor} life={life} onClose={() => setStepFor(null)} />}
-    <AddBar label="Add a goal" placeholder="Add a goal…" sendLabel="Add goal" onSubmit={addGoal} />
+    {projects.length ? <ul className="goal-list">{projects.map((project) => {
+      const summary = projectSummary(project, life.snapshot.tasks, plan, now);
+      return <li key={project.id} className={`goal-card project-card${project.status !== "active" ? " paused" : ""}`}>
+        <button className="goal-main" type="button" onClick={() => setOpenId(project.id)}>
+          <strong>{project.title}</strong>
+          <small>{project.status === "paused" ? `Paused · ${summary.meta}` : summary.meta}</small>
+          {summary.next && <span className="project-next">Next: {summary.next.title}</span>}
+        </button>
+        {project.status === "active" && <button className="btn secondary" type="button" onClick={() => startProjectBlock(project.id)}>Work on it</button>}
+      </li>;
+    })}</ul> : <Empty icon={FolderSimple} title="What are you working on?" detail="Add one below, like College or My app." />}
+    {open && <ProjectSheet key={open.id} project={open} life={life} onClose={() => setOpenId(null)} />}
+    <AddBar label="Add a project" placeholder="Add a project…" sendLabel="Add project" onSubmit={addProject} />
   </div>;
 }
 
-function GoalSheet({ goal, life, onClose }: { goal: Goal; life: LifeOSController; onClose: () => void }) {
-  const toast = useToast();
-  const [title, setTitle] = useState(goal.title);
-  const [progress, setProgress] = useState(goal.progress);
-  const save = async (extra: Partial<Goal> = {}) => {
-    const patch: Partial<Goal> = { ...extra };
-    if (title.trim() && title.trim() !== goal.title) patch.title = title.trim();
-    if (progress !== goal.progress && extra.progress === undefined) patch.progress = progress;
-    if (!Object.keys(patch).length) return;
-    try { await life.updateGoal(goal.id, patch); }
-    catch (reason) { toast.error(mutationMessage(reason)); }
-  };
-  const close = () => { onClose(); void save(); };
-  const setStatus = (status: Goal["status"]) => {
-    onClose(); haptic();
-    void save(status === "completed" ? { status, progress: 100 } : { status });
-    toast.show({ message: status === "completed" ? "Goal complete" : status === "paused" ? "Goal paused" : "Goal resumed", action: { label: "Undo", onAction: () => life.updateGoal(goal.id, { status: goal.status, progress: goal.progress }) } });
-  };
-  return <Sheet title="Edit goal" hideTitle onClose={close} className="task-sheet" closeLabel="Close and save">
-    <label className="sr-only" htmlFor="goal-sheet-title">Goal</label>
-    <textarea id="goal-sheet-title" className="task-sheet-title" rows={1} value={title} maxLength={200} onChange={(event) => setTitle(event.target.value.replace(/\n/g, " "))} />
-    <label className="field range-field"><span>Progress <strong>{progress}%</strong></span><input type="range" min={0} max={100} step={5} value={progress} onChange={(event) => setProgress(Number(event.target.value))} /></label>
-    <button className="btn primary" type="button" onClick={() => setStatus("completed")}>Complete</button>
-    <button className="btn secondary" type="button" onClick={() => setStatus(goal.status === "paused" ? "active" : "paused")}>{goal.status === "paused" ? "Resume" : "Pause"}</button>
-  </Sheet>;
+/** Starts deep work on a project. The block view opens over everything, from wherever this was tapped. */
+export function startProjectBlock(projectId: string, minutes = BLOCK_MINUTES) {
+  haptic([8, 30, 8]);
+  writeBlock({ projectId, startedAt: Date.now(), minutes });
 }
 
-function GoalStepSheet({ goal, life, onClose }: { goal: Goal; life: LifeOSController; onClose: () => void }) {
+function ProjectSheet({ project, life, onClose }: { project: Goal; life: LifeOSController; onClose: () => void }) {
   const toast = useToast();
-  const [title, setTitle] = useState("");
-  const [saving, setSaving] = useState(false);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!title.trim()) return;
-    setSaving(true);
-    try {
-      await life.createTask({ title: title.trim(), goalId: goal.id, area: goal.area, source: "goal", status: "queued" });
-      haptic([8, 30, 8]); onClose(); toast.show({ message: "Added · Jev will fit it in" });
-    } catch (reason) { toast.error(mutationMessage(reason)); setSaving(false); }
+  const now = useNow();
+  const [title, setTitle] = useState(project.title);
+  const [minutes, setMinutes] = useState(BLOCK_MINUTES);
+  const [openTask, setOpenTask] = useState<LifeTask | null>(null);
+  const plan = planByTask(life.brain, life.snapshot.tasks);
+  const { open } = projectSummary(project, life.snapshot.tasks, plan, now);
+  const ordered = [...todayTasks(open, plan, now), ...laterTasks(open, now)];
+  const saveTitle = async () => {
+    const clean = title.trim();
+    if (!clean || clean === project.title) return;
+    try { await life.updateGoal(project.id, { title: clean }); } catch (reason) { toast.error(mutationMessage(reason)); }
   };
-  return <Sheet title="Add a step" onClose={onClose} onSubmit={(event) => void submit(event)}>
-    <p className="sheet-note">For “{goal.title}”</p>
-    <label className="field"><span className="sr-only">Step</span><input data-auto-focus value={title} maxLength={240} onChange={(event) => setTitle(event.target.value)} placeholder="The next small thing" /></label>
-    <button className="btn primary" type="submit" disabled={!title.trim() || saving}>{saving ? "Adding…" : "Add step"}</button>
+  const close = () => { onClose(); void saveTitle(); };
+  const setStatus = (status: Goal["status"]) => {
+    onClose(); haptic(); void saveTitle();
+    life.updateGoal(project.id, { status }).catch((reason) => toast.error(mutationMessage(reason)));
+    const message = status === "completed" ? `${project.title} finished` : status === "paused" ? `${project.title} paused` : `${project.title} resumed`;
+    toast.show({ message, action: { label: "Undo", onAction: () => life.updateGoal(project.id, { status: project.status }) } });
+  };
+  if (openTask) return <TaskSheet key={openTask.id} task={openTask} life={life} onClose={() => setOpenTask(null)} />;
+  return <Sheet title="Project" hideTitle onClose={close} className="task-sheet project-sheet" closeLabel="Close and save">
+    <label className="sr-only" htmlFor="project-sheet-title">Project name</label>
+    <textarea id="project-sheet-title" className="task-sheet-title" rows={1} value={title} maxLength={200} onChange={(event) => setTitle(event.target.value.replace(/\n/g, " "))} />
+    {ordered.length ? <TaskList tasks={ordered} life={life} now={now} onOpen={setOpenTask} showStart={false} /> : <p className="sheet-note">No tasks yet. Anything you add about {project.title} lands here.</p>}
+    {project.status === "active" && <>
+      <ChipGroup label="How long" options={BLOCK_LENGTHS.map((value) => ({ label: durationLabel(value), value }))} value={minutes} onChange={setMinutes} />
+      <button className="btn primary" type="button" onClick={() => { close(); startProjectBlock(project.id, minutes); }}>Work on it</button>
+    </>}
+    <button className="btn quiet" type="button" onClick={() => setStatus(project.status === "paused" ? "active" : "paused")}>{project.status === "paused" ? "Resume" : "Pause"}</button>
+    <button className="btn quiet" type="button" onClick={() => setStatus("completed")}>Finish project</button>
   </Sheet>;
 }
 

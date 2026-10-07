@@ -91,6 +91,7 @@ struct RootView: View {
         .sheet(isPresented: $store.captureIsPresented) { CaptureView() }
         .fullScreenCover(isPresented: $store.setupIsPresented) { SetupFlowView() }
         .fullScreenCover(item: $store.lockInTask) { LockInView(task: $0) }
+        .fullScreenCover(item: $store.projectBlock) { ProjectBlockView(block: $0) }
         .onChange(of: nextPlannedBlock?.taskId) {
             // One gentle nudge for whatever Jev planned next; replaced whenever the plan changes.
             nudges.cancelNextPlanned()

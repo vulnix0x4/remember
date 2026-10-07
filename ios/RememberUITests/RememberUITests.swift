@@ -59,10 +59,10 @@ final class RememberUITests: XCTestCase {
         app.launch()
 
         selectPrimaryTab("Plan", in: app)
-        assertSectionPicker("remember.section.plan", labels: ["Tasks", "Calendar", "Goals"], selected: "Tasks", in: app)
+        assertSectionPicker("remember.section.plan", labels: ["Tasks", "Calendar", "Projects"], selected: "Tasks", in: app)
         selectSection("Calendar", in: app)
-        selectSection("Goals", in: app)
-        XCTAssertTrue(element("remember.goal.quickAdd", in: app).waitForExistence(timeout: timeout))
+        selectSection("Projects", in: app)
+        XCTAssertTrue(element("remember.project.quickAdd", in: app).waitForExistence(timeout: timeout))
 
         selectPrimaryTab("Library", in: app)
         assertSectionPicker("remember.section.library", labels: ["Saved", "Patterns"], selected: "Saved", in: app)
@@ -98,7 +98,7 @@ final class RememberUITests: XCTestCase {
         let routes = [
             LegacyRoute(name: "tasks", primaryTab: "Plan", section: "Tasks"),
             LegacyRoute(name: "calendar", primaryTab: "Plan", section: "Calendar"),
-            LegacyRoute(name: "goals", primaryTab: "Plan", section: "Goals"),
+            LegacyRoute(name: "goals", primaryTab: "Plan", section: "Projects"),
             LegacyRoute(name: "health", primaryTab: "Life", section: "Health"),
             LegacyRoute(name: "money", primaryTab: "Life", section: "Money"),
             LegacyRoute(name: "files", primaryTab: "Life", section: "Files"),

@@ -5,6 +5,8 @@ struct TaskRow: View {
     @Environment(AppStore.self) private var store
     @Environment(FocusTimer.self) private var timer
     let task: LifeTask
+    /// Starts the meta line with the task's project, for lists that mix projects.
+    var showsProject = false
     var onOpen: () -> Void
 
     @State private var isChecked = false
@@ -64,6 +66,9 @@ struct TaskRow: View {
 
     private var meta: String {
         var parts = [task.durationMinutes.durationLabel]
+        if showsProject, let project = store.lifeSnapshot.goals.first(where: { $0.id == task.goalId }) {
+            parts.insert(project.title, at: 0)
+        }
         if let start = [task.notBefore, task.scheduledStart].compactMap({ $0 }).max(), start > .now {
             parts.append(start.relativeDayLabel)
         } else if let planned = store.brain?.plan.first(where: { $0.taskId == task.id })?.startAt, planned > .now {

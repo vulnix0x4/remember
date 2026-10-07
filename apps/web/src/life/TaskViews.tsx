@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { ArrowsInSimple, Check, Clock, Lightning, Plus, Question, ShuffleSimple, Trash } from "@phosphor-icons/react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { ArrowsInSimple, Check, Clock, FolderSimple, Lightning, Plus, Question, ShuffleSimple, Trash } from "@phosphor-icons/react";
 import * as lifeService from "../services/life";
 import { estimateMinutes, parseQuickTask, quickTaskChips, whenOptions, describeRepeat } from "../services/quickTask";
+import { activeProjects, fileTask, nextProjectChoice, splitDump } from "../services/projects";
 import { useLockIn } from "./lockInContext";
-import { AddBar } from "../ui/AddBar";
+import { AddBar, type AddBarChip } from "../ui/AddBar";
 import { Sheet } from "../ui/Sheet";
 import { haptic, useToast } from "../ui/Toast";
 import { dueLabel, durationLabel, isImportant, startLabel, planByTask, pickNow, taskMeta, timeLabel, todayTasks, laterTasks } from "./planning";
 import { BIG_MINUTES, WARMUP_COUNT, WARMUP_MINUTES, endMorning, morningCandidates, morningPick, shouldOfferMorning, skipMorning, startMorning, useMorningSession, writeMorning } from "./morning";
-import type { BlockerReason, LifeTask, PracticeOutcome, PracticeResult } from "./types";
+import type { BlockerReason, Goal, LifeTask, PracticeOutcome, PracticeResult } from "./types";
 import type { LifeOSController } from "./useLifeOS";
 
 /* ---------- Shared hooks ---------- */
@@ -125,23 +126,41 @@ export function useTaskActions(life: LifeOSController) {
   const lockIn = useLockIn();
   const fail = useCallback((reason: unknown) => { toast.error(mutationMessage(reason)); }, [toast]);
 
-  const add = useCallback(async (text: string) => {
-    const history = life.snapshot?.tasks ?? [];
-    const parsed = parseQuickTask(text, new Date(), history);
+  /**
+   * Adds one task, or several when the text is a brain dump. Each one files itself into a project
+   * (`projectId` overrides that for a single task; `focusProjectId` is the project in view).
+   */
+  const add = useCallback(async (text: string, options: AddOptions = {}) => {
+    const drafts = taskDrafts(text, life.snapshot.goals, life.snapshot.tasks, options);
+    const created: LifeTask[] = [];
     try {
-      await life.createTask({
-        title: parsed.title,
-        durationMinutes: parsed.durationMinutes ?? estimateMinutes(parsed.title, history),
-        notBefore: parsed.notBefore?.toISOString() ?? null,
-        dueAt: parsed.dueAt?.toISOString() ?? null,
-        repeatEveryDays: parsed.repeatEveryDays ?? null,
-        priority: parsed.priority ?? "normal",
-        area: "direction",
-        status: "queued",
-      });
+      for (const draft of drafts) {
+        created.push(await life.createTask({
+          title: draft.parsed.title,
+          durationMinutes: draft.parsed.durationMinutes ?? estimateMinutes(draft.parsed.title, life.snapshot.tasks),
+          notBefore: draft.parsed.notBefore?.toISOString() ?? null,
+          dueAt: draft.parsed.dueAt?.toISOString() ?? null,
+          repeatEveryDays: draft.parsed.repeatEveryDays ?? null,
+          priority: draft.parsed.priority ?? "normal",
+          goalId: draft.projectId,
+          area: "direction",
+          status: "queued",
+        }));
+      }
       haptic([8, 30, 8]);
-      toast.show({ message: "Added · Jev will fit it in" });
-    } catch (reason) { fail(reason); return false; }
+      if (created.length > 1) {
+        toast.show({ message: `Added ${created.length} tasks`, action: { label: "Undo", onAction: async () => {
+          try { for (const task of created) await life.updateTask(task.id, { status: "removed" }); } catch (reason) { fail(reason); }
+        } } });
+      } else {
+        const project = life.snapshot.goals.find((goal) => goal.id === drafts[0]?.projectId);
+        toast.show({ message: project ? `Added to ${project.title}` : "Added · Jev will fit it in" });
+      }
+    } catch (reason) {
+      fail(reason);
+      // Keep the words only when nothing was saved, so a retry can't make doubles.
+      return created.length ? undefined : false;
+    }
   }, [fail, life, toast]);
 
   /** Start makes the task current, starts its clock, and opens lock-in mode, all in one tap. */
@@ -213,14 +232,74 @@ export function useTaskActions(life: LifeOSController) {
 
 /* ---------- Add bar for tasks ---------- */
 
-export function TaskAddBar({ life }: { life: LifeOSController }) {
+export interface AddOptions {
+  /** A project picked with the chip. `undefined` lets the task file itself. Ignored for a brain dump. */
+  projectId?: string | null;
+  /** The project in view: a running deep-work block, or Plan filtered to it. */
+  focusProjectId?: string | null;
+}
+
+/** What the text will become: one task, or one per piece of a brain dump, each with its project. */
+export function taskDrafts(text: string, goals: Goal[], tasks: LifeTask[], options: AddOptions = {}, now = new Date()) {
+  const pieces = splitDump(text);
+  if (pieces.length) {
+    return pieces.map((piece) => {
+      const parsed = parseQuickTask(piece, now, tasks);
+      return { parsed, projectId: fileTask(parsed.title, goals, tasks, options.focusProjectId), dump: true };
+    });
+  }
+  const parsed = parseQuickTask(text, now, tasks);
+  const projectId = options.projectId !== undefined ? options.projectId : fileTask(parsed.title, goals, tasks, options.focusProjectId);
+  return [{ parsed, projectId, dump: false }];
+}
+
+export function TaskAddBar({ life, focusProjectId, placeholder = "Add a task…" }: { life: LifeOSController; focusProjectId?: string | null; placeholder?: string }) {
   const actions = useTaskActions(life);
+  const [text, setText] = useState("");
+  /** The project tapped on the chip; it sticks until the bar is cleared. */
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  const { goals, tasks } = life.snapshot;
+  const hasProjects = activeProjects(goals).length > 0;
+  const options: AddOptions = { projectId: picked, focusProjectId };
+  const drafts = text.trim() ? taskDrafts(text, goals, tasks, options) : [];
+  const name = (id: string | null) => goals.find((goal) => goal.id === id)?.title;
+  let leading: ReactNode = null;
+  let chips: AddBarChip[] = [];
+  if (drafts.length > 1) {
+    const counts = new Map<string, number>();
+    for (const draft of drafts) if (draft.projectId) counts.set(draft.projectId, (counts.get(draft.projectId) ?? 0) + 1);
+    chips = [{ kind: "count", label: `${drafts.length} tasks` }, ...[...counts].map(([id, count]) => ({ kind: "project" as const, label: `${count} → ${name(id) ?? "Project"}` }))];
+  } else if (drafts.length === 1) {
+    chips = quickTaskChips(drafts[0].parsed, new Date(), tasks);
+    if (hasProjects) {
+      const current = drafts[0].projectId;
+      leading = <li className="chip-button-item"><button className={`parse-chip-button${current ? "" : " loose"}`} type="button" aria-label={current ? `Project: ${name(current)}. Tap to change` : "No project. Tap to pick one"} onClick={() => { haptic(6); setPicked(nextProjectChoice(current, goals)); }}>
+        <FolderSimple size={13} weight="bold" aria-hidden="true" />{current ? name(current) : "No project"}
+      </button></li>;
+    }
+  }
   return <AddBar
     label="Add a task"
-    placeholder="Add a task…"
+    placeholder={placeholder}
     sendLabel="Add task"
-    chips={(text) => quickTaskChips(parseQuickTask(text, new Date(), life.snapshot?.tasks ?? []), new Date(), life.snapshot?.tasks ?? [])}
-    onSubmit={actions.add}
+    value={text}
+    onValueChange={(value) => { setText(value); if (!value.trim()) setPicked(undefined); }}
+    leading={leading}
+    chips={() => chips}
+    inputProps={{ onPaste: (event) => {
+      // A text field drops line breaks, and a pasted list needs them to become separate tasks.
+      const pasted = event.clipboardData.getData("text");
+      if (!/\n/.test(pasted)) return;
+      event.preventDefault();
+      const field = event.currentTarget;
+      const start = field.selectionStart ?? text.length; const end = field.selectionEnd ?? text.length;
+      setText(`${text.slice(0, start)}${pasted.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join("; ")}${text.slice(end)}`);
+    } }}
+    onSubmit={async (value) => {
+      const result = await actions.add(value, options);
+      if (result !== false) setPicked(undefined);
+      return result;
+    }}
   />;
 }
 
@@ -422,11 +501,16 @@ export function TaskRow({ task, meta, onOpen, onComplete, onStart }: { task: Lif
   </li>;
 }
 
-export function TaskList({ tasks, life, now, onOpen, showStart = true }: { tasks: LifeTask[]; life: LifeOSController; now: Date; onOpen: (task: LifeTask) => void; showStart?: boolean }) {
+export function TaskList({ tasks, life, now, onOpen, showStart = true, showProject = false }: { tasks: LifeTask[]; life: LifeOSController; now: Date; onOpen: (task: LifeTask) => void; showStart?: boolean; showProject?: boolean }) {
   const actions = useTaskActions(life);
   const plan = planByTask(life.brain, life.snapshot.tasks);
+  const meta = (task: LifeTask) => {
+    const line = taskMeta(task, now, plan.get(task.id));
+    const project = showProject && task.goalId ? life.snapshot.goals.find((goal) => goal.id === task.goalId)?.title : undefined;
+    return project ? `${project} · ${line}` : line;
+  };
   return <ul className="task-list">
-    {tasks.map((task) => <TaskRow key={task.id} task={task} meta={taskMeta(task, now, plan.get(task.id))} onOpen={() => onOpen(task)} onComplete={() => actions.complete(task)} onStart={showStart ? () => void actions.start(task) : undefined} />)}
+    {tasks.map((task) => <TaskRow key={task.id} task={task} meta={meta(task)} onOpen={() => onOpen(task)} onComplete={() => actions.complete(task)} onStart={showStart ? () => void actions.start(task) : undefined} />)}
   </ul>;
 }
 
@@ -468,6 +552,14 @@ export function TaskSheet({ task, life, onClose }: { task: LifeTask; life: LifeO
   const [notBefore, setNotBefore] = useState<string | null>(task.notBefore && Date.parse(task.notBefore) > now.getTime() ? task.notBefore : null);
   const [repeat, setRepeat] = useState<number | null>(task.repeatEveryDays ?? null);
   const [important, setImportant] = useState(isImportant(task));
+  const [projectId, setProjectId] = useState<string | null>(task.goalId);
+  const projects = activeProjects(life.snapshot.goals);
+  const projectOptions: Array<{ label: string; value: string | null }> = [
+    { label: "None", value: null },
+    ...projects.map((project) => ({ label: project.title, value: project.id })),
+    // A task in a paused project keeps showing where it lives.
+    ...(task.goalId && !projects.some((project) => project.id === task.goalId) ? life.snapshot.goals.filter((goal) => goal.id === task.goalId).map((goal) => ({ label: goal.title, value: goal.id })) : []),
+  ];
   const when = whenOptions(now);
   const matchedWhen = when.find((option) => option.date ? notBefore !== null && Math.abs(Date.parse(notBefore) - option.date.getTime()) < 60_000 : notBefore === null);
   const whenChoices: Array<{ label: string; value: string | null }> = [
@@ -487,6 +579,7 @@ export function TaskSheet({ task, life, onClose }: { task: LifeTask; life: LifeO
     if (notBefore !== originalNotBefore) patch.notBefore = notBefore;
     if (repeat !== (task.repeatEveryDays ?? null)) patch.repeatEveryDays = repeat;
     if (important !== isImportant(task)) patch.priority = important ? "high" : "normal";
+    if (projectId !== task.goalId) patch.goalId = projectId;
     return patch;
   };
   const save = async (extra: Partial<LifeTask> = {}) => {
@@ -507,6 +600,7 @@ export function TaskSheet({ task, life, onClose }: { task: LifeTask; life: LifeO
     <ChipGroup label="How long" options={durationOptions} value={duration} onChange={setDuration} />
     <ChipGroup label="When" options={whenChoices} value={notBefore} onChange={setNotBefore} />
     <ChipGroup label="Repeat" options={repeatOptions} value={repeat} onChange={setRepeat} />
+    {projectOptions.length > 1 && <ChipGroup label="Project" options={projectOptions} value={projectId} onChange={setProjectId} />}
     <div className="toggle-row">
       <span aria-hidden="true">Important</span>
       <button className={`switch${important ? " on" : ""}`} type="button" role="switch" aria-checked={important} aria-label="Important" onClick={() => { haptic(6); setImportant(!important); }}><span /></button>
