@@ -13,7 +13,7 @@ protocol LifeOSRepository: Sendable {
     func createGoal(_ goal: CreateLifeGoalRequest) async throws -> LifeGoal
     func saveCommitment(id: UUID?, draft: CommitmentDraft) async throws -> Commitment
     func deleteCommitment(id: UUID) async throws
-    func updateGoal(id: UUID, progress: Int?, status: String?) async throws
+    func updateGoal(id: UUID, title: String?, progress: Int?, status: String?) async throws
     func createFloorItem(_ item: CreateLifeFloorRequest) async throws -> LifeFloorItem
     func toggleFloorItem(id: UUID, date: Date) async throws
     func syncHealth(_ metrics: [HealthMetricUpload]) async throws
@@ -217,10 +217,11 @@ actor LiveLifeOSRepository: LifeOSRepository {
         }
     }
 
-    func updateGoal(id: UUID, progress: Int?, status: String?) async throws {
-        do { try await client.updateLifeGoal(id: id, progress: progress, status: status) }
+    func updateGoal(id: UUID, title: String?, progress: Int?, status: String?) async throws {
+        do { try await client.updateLifeGoal(id: id, title: title, progress: progress, status: status) }
         catch where usesMockFallback {
             guard let index = mockSnapshot.goals.firstIndex(where: { $0.id == id }) else { return }
+            if let title { mockSnapshot.goals[index].title = title }
             if let progress { mockSnapshot.goals[index].progress = progress }
             if let status { mockSnapshot.goals[index].status = status }
         }

@@ -13,6 +13,7 @@ struct TaskEditorSheet: View {
     @State private var when: WhenChoice
     @State private var repeatDays: Int?
     @State private var isImportant: Bool
+    @State private var projectId: UUID?
     @State private var isDeleting = false
     @State private var didSave = false
 
@@ -24,6 +25,14 @@ struct TaskEditorSheet: View {
         _when = State(initialValue: WhenChoice.matching(task.notBefore))
         _repeatDays = State(initialValue: task.repeatEveryDays)
         _isImportant = State(initialValue: task.priority == .high || task.priority == .must)
+        _projectId = State(initialValue: task.goalId)
+    }
+
+    /// None, each active project, and the task's own project even if it's paused.
+    private var projectChoices: [LifeGoal] {
+        let active = ProjectFiler.activeProjects(store.lifeSnapshot.goals)
+        let own = store.lifeSnapshot.goals.filter { $0.id == task.goalId && !active.contains($0) }
+        return active + own
     }
 
     var body: some View {
@@ -61,6 +70,15 @@ struct TaskEditorSheet: View {
                     chipGroup("Repeat") {
                         ForEach(repeatChoices, id: \.self) { days in
                             chip(days?.repeatLabel ?? "Never", isOn: repeatDays == days) { repeatDays = days }
+                        }
+                    }
+
+                    if !projectChoices.isEmpty {
+                        chipGroup("Project") {
+                            chip("None", isOn: projectId == nil) { projectId = nil }
+                            ForEach(projectChoices) { project in
+                                chip(project.title, isOn: projectId == project.id) { projectId = project.id }
+                            }
                         }
                     }
 
@@ -159,6 +177,7 @@ struct TaskEditorSheet: View {
         if repeatDays != task.repeatEveryDays { patch.repeatEveryDays = .some(repeatDays) }
         let wasImportant = task.priority == .high || task.priority == .must
         if isImportant != wasImportant { patch.priority = isImportant ? .high : .normal }
+        if projectId != task.goalId { patch.goalId = .some(projectId) }
         guard !patch.isEmpty else { return }
         Task { await store.patchTask(task.id, patch, quietly: true) }
     }

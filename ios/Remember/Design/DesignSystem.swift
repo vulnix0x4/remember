@@ -393,9 +393,28 @@ struct AddBar: View {
     var parsesTasks = false
     var allowsDictation = true
     var accessibilityIdentifier = "remember.addbar"
+    /// For task bars: the project in view (a deep-work block, or Plan filtered to it). New tasks file into it.
+    var focusProjectId: UUID?
     let onSubmit: (String) async -> Bool
 
+    init(placeholder: String, parsesTasks: Bool = false, allowsDictation: Bool = true, accessibilityIdentifier: String = "remember.addbar",
+         focusProjectId: UUID? = nil, onSubmit: @escaping (String) async -> Bool) {
+        self.placeholder = placeholder
+        self.parsesTasks = parsesTasks
+        self.allowsDictation = allowsDictation
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.focusProjectId = focusProjectId
+        self.onSubmit = onSubmit
+    }
+
+    /// The task bar: parses each line, splits brain dumps, and files tasks into projects.
+    static func tasks(placeholder: String = "Add a task…", focusProjectId: UUID? = nil) -> AddBar {
+        AddBar(placeholder: placeholder, parsesTasks: true, accessibilityIdentifier: "remember.task.quickAdd", focusProjectId: focusProjectId) { _ in false }
+    }
+
     @State private var text = ""
+    /// The project tapped on the chip. It sticks until the bar is cleared.
+    @State private var projectPick: ProjectFiler.Pick = .auto
     @State private var isSaving = false
     @State private var savedCount = 0
     @State private var failedCount = 0
@@ -403,11 +422,13 @@ struct AddBar: View {
     @FocusState private var isFocused: Bool
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// Task bars take a whole brain dump; everything else is one line.
+    private var maxLength: Int { parsesTasks ? 2_000 : 300 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: RememberDesign.spacingSmall) {
             if parsesTasks, !trimmed.isEmpty {
-                ParsePreview(parsed: QuickTaskParser.parse(trimmed, history: store.taskHistory))
+                TaskPreview(text: trimmed, pick: $projectPick, focusProjectId: focusProjectId)
             }
             HStack(spacing: RememberDesign.spacingSmall) {
                 TextField(
@@ -428,9 +449,10 @@ struct AddBar: View {
                     if value.contains("\n") {
                         text = value.replacingOccurrences(of: "\n", with: "")
                         submit()
-                    } else if value.count > 300 {
-                        text = String(value.prefix(300))
+                    } else if value.count > maxLength {
+                        text = String(value.prefix(maxLength))
                     }
+                    if value.isEmpty { projectPick = .auto }
                 }
                 .onChange(of: dictation.transcript) { _, spoken in
                     if dictation.isListening { text = spoken }
@@ -507,15 +529,82 @@ struct AddBar: View {
         if dictation.isListening { dictation.stop() }
         isSaving = true
         Task {
-            let succeeded = await onSubmit(value)
+            let succeeded = parsesTasks
+                ? await store.quickAddTask(value, pick: projectPick, focusProjectId: focusProjectId)
+                : await onSubmit(value)
             isSaving = false
             if succeeded {
                 text = ""
+                projectPick = .auto
                 savedCount += 1
             } else {
                 failedCount += 1
             }
         }
+    }
+}
+
+/// What typed text will become: the project chip (a button) and what was understood, or a brain dump's count.
+private struct TaskPreview: View {
+    @Environment(AppStore.self) private var store
+    let text: String
+    @Binding var pick: ProjectFiler.Pick
+    let focusProjectId: UUID?
+
+    var body: some View {
+        let drafts = store.taskDrafts(text, pick: pick, focusProjectId: focusProjectId)
+        let hasProjects = !ProjectFiler.activeProjects(store.lifeSnapshot.goals).isEmpty
+        if drafts.count > 1 {
+            dumpChips(drafts.map(\.projectId))
+        } else if let draft = drafts.first {
+            if hasProjects {
+                HStack(spacing: 6) {
+                    projectChip(draft.projectId)
+                    ParsePreview(parsed: draft.parsed)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                ParsePreview(parsed: draft.parsed)
+            }
+        }
+    }
+
+    private func name(_ id: UUID?) -> String? {
+        store.lifeSnapshot.goals.first { $0.id == id }?.title
+    }
+
+    private func projectChip(_ projectId: UUID?) -> some View {
+        Button {
+            pick = ProjectFiler.next(after: projectId, goals: store.lifeSnapshot.goals)
+        } label: {
+            MetaChip(text: name(projectId) ?? "No project", systemImage: "folder", isAccent: projectId != nil)
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: pick)
+        .padding(.leading, 4)
+        .accessibilityLabel(name(projectId).map { "Project: \($0)" } ?? "No project")
+        .accessibilityHint("Tap to change")
+        .accessibilityIdentifier("remember.task.projectChip")
+    }
+
+    private func dumpChips(_ projects: [UUID?]) -> some View {
+        var counts: [(id: UUID, count: Int)] = []
+        for case let id? in projects {
+            if let index = counts.firstIndex(where: { $0.id == id }) { counts[index].count += 1 } else { counts.append((id, 1)) }
+        }
+        return ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                MetaChip(text: "\(projects.count) tasks", systemImage: "checklist", isAccent: true)
+                ForEach(counts, id: \.id) { entry in
+                    MetaChip(text: "\(entry.count) → \(name(entry.id) ?? "Project")", systemImage: "folder")
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+        .scrollIndicators(.hidden)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(projects.count) tasks")
     }
 }
 

@@ -90,7 +90,7 @@ describe("automated serious accessibility gate", () => {
     await user.click(screen.getByRole("button", { name: /^Call mom/ }));
     await expectAccessible(document.body, "Task sheet");
     await user.keyboard("{Escape}");
-    for (const page of ["Goals", "Calendar"]) {
+    for (const page of ["Projects", "Calendar"]) {
       await user.click(screen.getByRole("button", { name: page }));
       await expectAccessible(container, page);
     }

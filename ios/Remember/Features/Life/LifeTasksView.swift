@@ -8,9 +8,28 @@ struct LifeTasksView: View {
     @State private var openTask: LifeTask?
     @State private var doneIsExpanded = false
     @State private var isAddingBasic = false
+    /// "all", "other" (loose tasks), or a project's id.
+    @SceneStorage("remember.plan.projectFilter") private var storedFilter = "all"
 
     init(planSection: Binding<PlanSection> = .constant(.tasks)) {
         _planSection = planSection
+    }
+
+    private var projects: [LifeGoal] { ProjectFiler.activeProjects(store.lifeSnapshot.goals) }
+
+    /// A project that's gone falls back to all.
+    private var filter: String {
+        storedFilter == "all" || storedFilter == "other" || projects.contains { $0.id.uuidString == storedFilter } ? storedFilter : "all"
+    }
+
+    private var focusProject: LifeGoal? { projects.first { $0.id.uuidString == filter } }
+
+    private func isShown(_ task: LifeTask) -> Bool {
+        switch filter {
+        case "all": true
+        case "other": task.goalId.map { id in !projects.contains { $0.id == id } } ?? true
+        default: task.goalId?.uuidString == filter
+        }
     }
 
     private var currentID: UUID? {
@@ -23,13 +42,13 @@ struct LifeTasksView: View {
 
     private var todayTasks: [LifeTask] {
         store.queuedLifeTasks.filter { task in
-            task.id != currentID && (startDate(task).map { $0 <= .now || Calendar.current.isDateInToday($0) } ?? true)
+            task.id != currentID && isShown(task) && (startDate(task).map { $0 <= .now || Calendar.current.isDateInToday($0) } ?? true)
         }
     }
 
     private var laterTasks: [LifeTask] {
         let upcoming = store.queuedLifeTasks
-            .filter { task in task.id != currentID && startDate(task).map { $0 > .now && !Calendar.current.isDateInToday($0) } ?? false }
+            .filter { task in task.id != currentID && isShown(task) && startDate(task).map { $0 > .now && !Calendar.current.isDateInToday($0) } ?? false }
             .sorted { (startDate($0) ?? .distantFuture) < (startDate($1) ?? .distantFuture) }
         // A daily commitment has a task for every coming day; show only the next one of each.
         var seenCommitments = Set<UUID>(todayTasks.compactMap(\.commitmentId))
@@ -61,6 +80,7 @@ struct LifeTasksView: View {
                 NowCard(compact: true)
                     .padding(.horizontal, RememberDesign.spacing)
                     .padding(.vertical, RememberDesign.spacingSmall)
+                if !projects.isEmpty { projectFilter }
                 List {
                     if !todayTasks.isEmpty {
                         taskSection("Today", tasks: todayTasks, trailing: totalTime(todayTasks))
@@ -68,12 +88,21 @@ struct LifeTasksView: View {
                     if !laterTasks.isEmpty {
                         taskSection("Later", tasks: laterTasks)
                     }
-                    if currentID == nil && todayTasks.isEmpty && laterTasks.isEmpty {
+                    if filter == "all" && currentID == nil && todayTasks.isEmpty && laterTasks.isEmpty {
                         Section {
                             RememberEmptyState(
                                 systemImage: "checklist",
                                 title: "Nothing planned",
                                 message: "Type anything in the bar below. “Call mom tomorrow 15m” works."
+                            )
+                            .listRowBackground(Color.clear)
+                        }
+                    } else if filter != "all" && todayTasks.isEmpty && laterTasks.isEmpty {
+                        Section {
+                            RememberEmptyState(
+                                systemImage: "folder",
+                                title: focusProject.map { "Nothing in \($0.title)" } ?? "No other tasks",
+                                message: focusProject == nil ? "Everything has a project." : "Add what’s next below."
                             )
                             .listRowBackground(Color.clear)
                         }
@@ -93,9 +122,7 @@ struct LifeTasksView: View {
                 .refreshable { await store.loadLife() }
             }
             .rememberBottomDock {
-                AddBar(placeholder: "Add a task…", parsesTasks: true, accessibilityIdentifier: "remember.task.quickAdd") {
-                    await store.quickAddTask($0)
-                }
+                AddBar.tasks(placeholder: focusProject.map { "Add to \($0.title)…" } ?? "Add a task…", focusProjectId: focusProject?.id)
             }
             .sheet(item: $openTask) { TaskEditorSheet(task: $0) }
             .sheet(isPresented: $isAddingBasic) { LifeFloorComposerView() }
@@ -106,7 +133,7 @@ struct LifeTasksView: View {
     private func taskSection(_ title: String, tasks: [LifeTask], trailing: String? = nil) -> some View {
         Section {
             ForEach(tasks) { task in
-                TaskRow(task: task) { openTask = task }
+                TaskRow(task: task, showsProject: filter == "all") { openTask = task }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(RememberDesign.card)
                     .listRowSeparatorTint(RememberDesign.line)
@@ -134,6 +161,38 @@ struct LifeTasksView: View {
                 .textCase(nil)
                 .padding(.horizontal, -RememberDesign.spacingXXSmall)
         }
+    }
+
+    private var projectFilter: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: RememberDesign.spacingSmall) {
+                filterChip("All", value: "all")
+                ForEach(projects) { project in filterChip(project.title, value: project.id.uuidString) }
+                filterChip("Other", value: "other")
+            }
+            .padding(.horizontal, RememberDesign.spacing)
+        }
+        .scrollIndicators(.hidden)
+        .padding(.bottom, RememberDesign.spacingXXSmall)
+        .sensoryFeedback(.selection, trigger: filter)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Show tasks for")
+    }
+
+    private func filterChip(_ title: String, value: String) -> some View {
+        let isOn = filter == value
+        return Button {
+            withAnimation(.snappy) { storedFilter = value }
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isOn ? RememberDesign.canvas : .white)
+                .padding(.horizontal, RememberDesign.spacing)
+                .frame(minHeight: 40)
+                .background(isOn ? RememberDesign.primaryFill : RememberDesign.card, in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     private var doneSection: some View {
