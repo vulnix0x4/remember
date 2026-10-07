@@ -40,6 +40,10 @@ final class AppStore {
     var setupIsPresented = false
     /// The task shown in full-screen lock-in mode, from any Start button.
     var lockInTask: LifeTask?
+    /// The running deep-work block on a project, shown full screen. Kept on this device.
+    var projectBlock: ProjectBlock? = ProjectBlock.load() {
+        didSet { ProjectBlock.save(projectBlock) }
+    }
     /// Increments after each successful life load, so views can react once data is in.
     var lifeLoadCount = 0
     /// Today's morning flow, if one was started or skipped. Kept on this device.
@@ -735,29 +739,72 @@ final class AppStore {
 
     // MARK: - Effortless task actions (optimistic, undoable)
 
-    /// Adds a task from one typed or spoken line. Jev decides when it happens. `parkedUntil` holds it back
+    /// What typed text will become: one task, or one per piece of a brain dump, each with the project it files into.
+    func taskDrafts(_ text: String, pick: ProjectFiler.Pick = .auto, focusProjectId: UUID? = nil) -> [(parsed: ParsedQuickTask, projectId: UUID?)] {
+        let goals = lifeSnapshot.goals
+        let tasks = lifeSnapshot.tasks
+        let pieces = ProjectFiler.splitDump(text)
+        if !pieces.isEmpty {
+            return pieces.map { piece in
+                let parsed = QuickTaskParser.parse(piece, history: taskHistory)
+                return (parsed, ProjectFiler.file(parsed.title, goals: goals, tasks: tasks, focusProjectId: focusProjectId))
+            }
+        }
+        let parsed = QuickTaskParser.parse(text, history: taskHistory)
+        let projectId: UUID? = switch pick {
+        case .auto: ProjectFiler.file(parsed.title, goals: goals, tasks: tasks, focusProjectId: focusProjectId)
+        case .none: nil
+        case .project(let id): id
+        }
+        return [(parsed, projectId)]
+    }
+
+    /// Adds a task from one typed or spoken line, or several from a brain dump. Jev decides when they happen,
+    /// and each files itself into a project. `goalId` puts it in a project outright; `parkedUntil` holds it back
     /// (a thought parked at bedtime waits for the morning).
     @discardableResult
-    func quickAddTask(_ text: String, goalId: UUID? = nil, parkedUntil: Date? = nil) async -> Bool {
-        let parsed = QuickTaskParser.parse(text, history: taskHistory)
-        guard !parsed.title.isEmpty else { return false }
-        let notBefore = [parsed.notBefore, parkedUntil].compactMap { $0 }.max()
-        do {
-            let task = try await lifeRepository.createTask(CreateLifeTaskRequest(
-                title: parsed.title, firstStep: "", notes: "", area: .direction, status: .queued,
-                priority: parsed.priority ?? .normal, energy: .any,
-                durationMinutes: parsed.durationMinutes ?? 15, goalId: goalId, source: "manual", sourceItemId: nil,
-                repeatEveryDays: parsed.repeatEveryDays, dueAt: parsed.dueAt, notBefore: notBefore
-            ))
-            await loadLife()
-            let message = parkedUntil != nil ? "Parked for tomorrow" : brain?.settings.enabled == true ? "Added · Jev will fit it in" : "Added"
-            showToast(message) { [weak self] in
+    func quickAddTask(_ text: String, goalId: UUID? = nil, parkedUntil: Date? = nil, pick: ProjectFiler.Pick = .auto, focusProjectId: UUID? = nil) async -> Bool {
+        // Parked thoughts stay whole and loose: they're for sorting out tomorrow.
+        let drafts = parkedUntil != nil
+            ? [(parsed: QuickTaskParser.parse(text, history: taskHistory), projectId: goalId)]
+            : taskDrafts(text, pick: goalId.map { .project($0) } ?? pick, focusProjectId: focusProjectId)
+        guard !drafts.isEmpty, drafts.allSatisfy({ !$0.parsed.title.isEmpty }) else { return false }
+        var created: [LifeTask] = []
+        for draft in drafts {
+            let parsed = draft.parsed
+            let notBefore = [parsed.notBefore, parkedUntil].compactMap { $0 }.max()
+            do {
+                created.append(try await lifeRepository.createTask(CreateLifeTaskRequest(
+                    title: parsed.title, firstStep: "", notes: "", area: .direction, status: .queued,
+                    priority: parsed.priority ?? .normal, energy: .any,
+                    durationMinutes: parsed.durationMinutes ?? 15, goalId: draft.projectId, source: "manual", sourceItemId: nil,
+                    repeatEveryDays: parsed.repeatEveryDays, dueAt: parsed.dueAt, notBefore: notBefore
+                )))
+            } catch {
+                break
+            }
+        }
+        // Nothing saved keeps the words in the bar; a partial dump keeps what made it, so a retry can't double up.
+        guard !created.isEmpty else { return false }
+        await loadLife()
+        let project = lifeSnapshot.goals.first { $0.id == drafts.first?.projectId }
+        let message = if parkedUntil != nil {
+            "Parked for tomorrow"
+        } else if created.count < drafts.count {
+            "Added \(created.count) of \(drafts.count). Try the rest again."
+        } else if created.count > 1 {
+            "Added \(created.count) tasks"
+        } else if let project {
+            "Added to \(project.title)"
+        } else {
+            brain?.settings.enabled == true ? "Added · Jev will fit it in" : "Added"
+        }
+        showToast(message, isError: created.count < drafts.count) { [weak self] in
+            for task in created {
                 await self?.patchTask(task.id, LifeTaskPatch(status: .removed), quietly: true)
             }
-            return true
-        } catch {
-            return false
         }
+        return true
     }
 
     /// Past tasks the quick-add parser learns repeat rhythms from.
@@ -917,18 +964,40 @@ final class AppStore {
         }
     }
 
-    func updateGoal(_ goal: LifeGoal, progress: Int? = nil, status: String? = nil) async {
+    func updateGoal(_ goal: LifeGoal, title: String? = nil, progress: Int? = nil, status: String? = nil) async {
         if let index = lifeSnapshot.goals.firstIndex(where: { $0.id == goal.id }) {
+            if let title { lifeSnapshot.goals[index].title = title }
             if let progress { lifeSnapshot.goals[index].progress = progress }
             if let status { lifeSnapshot.goals[index].status = status }
         }
         do {
-            try await lifeRepository.updateGoal(id: goal.id, progress: progress, status: status)
+            try await lifeRepository.updateGoal(id: goal.id, title: title, progress: progress, status: status)
             await loadLife()
         } catch {
             await loadLife()
             presentLifeError("Couldn’t update that goal. Try again.")
         }
+    }
+
+    // MARK: - Projects and deep work
+
+    /// Open tasks that can happen now, in Jev's order: nothing held for later or planned for another day.
+    var availableLifeTasks: [LifeTask] {
+        queuedLifeTasks.filter { task in
+            (task.notBefore ?? .distantPast) <= .now &&
+            (task.scheduledStart.map { $0 <= .now || Calendar.current.isDateInToday($0) } ?? true)
+        }
+    }
+
+    /// The project's task to work on: its current one, else the next that can happen now.
+    func blockTask(for projectId: UUID) -> LifeTask? {
+        if let active = lifeSnapshot.activeTask, active.goalId == projectId { return active }
+        return availableLifeTasks.first { $0.goalId == projectId }
+    }
+
+    func startProjectBlock(_ project: LifeGoal, minutes: Int = ProjectBlock.defaultMinutes) {
+        lockInTask = nil
+        projectBlock = ProjectBlock(projectId: project.id, startedAt: .now, minutes: minutes)
     }
 
     private func replaceLocally(_ id: UUID, _ change: (inout LifeTask) -> Void) {

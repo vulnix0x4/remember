@@ -39,9 +39,7 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Imprint.self) { ImprintDetailView(imprint: $0) }
             .rememberBottomDock {
-                AddBar(placeholder: "Add a task…", parsesTasks: true, accessibilityIdentifier: "remember.task.quickAdd") {
-                    await store.quickAddTask($0)
-                }
+                AddBar.tasks()
             }
             .sheet(item: $openTask) { TaskEditorSheet(task: $0) }
             .onDisappear {

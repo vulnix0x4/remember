@@ -314,11 +314,11 @@ describe("Remember app", () => {
     expect(screen.getAllByLabelText("Add a task")).toHaveLength(1);
     await user.click(within(primary).getByRole("button", { name: "Plan" }));
     expect(screen.getByRole("heading", { level: 1, name: "Plan" })).toBeTruthy();
-    expect(within(screen.getByRole("navigation", { name: "Plan sections" })).getAllByRole("button").map((button) => button.textContent)).toEqual(["Tasks", "Calendar", "Goals"]);
+    expect(within(screen.getByRole("navigation", { name: "Plan sections" })).getAllByRole("button").map((button) => button.textContent)).toEqual(["Tasks", "Calendar", "Projects"]);
     expect(screen.getAllByLabelText("Add a task")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /^(Add task|New goal|Add event|Save)$/ })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Goals" }));
-    expect(screen.getAllByLabelText("Add a goal")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Projects" }));
+    expect(screen.getAllByLabelText("Add a project")).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Calendar" }));
     expect(screen.getByRole("group", { name: "Choose a day" })).toBeTruthy();
     expect(screen.getAllByLabelText("Add a task")).toHaveLength(1);

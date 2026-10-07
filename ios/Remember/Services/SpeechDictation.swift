@@ -29,7 +29,8 @@ final class SpeechDictation {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        request.addsPunctuation = false
+        // Punctuation lets a spoken brain dump split into separate tasks.
+        request.addsPunctuation = true
         if recognizer.supportsOnDeviceRecognition { request.requiresOnDeviceRecognition = true }
 
         let engine = AVAudioEngine()

@@ -13,7 +13,7 @@ struct PlanContainerView: View {
         switch selection {
         case .tasks: LifeTasksView(planSection: $selection)
         case .calendar: LifeCalendarView(planSection: $selection)
-        case .goals: LifeGoalsView(planSection: $selection)
+        case .goals: LifeProjectsView(planSection: $selection)
         }
     }
 }
