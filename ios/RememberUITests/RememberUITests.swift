@@ -46,9 +46,10 @@ final class RememberUITests: XCTestCase {
         XCTAssertEqual(tabBar.buttons.count, 5)
         XCTAssertFalse(tabBar.buttons["More"].exists)
         XCTAssertTrue(waitForSelection(tabBar.buttons["Today"]))
+        // The identifiers are attached just after the tab bar appears, so give them a moment.
         for identifier in primaryTabIdentifiers {
             XCTAssertTrue(
-                app.descendants(matching: .any)[identifier].exists,
+                app.descendants(matching: .any)[identifier].waitForExistence(timeout: timeout),
                 "Missing stable tab identifier \(identifier)."
             )
         }
@@ -166,12 +167,13 @@ final class RememberUITests: XCTestCase {
 
         done.tap()
         XCTAssertTrue(app.staticTexts["Done."].waitForExistence(timeout: timeout), "A short win moment follows Done.")
-        XCTAssertTrue(app.staticTexts["Done."].waitForNonExistence(timeout: timeout), "The win moment returns to Today by itself.")
+        // Undo is only on screen for a few seconds, so use it before anything slower.
         let undo = visibleUndo(in: app)
         XCTAssertTrue(undo.waitForExistence(timeout: timeout))
         XCTAssertTrue(anyElement(containing: "Done. Nice work.", in: app).exists)
 
         undo.tap()
+        XCTAssertTrue(app.staticTexts["Done."].waitForNonExistence(timeout: timeout), "The win moment returns to Today by itself.")
         XCTAssertTrue(anyElement(containing: firstNowTask, in: app).waitForExistence(timeout: timeout), "Undo brings the finished task back.")
     }
 
