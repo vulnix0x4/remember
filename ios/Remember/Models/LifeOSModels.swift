@@ -350,9 +350,11 @@ struct LifeTaskPatch: Encodable, Sendable, Equatable {
     var notBefore: Date??
     var dueAt: Date??
     var repeatEveryDays: Int??
+    /// The project the task belongs to; `.some(nil)` takes it out of its project.
+    var goalId: UUID??
 
     private enum CodingKeys: String, CodingKey {
-        case title, firstStep, status, priority, durationMinutes, notBefore, dueAt, repeatEveryDays
+        case title, firstStep, status, priority, durationMinutes, notBefore, dueAt, repeatEveryDays, goalId
     }
 
     var isEmpty: Bool { self == LifeTaskPatch() }
@@ -367,6 +369,7 @@ struct LifeTaskPatch: Encodable, Sendable, Equatable {
         if let notBefore { try container.encode(notBefore, forKey: .notBefore) }
         if let dueAt { try container.encode(dueAt, forKey: .dueAt) }
         if let repeatEveryDays { try container.encode(repeatEveryDays, forKey: .repeatEveryDays) }
+        if let goalId { try container.encode(goalId, forKey: .goalId) }
     }
 
     func applied(to task: LifeTask) -> LifeTask {
@@ -379,6 +382,7 @@ struct LifeTaskPatch: Encodable, Sendable, Equatable {
         if let notBefore { task.notBefore = notBefore }
         if let dueAt { task.dueAt = dueAt }
         if let repeatEveryDays { task.repeatEveryDays = repeatEveryDays }
+        if let goalId { task.goalId = goalId }
         task.updatedAt = .now
         return task
     }

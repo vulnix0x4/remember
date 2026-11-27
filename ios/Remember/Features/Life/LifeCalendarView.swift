@@ -125,9 +125,7 @@ struct LifeCalendarView: View {
                 .refreshable { await store.loadLife() }
             }
             .rememberBottomDock {
-                AddBar(placeholder: "Add a task…", parsesTasks: true, accessibilityIdentifier: "remember.task.quickAdd") {
-                    await store.quickAddTask($0)
-                }
+                AddBar.tasks()
             }
             .rememberPrimaryActions()
         }

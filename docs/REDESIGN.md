@@ -46,7 +46,7 @@ People with ADHD and attention difficulties who need to get through their day. A
 
 ## App structure (5 tabs, unchanged)
 
-Today · Plan · Library · Ask · Life. Plan keeps the segments **Tasks · Calendar · Goals**. Library keeps **Saved · Patterns**. Life has **Health · Sleep · Money · Files**.
+Today · Plan · Library · Ask · Life. Plan keeps the segments **Tasks · Calendar · Projects**. Library keeps **Saved · Patterns**. Life has **Health · Sleep · Money · Files**.
 
 - **Header:** large left-aligned title plus the avatar button (profile and settings) on the right. Segment control sits directly below the title as a pill control (height 40, `card` background, selected segment white with black text).
 - **Add bar:** pinned above the tab bar on every screen.
@@ -54,7 +54,7 @@ Today · Plan · Library · Ask · Life. Plan keeps the segments **Tasks · Cale
 | Screen | Add bar placeholder | What it does |
 |---|---|---|
 | Today, Plan → Tasks, Plan → Calendar | `Add a task…` | Quick add task (inline, no sheet) |
-| Plan → Goals | `Add a goal…` | Creates a goal from one line (inline) |
+| Plan → Projects | `Add a project…` | Creates a project from one line (inline) |
 | Library (both segments) | `Save a link or thought…` | Inline save; a URL becomes a link, otherwise a thought |
 | Ask | `Ask your library…` | Sends the question (Ask's composer *is* the add bar, restyled) |
 | Life → Health | *(no bar)* | — |
@@ -62,7 +62,7 @@ Today · Plan · Library · Ask · Life. Plan keeps the segments **Tasks · Cale
 | Life → Files | `Add a file` | Button-style bar that opens the picker |
 
 - **Add bar anatomy:** white capsule, height 56, 16 horizontal padding. Left: text field, black text, placeholder `rgba(0,0,0,0.45)`. Right: when empty, a mic button (iOS: speech dictation; web: Web Speech API when available, hidden otherwise). When text is present, a black circular send button (44) with an up-arrow. Return submits. On success the field clears, keeps focus (so people can dump several tasks in a row), fires a success haptic, and shows the toast `Added · Jev will fit it in`.
-- **Parse preview:** while typing a task, a row of small chips sits directly above the bar showing what was understood, e.g. `⏱ 30 min` `📅 Tomorrow` `↻ Weekly` `! Important`. Chips are read-only; they disappear when nothing is recognized.
+- **Parse preview:** while typing a task, a row of small chips sits directly above the bar showing what was understood, e.g. `⏱ 30 min` `📅 Tomorrow` `↻ Weekly` `! Important`. Chips are read-only; they disappear when nothing is recognized. The one exception is the project chip (see *Projects*), which is a button.
 
 ## Quick add parsing (identical on both platforms)
 
@@ -206,18 +206,77 @@ There is no "choose another task" list anywhere. If someone wants a specific tas
 ## Plan → Tasks
 
 - Optional compact Now card at the top: same data as Today, single line, with a Primary-small **Start** or **Done**.
+- **Project filter:** when there's at least one project, a chip row under the segments: `All · College · iOS app · Other` (Other is loose tasks). It filters Today and Later, and while a project is chosen the add bar files into it. In `All`, each row's meta line starts with its project's name.
 - **Sections** (plain `text2` 13 semibold uppercase headers, no cards around sections):
   - `Today`: available now, in Jev's order.
   - `Later`: notBefore or scheduled in the future, sorted by time, with meta showing the day and time (`Thu 3:00 PM`).
   - `Daily basics`: chips, same as Today.
   - `Done today · 3`: collapsed by default (the one allowed disclosure, because it's non-essential).
 - **Task row:** 56+ tall, `card` background, radius 22, 8 gap between rows (rows are separate cards, not one grouped list). Left: a 28 circle checkbox; tapping it completes the task (fills with accent + check, row fades out, toast `Done · Undo`). Middle: title (17 semibold, 2 lines max) and a meta line (`15 min · Thu 3 PM · ↻ Weekly · Important`). Tapping the row opens the **Task sheet**. Swipe right → Start (accent). Swipe left → Delete (danger, with undo). The web shows a hover-revealed `Start` button instead of swipe.
-- **Task sheet:** editable title (large), `Start with…` first-step field, **How long** chips (5, 15, 30, 60, 90), **When** chips (Anytime, Tonight, Tomorrow, This weekend, Next week → notBefore), **Repeat** chips (Never, Daily, Weekly, Monthly), and an **Important** toggle. Primary **Start now**. Quiet danger **Delete**. Changes save automatically on dismiss, with no Save button.
+- **Task sheet:** editable title (large), `Start with…` first-step field, **How long** chips (5, 15, 30, 60, 90), **When** chips (Anytime, Tonight, Tomorrow, This weekend, Next week → notBefore), **Repeat** chips (Never, Daily, Weekly, Monthly), **Project** chips (None plus each active project, only when there is one), and an **Important** toggle. Primary **Start now**. Quiet danger **Delete**. Changes save automatically on dismiss, with no Save button.
 
-## Plan → Calendar and Goals
+## Plan → Calendar
 
 - **Calendar:** keep the week strip and day agenda. Restyle with the tokens, and show Jev's planned blocks as rows with an accent left bar. Use `Connect calendar` as a Secondary button when not connected.
-- **Goals:** cards show the title, a progress bar (accent), and the Quiet button `Add a step`, which creates a task linked to the goal. Tapping a card opens an edit sheet with a progress slider and Pause/Complete.
+
+## Projects
+
+Big areas of life, like *College* or *My app*, each with its own pile of tasks and a button that turns an hour into deep work on it. You never sort anything yourself: tasks file themselves, and a wrong guess is one tap to fix.
+
+Projects are goals on the server (`/api/life/goals`), and a task belongs to a project through `goalId`. A project's `status` is `active`, `paused` or `completed`; only active ones get tasks filed into them. Goal progress is no longer shown.
+
+### Plan → Projects
+
+- **Card** per active or paused project (paused ones are dimmed, last). Title (20 bold rounded), a meta line `5 tasks · 2 hr 15 min` (open tasks and their total time; `No tasks yet` when empty), and `Next: Read chapter 4` in `text2` (the project's next task in Jev's order). Secondary **Work on it** starts a 60-minute block. Tapping the card opens the project sheet.
+- **Project sheet:** the editable name (large, saves on dismiss), the open tasks as task rows (tap the circle to finish, tap a row for the task sheet), **How long** chips (30 min, 1 hr, 1.5 hr, default 1 hr), Primary **Work on it**, then Quiet **Pause** / **Resume** and Quiet **Finish project** (status `completed`, with Undo).
+- **Empty:** title `What are you working on?`, line `Add one below, like College or My app.`
+
+### Filing: where a new task goes
+
+`fileTask(title, projects, tasks, focusProjectId) -> projectId | null`, identical on both platforms. It never asks.
+
+1. **Context.** If a deep-work block is running, or Plan → Tasks is filtered to a project, that project.
+2. **Words.** Otherwise each active project gets a score from the task's words (lowercased, split on anything that isn't a letter or digit, without the stop words below):
+   - **+3** if a word of the project's name (3+ letters, not a stop word) is in the title. *College* matches `college essay`.
+   - **+2** if the title matches the project's kit. A kit is chosen by the project's name:
+     - *School* (name has college, school, class, course, uni, university, wgu, study, degree or semester): wgu, college, class, course, study, studying, exam, quiz, essay, paper, chapter, lecture, homework, assignment, mentor, professor, syllabus, rubric, midterm, semester, submit, submission, and course codes like `c683` or `D335` (one letter then 3–4 digits).
+     - *Code* (name has app, ios, code, coding, dev, software, website or startup): app, ios, swift, swiftui, xcode, testflight, app store, bug, crash, build, deploy, release, ship, feature, screen, ui, ux, api, backend, frontend, code, refactor, commit, pr, merge, onboarding, paywall, simulator.
+     - *Fitness* (name has gym, fitness, workout, training or health): gym, workout, lift, lifting, run, cardio, protein, stretch, mobility, legs, push, pull.
+   - **+1 per earlier task**, up to 2 per word: for each word in the title, how many of the project's earlier tasks (any status but removed) contain it. Two earlier *gym* tasks in Health make the next one go there.
+   - The best project wins if it scores **2 or more** and strictly beats every other. Otherwise the task stays **loose**: no project. Loose is always safe.
+   - **Stop words:** a, an, the, and, or, to, of, for, in, on, at, by, with, my, me, i, it, is, be, do, get, got, go, make, need, have, gotta, should, want, some, this, that, up, out, about, from, task, tasks, thing, things, stuff, work, finish, start.
+3. **Tests:** projects College and iOS app with no history: `Finish the WGU essay` → College; `Fix the sleep screen crash` → iOS app; `Email my mentor` → College; `Call mom` → loose; `Read chapter 5` → College; `Gym` → loose. With a project *Self care* holding two earlier *Gym* tasks: `Gym tomorrow` → Self care.
+
+### The project chip
+
+While typing a task, when at least one project exists, the parse preview starts with a project chip: `📁 College` in the accent when filed, or `📁 No project` in `text3` when loose. **Tapping it moves the task to the next active project, then No project, and around.** A tapped choice sticks until the bar is cleared. Submitting with a project shows the toast `Added to College`.
+
+### Brain dump
+
+Paste or say a whole messy paragraph and Remember turns it into separate tasks. `splitDump(text) -> [string]`:
+
+1. Split on new lines, `;`, and sentence ends (`. `, `? `). Then split each piece on commas, **unless** a comma piece would be a single word (so `Buy eggs, milk, bread` stays one task).
+2. When there are already two or more pieces, also split a piece on ` and ` / ` then ` / ` and then ` when both sides keep two or more words.
+3. Clean each piece: drop leading filler (`ok`, `okay`, `so`, `also`, `and`, `then`, `plus`, `oh`, `um`, `uh`, `like`), then a leading `I need to`, `I have to`, `I've got to`, `I gotta`, `I should`, `I want to`, `need to`, `have to`, `gotta`, `remember to`, `don't forget to`. Trim trailing `.` and `?`.
+4. A piece with no real words, only how long, when or how important (like `45 min`), joins the one before it. It's a dump only if two or more pieces remain; otherwise the text is one ordinary task. Separate lines and sentences are always separate tasks, even one word long (`Gym` on its own line).
+
+Each piece then goes through quick-add parsing and filing on its own. The preview shows one chip, `4 tasks`, plus `2 → College` style chips per project (not tappable; fix any of them later in the task sheet). The toast reads `Added 4 tasks` with Undo, which removes all of them. Dictation on iPhone adds punctuation so spoken dumps split too.
+
+*Example:* `ok i need to finish the WGU essay, fix the sleep screen crash, call mom, and email my mentor` → `Finish the WGU essay` (College), `Fix the sleep screen crash` (iOS app), `Call mom` (loose), `Email my mentor` (College).
+
+### Deep work block (Work on it)
+
+**Work on it** opens a full-screen block for one project. It replaces lock-in for that time and works through the project's tasks one at a time.
+
+- **Header:** label `DEEP WORK · COLLEGE` in accent, and the hold-to-leave Quiet **End block** (press and hold 3 seconds).
+- **The task:** the project's next task in Jev's order that can happen now (open, not held for later). It becomes the current task automatically. Title (30 bold), `Start with:` if any, and the line `2 done · 3 to go`.
+- **The ring** counts down the whole block (not the task), from when it started, and can't be paused. At zero it reads `Block done · finish when ready` in the accent.
+- **Buttons:** Primary **Done** finishes the task (the usual `Done · Undo` toast) and the next one appears right away, with no win screen in between. Secondary **I'm stuck** opens the Stuck sheet; *Do something else* moves the task aside and the next one appears. After the ring hits zero, the Secondary becomes **Wrap up**.
+- **Add bar:** `Add to College…`. Everything typed here is filed into this project, and if the project had run dry the new task becomes current.
+- **Nothing left:** title `College is clear`, line `Add what's next below, or wrap up.`, Primary **Wrap up**.
+- **Ending** (Wrap up or End block): the current task goes back to the list, then a two-second win moment, `Deep work done.` / `3 done for College.` (or just closes when nothing was done).
+- **Blocking (iOS, Focus mode on):** apps stay blocked for the whole block, capped at its length plus 10 minutes.
+- The block lives on the device: `{ projectId, startedAt, minutes }`. Reopening the app during a block goes straight back to it. A block ends by itself 4 hours after it started.
 
 ## Library, Ask, Life
 

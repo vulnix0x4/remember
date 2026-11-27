@@ -359,13 +359,13 @@ actor APIClient {
         return response.goal
     }
 
-    func updateLifeGoal(id: UUID, progress: Int?, status: String?) async throws {
-        struct Body: Encodable { let progress: Int?; let status: String? }
+    func updateLifeGoal(id: UUID, title: String? = nil, progress: Int?, status: String?) async throws {
+        struct Body: Encodable { let title: String?; let progress: Int?; let status: String? }
         struct Response: Decodable { let goal: LifeGoal }
         let _: Response = try await request(
             path: "api/life/goals/\(id.uuidString.lowercased())",
             method: "PATCH",
-            body: try encoder.encode(Body(progress: progress, status: status))
+            body: try encoder.encode(Body(title: title, progress: progress, status: status))
         )
     }
 

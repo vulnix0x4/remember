@@ -1428,6 +1428,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .parse-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0 4px; list-style: none; animation: chips-in 140ms ease-out; }
 .parse-chips li { display: inline-flex; min-height: 28px; align-items: center; gap: 5px; padding: 0 11px; border-radius: 999px; background: var(--card-raised); color: var(--text); font-size: 13px; font-weight: 600; }
 .parse-chips svg { color: var(--accent); }
+.parse-chips li.chip-button-item { padding: 0; background: transparent; }
+.parse-chip-button { display: inline-flex; min-height: 28px; align-items: center; gap: 5px; padding: 0 11px; border: 0; border-radius: 999px; background: var(--card-raised); color: var(--accent); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.parse-chip-button.loose { color: var(--text3); }
+.parse-chip-button.loose svg { color: var(--text3); }
+.parse-chip-button:active { transform: scale(.96); }
 @keyframes chips-in { from { opacity: 0; transform: translateY(4px); } }
 .add-notice { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 16px; background: var(--card); color: var(--danger); font-size: 14px; font-weight: 500; }
 
@@ -1873,3 +1878,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .toggle-copy { display: grid; min-width: 0; gap: 2px; }
 .toggle-copy small { color: var(--text2); font-size: 13px; font-weight: 500; }
 .sleep-week .stat-row strong, .sleep-empty, .sleep-footer { text-wrap: balance; }
+
+/* Projects */
+.project-filter { margin-bottom: 4px; }
+.project-card { gap: 4px; padding-bottom: 12px; }
+.project-card > .btn.secondary { margin: 4px 8px 0; }
+.project-next { overflow: hidden; color: var(--text2); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.project-sheet .task-list { margin: 0; }
+.project-block .add-dock { position: static; right: auto; bottom: auto; left: auto; margin: 0; padding: 0; background: transparent; }
+.project-block .add-dock::before { display: none; }

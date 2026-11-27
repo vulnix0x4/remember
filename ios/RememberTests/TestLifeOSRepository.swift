@@ -66,7 +66,7 @@ actor TestLifeOSRepository: LifeOSRepository {
         try failIfNeeded()
     }
 
-    func updateGoal(id: UUID, progress: Int?, status: String?) async throws {
+    func updateGoal(id: UUID, title: String?, progress: Int?, status: String?) async throws {
         try failIfNeeded()
     }
 
